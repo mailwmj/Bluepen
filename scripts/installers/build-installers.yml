@@ -1,0 +1,102 @@
+name: Build installers
+
+# Builds Outlin for all platforms and commits the installers
+# into apps/web/public/downloads so the website can serve them.
+#
+# Requires a one-time secret on this repo:
+#   OUTLIN_APP_ACCESS → (opcional) PAT with "contents: read" access to the
+#   `outlin` repo (where the app source lives). Create it at
+#   https://github.com/settings/tokens (fine-grained, repo: outlin/outlin).
+#   If `outlin` is made public, this secret is no longer needed.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            bundles: deb,rpm
+          - os: macos-latest
+            bundles: app,dmg
+          - os: windows-latest
+            bundles: nsis
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout app source (outlin)
+        uses: actions/checkout@v4
+        with:
+          repository: outlin/outlin
+          token: ${{ secrets.OUTLIN_APP_ACCESS || secrets.GITHUB_TOKEN }}
+          path: app
+      - name: Checkout web (this repo)
+        uses: actions/checkout@v4
+        with:
+          path: web
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux system deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libappindicator3-dev \
+            librsvg2-dev \
+            patchelf
+
+      - name: Install app dependencies
+        working-directory: app
+        run: pnpm install
+
+      - name: Build bundles (${{ matrix.bundles }})
+        working-directory: app
+        run: pnpm --filter app exec tauri build --bundles "${{ matrix.bundles }}"
+
+      - name: Stage installers
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p web/apps/web/public/downloads
+          case "${{ runner.os }}" in
+            Linux)
+              cp app/apps/app/src-tauri/target/release/bundle/deb/*.deb web/apps/web/public/downloads/outlin-0.1.0-amd64.deb
+              cp app/apps/app/src-tauri/target/release/bundle/rpm/*.rpm web/apps/web/public/downloads/outlin-0.1.0-1.x86_64.rpm
+              ;;
+            macOS)
+              cp app/apps/app/src-tauri/target/release/bundle/dmg/*.dmg web/apps/web/public/downloads/outlin-0.1.0-macos-arm64.dmg
+              ;;
+            Windows)
+              cp app/apps/app/src-tauri/target/release/bundle/nsis/*-setup.exe web/apps/web/public/downloads/outlin-0.1.0-windows-x64.exe
+              ;;
+          esac
+          ls -lh web/apps/web/public/downloads
+
+      - name: Commit and push installers
+        shell: bash
+        run: |
+          cd web
+          git config user.name "outlin-bot"
+          git config user.email "dev@outlin.app"
+          git add apps/web/public/downloads
+          if git diff --cached --quiet; then
+            echo "No changes — installers are up to date"
+            exit 0
+          fi
+          git commit -m "ci: refresh ${{ runner.os }} installers"
+          git pull --rebase origin main
+          git push origin main

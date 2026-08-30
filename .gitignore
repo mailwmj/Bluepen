@@ -1,0 +1,15 @@
+# Next.js
+.next/
+node_modules/
+*.tsbuildinfo
+next-env.d.ts
+out/
+
+# Rust / Tauri
+src-tauri/target/
+
+# Marketing site (synced to the outlin-web repo via `pnpm web:publish`)
+apps/web/
+
+# macOS
+.DS_Store
