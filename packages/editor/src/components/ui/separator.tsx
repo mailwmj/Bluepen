@@ -1,6 +1,6 @@
 import { Separator as SeparatorPrimitive } from "@base-ui/react/separator";
 import type React from "react";
-import { cn } from "@outlin/editor/lib/utils";
+import { cn } from "@bluepen/editor/lib/utils";
 
 export function Separator({
   className,

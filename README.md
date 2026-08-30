@@ -1,8 +1,8 @@
 <p align="center">
-  <img src="docs/screenshots/preview.svg" alt="Outlin" width="700">
+  <img src="docs/screenshots/preview.svg" alt="Bluepen" width="700">
 </p>
 
-<h1 align="center">Outlin</h1>
+<h1 align="center">Bluepen</h1>
 
 <p align="center">
   <b>Wireframe at the speed of thought.</b><br>
@@ -11,10 +11,10 @@
 </p>
 
 <p align="center">
-  <a href="https://outlin.app">Website</a> ·
-  <a href="https://outlin.app/demo">Live demo</a> ·
-  <a href="https://outlin.app/download">Download</a> ·
-  <a href="https://github.com/outlin/outlin/releases">Releases</a>
+  <a href="https://bluepen.app">Website</a> ·
+  <a href="https://bluepen.app/demo">Live demo</a> ·
+  <a href="https://bluepen.app/download">Download</a> ·
+  <a href="https://github.com/bluepen/bluepen/releases">Releases</a>
 </p>
 
 <p align="center">
@@ -33,7 +33,7 @@
 - **Style inspector** — fills, borders, radius, shadows, typography
 - **Multi-page projects** with preview (prototype) mode
 - **PNG export**
-- **Local-first** — projects are stored as `.outlin` files on your machine
+- **Local-first** — projects are stored as `.bluepen` files on your machine
 
 ## Repository layout
 
@@ -80,4 +80,4 @@ See [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) and report vulnerabilities via
 
 ## License
 
-[GNU Affero General Public License v3.0](LICENSE) — © 2026 Outlin.
+[GNU Affero General Public License v3.0](LICENSE) — © 2026 Bluepen.

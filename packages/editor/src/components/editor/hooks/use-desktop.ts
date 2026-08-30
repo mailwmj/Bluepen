@@ -13,7 +13,7 @@ export function isDesktop() {
 export function confirmLocal(message: string): Promise<boolean> {
   if (isDesktop()) {
     return import("@tauri-apps/plugin-dialog").then(({ ask }) =>
-      ask(message, { title: "Outlin", kind: "warning" }),
+      ask(message, { title: "Bluepen", kind: "warning" }),
     );
   }
   return Promise.resolve(window.confirm(message));
@@ -60,12 +60,12 @@ export function useDesktop(
           const path = await open({
             defaultPath: projectsDir,
             multiple: false,
-            filters: [{ name: "Outlin Project", extensions: ["outlin", "json"] }],
+            filters: [{ name: "Bluepen Project", extensions: ["bluepen", "json"] }],
           });
           if (typeof path !== "string") return;
           const content = await readTextFile(path);
           const data = JSON.parse(content);
-          const baseName = path.split("/").pop()?.replace(/\.(outlin|json)$/, "") || "Untitled";
+          const baseName = path.split("/").pop()?.replace(/\.(bluepen|json)$/, "") || "Untitled";
           onLoadProjectRef.current({ pages: data.pages ?? [], name: data.name ?? baseName });
           showToast({ type: "success", title: "Project opened", description: baseName, id: "open-file" });
         } catch (e) {
@@ -80,7 +80,7 @@ export function useDesktop(
           const projectsDir = await getProjectsDir();
           const path = await save({
             defaultPath: `${projectsDir}/${projectFileName(data.name || "Untitled")}`,
-            filters: [{ name: "Outlin Project", extensions: ["outlin", "json"] }],
+            filters: [{ name: "Bluepen Project", extensions: ["bluepen", "json"] }],
           });
           if (typeof path !== "string") return false;
           await writeTextFile(path, JSON.stringify(data, null, 2));

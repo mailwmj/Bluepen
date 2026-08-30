@@ -5,7 +5,7 @@ const isExport = process.env.NEXT_EXPORT === "true";
 const nextConfig: NextConfig = {
   output: isExport ? "export" : undefined,
   images: { unoptimized: true },
-  transpilePackages: ["@outlin/editor"],
+  transpilePackages: ["@bluepen/editor"],
   ...(isExport
     ? {}
     : {

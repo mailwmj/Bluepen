@@ -1,13 +1,13 @@
 name: Build installers
 
-# Builds Outlin for all platforms and commits the installers
+# Builds Bluepen for all platforms and commits the installers
 # into apps/web/public/downloads so the website can serve them.
 #
 # Requires a one-time secret on this repo:
-#   OUTLIN_APP_ACCESS → (opcional) PAT with "contents: read" access to the
-#   `outlin` repo (where the app source lives). Create it at
-#   https://github.com/settings/tokens (fine-grained, repo: outlin/outlin).
-#   If `outlin` is made public, this secret is no longer needed.
+#   BLUEPEN_APP_ACCESS → (opcional) PAT with "contents: read" access to the
+#   `bluepen` repo (where the app source lives). Create it at
+#   https://github.com/settings/tokens (fine-grained, repo: bluepen/bluepen).
+#   If `bluepen` is made public, this secret is no longer needed.
 
 on:
   workflow_dispatch:
@@ -28,11 +28,11 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Checkout app source (outlin)
+      - name: Checkout app source (bluepen)
         uses: actions/checkout@v4
         with:
-          repository: outlin/outlin
-          token: ${{ secrets.OUTLIN_APP_ACCESS || secrets.GITHUB_TOKEN }}
+          repository: bluepen/bluepen
+          token: ${{ secrets.BLUEPEN_APP_ACCESS || secrets.GITHUB_TOKEN }}
           path: app
       - name: Checkout web (this repo)
         uses: actions/checkout@v4
@@ -74,14 +74,14 @@ jobs:
           mkdir -p web/apps/web/public/downloads
           case "${{ runner.os }}" in
             Linux)
-              cp app/apps/app/src-tauri/target/release/bundle/deb/*.deb web/apps/web/public/downloads/outlin-0.1.0-amd64.deb
-              cp app/apps/app/src-tauri/target/release/bundle/rpm/*.rpm web/apps/web/public/downloads/outlin-0.1.0-1.x86_64.rpm
+              cp app/apps/app/src-tauri/target/release/bundle/deb/*.deb web/apps/web/public/downloads/bluepen-0.1.0-amd64.deb
+              cp app/apps/app/src-tauri/target/release/bundle/rpm/*.rpm web/apps/web/public/downloads/bluepen-0.1.0-1.x86_64.rpm
               ;;
             macOS)
-              cp app/apps/app/src-tauri/target/release/bundle/dmg/*.dmg web/apps/web/public/downloads/outlin-0.1.0-macos-arm64.dmg
+              cp app/apps/app/src-tauri/target/release/bundle/dmg/*.dmg web/apps/web/public/downloads/bluepen-0.1.0-macos-arm64.dmg
               ;;
             Windows)
-              cp app/apps/app/src-tauri/target/release/bundle/nsis/*-setup.exe web/apps/web/public/downloads/outlin-0.1.0-windows-x64.exe
+              cp app/apps/app/src-tauri/target/release/bundle/nsis/*-setup.exe web/apps/web/public/downloads/bluepen-0.1.0-windows-x64.exe
               ;;
           esac
           ls -lh web/apps/web/public/downloads
@@ -90,8 +90,8 @@ jobs:
         shell: bash
         run: |
           cd web
-          git config user.name "outlin-bot"
-          git config user.email "dev@outlin.app"
+          git config user.name "bluepen-bot"
+          git config user.email "dev@bluepen.app"
           git add apps/web/public/downloads
           if git diff --cached --quiet; then
             echo "No changes — installers are up to date"

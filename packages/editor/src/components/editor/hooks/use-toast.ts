@@ -1,6 +1,6 @@
 "use client";
 
-import { toastManager } from "@outlin/editor/components/ui/toast";
+import { toastManager } from "@bluepen/editor/components/ui/toast";
 
 export type ToastType = "info" | "success" | "error" | "warning";
 

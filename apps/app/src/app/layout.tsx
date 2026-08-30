@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { cn } from "@outlin/editor/lib/utils";
+import { cn } from "@bluepen/editor/lib/utils";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Outlin — Wireframe at the speed of thought",
+  title: "Bluepen — Wireframe at the speed of thought",
 };
 
 export default function RootLayout({

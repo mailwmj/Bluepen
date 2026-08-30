@@ -5,25 +5,25 @@ import { useRender } from "@base-ui/react/use-render";
 import { cva, type VariantProps } from "class-variance-authority";
 import { PanelLeftIcon } from "lucide-react";
 import * as React from "react";
-import { useMediaQuery } from "@outlin/editor/hooks/use-media-query";
-import { cn } from "@outlin/editor/lib/utils";
-import { Button } from "@outlin/editor/components/ui/button";
-import { Input } from "@outlin/editor/components/ui/input";
-import { ScrollArea } from "@outlin/editor/components/ui/scroll-area";
-import { Separator } from "@outlin/editor/components/ui/separator";
+import { useMediaQuery } from "@bluepen/editor/hooks/use-media-query";
+import { cn } from "@bluepen/editor/lib/utils";
+import { Button } from "@bluepen/editor/components/ui/button";
+import { Input } from "@bluepen/editor/components/ui/input";
+import { ScrollArea } from "@bluepen/editor/components/ui/scroll-area";
+import { Separator } from "@bluepen/editor/components/ui/separator";
 import {
   Sheet,
   SheetDescription,
   SheetHeader,
   SheetPopup,
   SheetTitle,
-} from "@outlin/editor/components/ui/sheet";
-import { Skeleton } from "@outlin/editor/components/ui/skeleton";
+} from "@bluepen/editor/components/ui/sheet";
+import { Skeleton } from "@bluepen/editor/components/ui/skeleton";
 import {
   Tooltip,
   TooltipPopup,
   TooltipTrigger,
-} from "@outlin/editor/components/ui/tooltip";
+} from "@bluepen/editor/components/ui/tooltip";
 
 const SIDEBAR_COOKIE_NAME: string = "sidebar_state";
 const SIDEBAR_COOKIE_MAX_AGE: number = 60 * 60 * 24 * 7;

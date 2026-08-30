@@ -8,7 +8,7 @@ out/
 # Rust / Tauri
 src-tauri/target/
 
-# Marketing site (synced to the outlin-web repo via `pnpm web:publish`)
+# Marketing site (synced to the bluepen-web repo via `pnpm web:publish`)
 apps/web/
 
 # macOS

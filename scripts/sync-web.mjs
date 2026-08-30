@@ -5,11 +5,11 @@ import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
-const webRepo = process.env.OUTLIN_WEB_REPO ?? join(root, "..", "outlin-web");
+const webRepo = process.env.BLUEPEN_WEB_REPO ?? join(root, "..", "bluepen-web");
 
 if (!existsSync(join(webRepo, "package.json"))) {
-  console.error(`outlin-web checkout not found at ${webRepo}`);
-  console.error("Set OUTLIN_WEB_REPO to point at the outlin-web repo.");
+  console.error(`bluepen-web checkout not found at ${webRepo}`);
+  console.error("Set BLUEPEN_WEB_REPO to point at the bluepen-web repo.");
   process.exit(1);
 }
 
@@ -42,4 +42,4 @@ execSync(
   { stdio: "inherit" },
 );
 
-console.log("✓ outlin-web updated");
+console.log("✓ bluepen-web updated");

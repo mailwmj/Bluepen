@@ -2,7 +2,7 @@
 
 import { Switch as SwitchPrimitive } from "@base-ui/react/switch";
 import type React from "react";
-import { cn } from "@outlin/editor/lib/utils";
+import { cn } from "@bluepen/editor/lib/utils";
 
 export function Switch({
   className,

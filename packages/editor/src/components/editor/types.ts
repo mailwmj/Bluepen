@@ -1,15 +1,33 @@
 export type ComponentType =
-  | "navbar" | "sidebar" | "header" | "footer" | "hero"
-  | "features" | "testimonials" | "cta" | "pricing" | "faq"
+  // Basic Wireframe
+  | "text" | "rectangle" | "circle" | "line" | "arrow" | "image" | "hotspot"
+  | "button" | "button-primary" | "placeholder" | "table" | "sticky-note" | "pin-note"
+  | "scroll-panel" | "modal-dialog" | "mind-map" | "document" | "code-block" | "ai-component"
+  // Form Elements
+  | "input" | "textarea" | "select" | "file-upload" | "radio" | "checkbox"
+  | "switch-android" | "switch-ios" | "switch" | "slider" | "stepper" | "date-picker" | "search"
+  // Navigation
+  | "dropdown-menu" | "popup-menu" | "navbar" | "tabs" | "pagination" | "breadcrumb" | "stepper-nav"
+  // Containers & Devices
+  | "mobile-frame" | "browser-frame" | "card" | "sidebar" | "header" | "footer"
+  // Display & Feedback
+  | "badge" | "chip" | "avatar" | "avatar-group" | "alert" | "toast" | "tooltip"
+  | "stat" | "progress" | "spinner" | "rating" | "divider" | "link" | "empty-state"
+  // Sections & Data
+  | "hero" | "features" | "testimonials" | "cta" | "pricing" | "faq"
   | "stats" | "logos" | "team" | "contact" | "newsletter" | "blog-post" | "quote"
   | "login" | "register" | "dashboard" | "settings-page" | "profile-page"
-  | "card" | "table" | "list" | "grid" | "timeline" | "kanban" | "calendar" | "stat" | "chart" | "empty-state"
-  | "modal" | "alert" | "toast" | "drawer" | "sheet" | "popover" | "tooltip" | "dropdown" | "command"
-  | "form" | "search" | "input" | "textarea" | "select" | "checkbox" | "radio"
-  | "switch" | "slider" | "file-upload" | "date-picker" | "stepper" | "button" | "icon-button"
-  | "avatar" | "avatar-group" | "badge" | "chip" | "breadcrumb" | "pagination" | "tabs"
-  | "link" | "divider" | "progress" | "spinner" | "code-block" | "rating" | "image" | "video"
-  | "frame" | "text" | "rectangle";
+  | "list" | "grid" | "timeline" | "kanban" | "calendar" | "chart"
+  | "modal" | "drawer" | "sheet" | "popover" | "dropdown" | "command"
+  | "form" | "icon-button" | "video"
+  // Flowchart & Connectors
+  | "connector"
+  | "flow-process" | "flow-decision" | "flow-start-end" | "flow-document" | "flow-data"
+  | "flow-subprocess" | "flow-external-data" | "flow-internal-storage" | "flow-queue"
+  | "flow-database" | "flow-manual-input" | "flow-card" | "flow-tape"
+  | "flow-display" | "flow-manual-op" | "flow-preparation" | "flow-loop-limit";
+
+export type AnchorPort = "top" | "right" | "bottom" | "left" | "center";
 
 export type AutoLayoutDirection = "vertical" | "horizontal";
 export type AutoLayoutSize = "hug" | "fill" | "fixed";

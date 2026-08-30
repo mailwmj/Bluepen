@@ -16,11 +16,11 @@ export interface StoredSettings {
   lastFile?: string;
 }
 
-const STORE_FILE = "outlin.json";
+const STORE_FILE = "bluepen.json";
 const PROJECT_VERSION = 3;
-const LS_PROJECT_KEY = "outlin:project";
-const LS_SETTINGS_KEY = "outlin:settings";
-const PROJECTS_DIR = "Outlin";
+const LS_PROJECT_KEY = "bluepen:project";
+const LS_SETTINGS_KEY = "bluepen:settings";
+const PROJECTS_DIR = "Bluepen";
 
 let storePromise: Promise<{
   get: (k: string) => Promise<unknown>;
@@ -54,7 +54,7 @@ export async function getProjectsDir(): Promise<string> {
 }
 
 export function projectFileName(name: string): string {
-  return `${sanitizeName(name)}.outlin`;
+  return `${sanitizeName(name)}.bluepen`;
 }
 
 async function ensureProjectsDir(): Promise<void> {

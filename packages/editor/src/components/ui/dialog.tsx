@@ -5,9 +5,9 @@ import { mergeProps } from "@base-ui/react/merge-props";
 import { useRender } from "@base-ui/react/use-render";
 import { XIcon } from "lucide-react";
 import type React from "react";
-import { cn } from "@outlin/editor/lib/utils";
-import { Button } from "@outlin/editor/components/ui/button";
-import { ScrollArea } from "@outlin/editor/components/ui/scroll-area";
+import { cn } from "@bluepen/editor/lib/utils";
+import { Button } from "@bluepen/editor/components/ui/button";
+import { ScrollArea } from "@bluepen/editor/components/ui/scroll-area";
 
 export const DialogCreateHandle: typeof DialogPrimitive.createHandle =
   DialogPrimitive.createHandle;

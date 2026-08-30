@@ -1,4 +1,4 @@
-import { cn } from "@outlin/editor/lib/utils";
+import { cn } from "@bluepen/editor/lib/utils";
 import type { LucideIcon } from "lucide-react";
 import { ImageIcon } from "lucide-react";
 

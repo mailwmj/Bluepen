@@ -2,7 +2,7 @@
 
 import { PreviewCard as PreviewCardPrimitive } from "@base-ui/react/preview-card";
 import type React from "react";
-import { cn } from "@outlin/editor/lib/utils";
+import { cn } from "@bluepen/editor/lib/utils";
 
 export const PreviewCard: typeof PreviewCardPrimitive.Root =
   PreviewCardPrimitive.Root;

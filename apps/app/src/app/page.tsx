@@ -1,5 +1,5 @@
-import { ToastProvider } from "@outlin/editor/components/ui/toast";
-import { Editor } from "@outlin/editor";
+import { ToastProvider } from "@bluepen/editor/components/ui/toast";
+import { Editor } from "@bluepen/editor";
 
 export default function AppPage() {
   return (

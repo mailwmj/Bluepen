@@ -10,7 +10,7 @@ import {
   ChevronUpIcon,
 } from "lucide-react";
 import type * as React from "react";
-import { cn } from "@outlin/editor/lib/utils";
+import { cn } from "@bluepen/editor/lib/utils";
 
 export const Select: typeof SelectPrimitive.Root = SelectPrimitive.Root;
 

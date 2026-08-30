@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import type { EditorElement, ComponentType, Page } from "./types";
 import { Canvas } from "./canvas/index";
 import { TopBar } from "./top-bar";
@@ -15,27 +15,46 @@ import {
   ContextMenuItem,
   ContextMenuSeparator,
   ContextMenuShortcut,
-} from "@outlin/editor/components/ui/context-menu";
+} from "@bluepen/editor/components/ui/context-menu";
 import {
   Copy, Trash2, Lock, EyeOff, Square, Maximize2, ClipboardPaste,
-  MousePointer2, Hand, FrameIcon, Type,
+  MousePointer2, Hand, Type, ArrowUp, ArrowDown, ArrowUpToLine, ArrowDownToLine,
 } from "lucide-react";
 import {
   Toolbar as CossToolbar,
   ToolbarGroup,
   ToolbarButton,
   ToolbarSeparator,
-} from "@outlin/editor/components/ui/toolbar";
+} from "@bluepen/editor/components/ui/toolbar";
 import { useKeyboard } from "./hooks/use-keyboard";
 import { library } from "./library/index";
 import { confirmLocal } from "./hooks/use-desktop";
 import { showToast } from "./hooks/use-toast";
 import { loadProjectLocal, saveProjectLocal, loadSettingsLocal, saveSettingsLocal } from "./hooks/local-store";
-import { cn } from "@outlin/editor/lib/utils";
+import { cn } from "@bluepen/editor/lib/utils";
 
-let nextId = 1;
 function genId() {
-  return `el-${nextId++}`;
+  return `el-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function ensureUniqueIds(pages: Page[]): Page[] {
+  const seen = new Set<string>();
+  const fixNode = (node: EditorElement): EditorElement => {
+    let id = node.id;
+    if (!id || seen.has(id)) {
+      id = genId();
+    }
+    seen.add(id);
+    return {
+      ...node,
+      id,
+      children: (node.children || []).map(fixNode),
+    };
+  };
+  return pages.map((p) => ({
+    ...p,
+    elements: (p.elements || []).map(fixNode),
+  }));
 }
 
 function makeElement(type: ComponentType, name: string, x: number, y: number, width: number, height: number, locked = false): EditorElement {
@@ -83,8 +102,34 @@ export function Editor() {
 
   const activePage = pages.find((p) => p.id === activePageId) || pages[0] || null;
   const elements = activePage?.elements ?? [];
-  const [selectedId, setSelectedId] = useState<string | null>(null);
-  const selected = elements.find((el) => el.id === selectedId) ?? null;
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const selectedId = selectedIds[selectedIds.length - 1] ?? null;
+
+  const allElementsFlat = useMemo(() => {
+    const flat: EditorElement[] = [];
+    const walk = (nodes: EditorElement[]) => {
+      for (const node of nodes) {
+        flat.push(node);
+        if (node.children && node.children.length > 0) {
+          walk(node.children);
+        }
+      }
+    };
+    walk(elements);
+    return flat;
+  }, [elements]);
+
+  const selectedElements = useMemo(() => {
+    return allElementsFlat.filter((el: EditorElement) => selectedIds.includes(el.id));
+  }, [allElementsFlat, selectedIds]);
+
+  const selected = useMemo(() => {
+    return allElementsFlat.find((el: EditorElement) => el.id === selectedId) ?? null;
+  }, [allElementsFlat, selectedId]);
+
+  const setSelectedId = useCallback((id: string | null) => {
+    setSelectedIds(id ? [id] : []);
+  }, []);
   const [projectName, setProjectName] = useState("Untitled");
   const [dirty, setDirty] = useState(false);
 
@@ -98,9 +143,10 @@ export function Editor() {
       ]);
       if (cancelled) return;
       if (project && project.pages.length > 0) {
-        setPages(project.pages);
+        const uniquePages = ensureUniqueIds(project.pages);
+        setPages(uniquePages);
         setProjectName(project.name || "Untitled");
-        const first = project.pages[0];
+        const first = uniquePages[0];
         if (first) {
           setActivePageId(first.id);
           setHistory([JSON.parse(JSON.stringify(first.elements))]);
@@ -118,6 +164,7 @@ export function Editor() {
       cancelled = true;
     };
   }, []);
+
 
   // Auto-save project (debounced) when changes happen
   useEffect(() => {
@@ -174,25 +221,68 @@ export function Editor() {
 
   const updateElement = useCallback(
     (id: string, patch: Partial<EditorElement>) => {
-      const el = elements.find((e) => e.id === id);
-      if (!el) return;
-      const dx = typeof patch.x === "number" ? patch.x - el.x : 0;
-      const dy = typeof patch.y === "number" ? patch.y - el.y : 0;
-      const affected = new Set<string>([id]);
-      const collect = (node: EditorElement) =>
-        node.children.forEach((c) => {
-          affected.add(c.id);
-          collect(c);
+      const updateRecursive = (list: EditorElement[]): EditorElement[] => {
+        return list.map((node) => {
+          if (node.id === id) {
+            return { ...node, ...patch };
+          }
+          if (node.children && node.children.length > 0) {
+            return {
+              ...node,
+              children: updateRecursive(node.children),
+            };
+          }
+          return node;
         });
-      collect(el);
-      const next = elements.map((e) => {
-        if (e.id === id) return { ...e, ...patch };
-        if (affected.has(e.id)) return { ...e, x: e.x + dx, y: e.y + dy };
-        return e;
-      });
-      setElements(next);
+      };
+      const next = updateRecursive(elements);
+      commit(next);
+    },
+    [elements, commit],
+  );
+
+  const batchUpdateElements = useCallback(
+    (patches: Array<{ id: string; patch: Partial<EditorElement> }>) => {
+      const patchMap = new Map(patches.map((p) => [p.id, p.patch]));
+      const updateRecursive = (list: EditorElement[]): EditorElement[] => {
+        return list.map((node) => {
+          const patch = patchMap.get(node.id);
+          const updated = patch ? { ...node, ...patch } : node;
+          if (node.children && node.children.length > 0) {
+            return {
+              ...updated,
+              children: updateRecursive(node.children),
+            };
+          }
+          return updated;
+        });
+      };
+      setElements(updateRecursive(elements));
     },
     [elements, setElements],
+  );
+
+  const commitBatchUpdateElements = useCallback(
+    (patches: Array<{ id: string; patch: Partial<EditorElement> }>) => {
+      if (!patches || patches.length === 0) return;
+      const patchMap = new Map(patches.map((p) => [p.id, p.patch]));
+      const updateRecursive = (list: EditorElement[]): EditorElement[] => {
+        return list.map((node) => {
+          const patch = patchMap.get(node.id);
+          const updated = patch ? { ...node, ...patch } : node;
+          if (node.children && node.children.length > 0) {
+            return {
+              ...updated,
+              children: updateRecursive(node.children),
+            };
+          }
+          return updated;
+        });
+      };
+      const next = updateRecursive(elements);
+      commit(next);
+    },
+    [elements, commit],
   );
 
   const deleteElement = useCallback(
@@ -220,19 +310,32 @@ export function Editor() {
   );
 
   const addElement = useCallback(
-    (type: ComponentType, x: number, y: number, parentId: string | null = null) => {
+    (
+      type: ComponentType,
+      x: number,
+      y: number,
+      parentId: string | null = null,
+      width?: number,
+      height?: number,
+      rotation = 0,
+      customProps?: Record<string, string | number | boolean>,
+    ) => {
       const lib = library.find((c) => c.type === type);
       const el: EditorElement = {
         id: genId(),
         type,
         name: lib?.label || type,
-        x, y,
-        width: lib?.defaultWidth || 200,
-        height: lib?.defaultHeight || 100,
-        rotation: 0, opacity: 1, visible: true, locked: false,
+        x,
+        y,
+        width: width ?? (lib?.defaultWidth || 200),
+        height: height ?? (lib?.defaultHeight || 100),
+        rotation,
+        opacity: 1,
+        visible: true,
+        locked: false,
         autoLayout: null,
         children: [],
-        props: { ...(lib?.defaultProps ?? {}) },
+        props: { ...(lib?.defaultProps ?? {}), ...(customProps ?? {}) },
         parentId,
       };
       const next = parentId
@@ -242,41 +345,111 @@ export function Editor() {
         : elements;
       commit([...next, el]);
       setSelectedId(el.id);
+      setSelectedIds([el.id]);
     },
     [elements, commit],
   );
 
   const deleteSelected = useCallback(() => {
-    if (!selectedId) return;
-    deleteElement(selectedId);
-  }, [selectedId, deleteElement]);
+    if (selectedIds.length === 0) return;
+    const deleteIds = new Set(selectedIds);
+    const filterOut = (list: EditorElement[]): EditorElement[] => {
+      return list
+        .filter((e) => !deleteIds.has(e.id))
+        .map((e) => ({
+          ...e,
+          children: filterOut(e.children),
+        }));
+    };
+    const next = filterOut(elements);
+    commit(next);
+    setSelectedIds([]);
+  }, [selectedIds, elements, commit]);
+
+  const bringToFront = useCallback(() => {
+    const targetIds = contextElementId
+      ? (selectedIds.includes(contextElementId) ? selectedIds : [contextElementId])
+      : selectedIds;
+    if (targetIds.length === 0) return;
+    const selectedSet = new Set(targetIds);
+    const moving = elements.filter((e) => selectedSet.has(e.id));
+    const rest = elements.filter((e) => !selectedSet.has(e.id));
+    commit([...rest, ...moving]);
+  }, [contextElementId, selectedIds, elements, commit]);
+
+  const sendToBack = useCallback(() => {
+    const targetIds = contextElementId
+      ? (selectedIds.includes(contextElementId) ? selectedIds : [contextElementId])
+      : selectedIds;
+    if (targetIds.length === 0) return;
+    const selectedSet = new Set(targetIds);
+    const moving = elements.filter((e) => selectedSet.has(e.id));
+    const rest = elements.filter((e) => !selectedSet.has(e.id));
+    commit([...moving, ...rest]);
+  }, [contextElementId, selectedIds, elements, commit]);
+
+  const bringForward = useCallback(() => {
+    const targetId = contextElementId || selectedId;
+    if (!targetId) return;
+    const idx = elements.findIndex((e) => e.id === targetId);
+    if (idx === -1 || idx === elements.length - 1) return;
+    const next = [...elements];
+    const temp = next[idx];
+    next[idx] = next[idx + 1];
+    next[idx + 1] = temp;
+    commit(next);
+  }, [contextElementId, selectedId, elements, commit]);
+
+  const sendBackward = useCallback(() => {
+    const targetId = contextElementId || selectedId;
+    if (!targetId) return;
+    const idx = elements.findIndex((e) => e.id === targetId);
+    if (idx === -1 || idx === 0) return;
+    const next = [...elements];
+    const temp = next[idx];
+    next[idx] = next[idx - 1];
+    next[idx - 1] = temp;
+    commit(next);
+  }, [contextElementId, selectedId, elements, commit]);
 
   const duplicate = useCallback(() => {
-    if (!selectedId) return;
-    const el = elements.find((e) => e.id === selectedId);
-    if (!el) return;
-    const idMap = new Map<string, string>();
-    const cloneNode = (node: EditorElement): EditorElement => {
-      const newId = genId();
-      idMap.set(node.id, newId);
-      return {
-        ...JSON.parse(JSON.stringify(node)),
-        id: newId,
-        name: `${node.name} copy`,
-        x: node.x + 20, y: node.y + 20,
-        parentId: node.parentId ? (idMap.get(node.parentId) ?? node.parentId) : null,
-        children: node.children.map(cloneNode),
+    const targetIds = contextElementId
+      ? (selectedIds.includes(contextElementId) ? selectedIds : [contextElementId])
+      : selectedIds;
+    if (targetIds.length === 0) return;
+
+    const newCreatedIds: string[] = [];
+    let next = [...elements];
+
+    targetIds.forEach((targetId) => {
+      const el = next.find((e) => e.id === targetId);
+      if (!el) return;
+      const idMap = new Map<string, string>();
+      const cloneNode = (node: EditorElement): EditorElement => {
+        const newId = genId();
+        idMap.set(node.id, newId);
+        return {
+          ...JSON.parse(JSON.stringify(node)),
+          id: newId,
+          name: `${node.name} copy`,
+          x: node.x + 20,
+          y: node.y + 20,
+          parentId: node.parentId ? idMap.get(node.parentId) ?? node.parentId : null,
+          children: node.children.map(cloneNode),
+        };
       };
-    };
-    const copy = cloneNode(el);
-    const next = copy.parentId
-      ? elements.map((e) =>
-          e.id === copy.parentId ? { ...e, children: [...e.children, copy] } : e,
-        )
-      : elements;
-    commit([...next, copy]);
-    setSelectedId(copy.id);
-  }, [selectedId, elements, commit]);
+      const copy = cloneNode(el);
+      newCreatedIds.push(copy.id);
+      next = copy.parentId
+        ? next.map((e) =>
+            e.id === copy.parentId ? { ...e, children: [...e.children, copy] } : e,
+          )
+        : [...next, copy];
+    });
+
+    commit(next);
+    setSelectedIds(newCreatedIds);
+  }, [contextElementId, selectedIds, elements, commit]);
 
   const undo = useCallback(() => {
     if (historyIndex > 0) {
@@ -296,23 +469,30 @@ export function Editor() {
 
   const handleCanvasClick = useCallback(
     (_e: React.MouseEvent, canvasX: number, canvasY: number) => {
-      if (activeTool === "frame" || activeTool === "rectangle" || activeTool === "text") {
+      const wireframeTools = [
+        "rectangle", "text", "circle", "line", "arrow", "hotspot", "placeholder", "sticky-note", "pin-note",
+        "flow-process", "flow-decision", "flow-start-end", "flow-document", "flow-data",
+        "flow-subprocess", "flow-external-data", "flow-internal-storage", "flow-queue",
+        "flow-database", "flow-manual-input", "flow-card", "flow-tape",
+        "flow-display", "flow-manual-op", "flow-preparation", "flow-loop-limit",
+      ];
+      if (wireframeTools.includes(activeTool)) {
         const snap = (v: number) => Math.round(v / 20) * 20;
         let parentId: string | null = null;
         let px = snap(canvasX);
         let py = snap(canvasY);
-        const frame = [...elements]
+        const container = [...elements]
           .reverse()
           .find(
             (el) =>
-              el.type === "frame" &&
+              (el.type === "mobile-frame" || el.type === "browser-frame") &&
               canvasX >= el.x && canvasX <= el.x + el.width &&
               canvasY >= el.y && canvasY <= el.y + el.height,
           );
-        if (frame) {
-          parentId = frame.id;
-          px = snap(canvasX - frame.x);
-          py = snap(canvasY - frame.y);
+        if (container) {
+          parentId = container.id;
+          px = snap(canvasX - container.x);
+          py = snap(canvasY - container.y);
         }
         addElement(activeTool as ComponentType, px, py, parentId);
         setActiveTool("select");
@@ -328,15 +508,21 @@ export function Editor() {
       const elTarget = target.closest("[data-element]");
       const elId = elTarget?.getAttribute("data-element-id");
       if (elId) {
-        setSelectedId(elId);
+        if (!selectedIds.includes(elId)) {
+          setSelectedId(elId);
+          setSelectedIds([elId]);
+        }
         setContextTarget("element");
         setContextElementId(elId);
       } else {
         setSelectedId(null);
+        setSelectedIds([]);
         setContextTarget("canvas");
+        setContextElementId(null);
       }
+      setContextOpen(true);
     },
-    [],
+    [previewing, selectedIds],
   );
 
   useKeyboard({
@@ -345,17 +531,28 @@ export function Editor() {
     "Delete": deleteSelected,
     "Backspace": deleteSelected,
     "Ctrl+D": duplicate,
+    "Ctrl+]": bringForward,
+    "Ctrl+[": sendBackward,
+    "Ctrl+Shift+]": bringToFront,
+    "Ctrl+Shift+[": sendToBack,
+    "Ctrl+=": () => setZoom((z) => Math.min(4, z + 0.1)),
+    "Ctrl++": () => setZoom((z) => Math.min(4, z + 0.1)),
+    "Ctrl+-": () => setZoom((z) => Math.max(0.1, z - 0.1)),
+    "Ctrl+0": () => setZoom(1),
     "Escape": () => {
       if (previewing) {
         setPreviewing(false);
         showToast({ title: "Editing mode", id: "exit-preview" });
       } else {
         setSelectedId(null);
+        setActiveTool("select");
       }
     },
     "Ctrl+G": () => {},
     "Ctrl+Shift+G": () => {},
-    "Ctrl+A": () => {},
+    "Ctrl+A": () => {
+      setSelectedIds(elements.filter((e) => e.visible).map((e) => e.id));
+    },
   });
 
   const handleSidebarAdd = useCallback(
@@ -363,7 +560,7 @@ export function Editor() {
       let parentId: string | null = null;
       let px = 120;
       let py = 120;
-      const parent = elements.find((el) => el.id === selectedId && el.type === "frame");
+      const parent = elements.find((el) => el.id === selectedId && (el.type === "mobile-frame" || el.type === "browser-frame"));
       if (parent) {
         parentId = parent.id;
         px = 24 + (parent.children.length % 5) * 24;
@@ -424,7 +621,7 @@ export function Editor() {
 
   const loadProject = useCallback(
     (data: { pages: Page[]; name: string }) => {
-      const loadedPages = data.pages ?? [];
+      const loadedPages = ensureUniqueIds(data.pages ?? []);
       setPages(loadedPages);
       setProjectName(data.name || "Untitled");
       if (loadedPages[0]) {
@@ -440,6 +637,7 @@ export function Editor() {
     },
     [],
   );
+
 
   const handleLoadTemplate = useCallback(() => {
     void confirmLocal("Replace the current project with the example template?").then(
@@ -483,7 +681,7 @@ export function Editor() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `${projectName || "Untitled"}.outlin`;
+      a.download = `${projectName || "Untitled"}.bluepen`;
       a.click();
       URL.revokeObjectURL(url);
       setDirty(false);
@@ -560,7 +758,7 @@ export function Editor() {
     }
     const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
     if (!blob) return;
-    const baseName = (projectName || "Untitled").replace(/\.(outlin|json)$/, "");
+    const baseName = (projectName || "Untitled").replace(/\.(bluepen|json)$/, "");
     if (isTauri) {
       try {
         const { getProjectsDir } = await import("./hooks/local-store");
@@ -597,9 +795,14 @@ export function Editor() {
     "F11": toggleFullscreen,
     "V": () => setActiveTool("select"),
     "H": () => setActiveTool("hand"),
-    "F": () => setActiveTool("frame"),
     "R": () => setActiveTool("rectangle"),
     "T": () => setActiveTool("text"),
+    "E": () => setActiveTool("connector"),
+    "O": () => setActiveTool("circle"),
+    "L": () => setActiveTool("line"),
+    "N": () => setActiveTool("sticky-note"),
+    "W": () => setActiveTool("pin-note"),
+    "U": () => setActiveTool("hotspot"),
   });
 
   const toolClass = (tool: string) =>
@@ -624,7 +827,6 @@ export function Editor() {
         onUndo={undo}
         onRedo={redo}
         onSelectTool={() => setActiveTool("select")}
-        onFrameTool={() => setActiveTool("frame")}
         onToggleGrid={() => setShowGrid((v) => !v)}
         onZoomIn={() => setZoom((z) => Math.min(4, z + 0.1))}
         onZoomOut={() => setZoom((z) => Math.max(0.1, z - 0.1))}
@@ -669,28 +871,40 @@ export function Editor() {
           onPageDelete={handlePageDelete}
           elements={elements}
           selectedId={selectedId}
+          selectedIds={selectedIds}
+          activeTool={activeTool}
+          onSelectTool={setActiveTool}
           onSelect={setSelectedId}
+          onSelectIds={setSelectedIds}
           onUpdateElement={updateElement}
           onDeleteElement={deleteElement}
           onAddAsset={handleSidebarAdd}
         />
 
-        <div className="relative flex flex-1">
+        <div className="relative flex flex-1 min-w-0 overflow-hidden">
           <ContextMenu open={contextOpen} onOpenChange={setContextOpen}>
             <ContextMenuTrigger className="flex flex-1 overflow-hidden" onContextMenu={handleContextMenu}>
               <Canvas
                 elements={elements}
                 selectedId={selectedId}
+                selectedIds={selectedIds}
                 showGrid={showGrid}
                 activeTool={activeTool}
                 zoom={zoom}
                 previewing={false}
                 onZoomChange={setZoom}
                 onSelect={setSelectedId}
+                onSelectIds={setSelectedIds}
+                onSelectTool={setActiveTool}
                 onUpdateElement={updateElement}
+                onBatchUpdateElements={batchUpdateElements}
+                onCreateElement={(type, x, y, width, height, rotation, parentId, customProps) =>
+                  addElement(type, x, y, parentId, width, height, rotation ?? 0, customProps)
+                }
                 onCommitMove={() => pushHistory(elements)}
                 onDelete={deleteSelected}
                 onCanvasClick={handleCanvasClick}
+                onDropAsset={(type, x, y) => addElement(type, x, y)}
               />
             </ContextMenuTrigger>
             <ContextMenuPopup>
@@ -700,6 +914,27 @@ export function Editor() {
                     <Copy aria-hidden="true" className="opacity-80" />
                     Duplicate
                     <ContextMenuShortcut>⌘D</ContextMenuShortcut>
+                  </ContextMenuItem>
+                  <ContextMenuSeparator />
+                  <ContextMenuItem closeOnClick onClick={bringForward}>
+                    <ArrowUp aria-hidden="true" className="opacity-80" />
+                    上移一层 (Bring Forward)
+                    <ContextMenuShortcut>⌘]</ContextMenuShortcut>
+                  </ContextMenuItem>
+                  <ContextMenuItem closeOnClick onClick={sendBackward}>
+                    <ArrowDown aria-hidden="true" className="opacity-80" />
+                    下移一层 (Send Backward)
+                    <ContextMenuShortcut>⌘[</ContextMenuShortcut>
+                  </ContextMenuItem>
+                  <ContextMenuItem closeOnClick onClick={bringToFront}>
+                    <ArrowUpToLine aria-hidden="true" className="opacity-80" />
+                    置于顶层 (Bring to Front)
+                    <ContextMenuShortcut>⌘⇧]</ContextMenuShortcut>
+                  </ContextMenuItem>
+                  <ContextMenuItem closeOnClick onClick={sendToBack}>
+                    <ArrowDownToLine aria-hidden="true" className="opacity-80" />
+                    置于底层 (Send to Back)
+                    <ContextMenuShortcut>⌘⇧[</ContextMenuShortcut>
                   </ContextMenuItem>
                   <ContextMenuSeparator />
                   <ContextMenuItem closeOnClick onClick={deleteSelected} variant="destructive">
@@ -724,10 +959,6 @@ export function Editor() {
                     Paste here
                   </ContextMenuItem>
                   <ContextMenuSeparator />
-                  <ContextMenuItem closeOnClick onClick={() => addElement("frame", 100, 100)}>
-                    <Square aria-hidden="true" className="opacity-80" />
-                    Create Frame
-                  </ContextMenuItem>
                   <ContextMenuItem closeOnClick onClick={() => setZoom(1)}>
                     <Maximize2 aria-hidden="true" className="opacity-80" />
                     Fit to view
@@ -740,9 +971,17 @@ export function Editor() {
 
         <RightPanel
           element={selected}
-          parent={selected?.parentId ? elements.find((e) => e.id === selected.parentId) ?? null : null}
+          selectedElements={selectedElements}
+          parent={selected?.parentId ? allElementsFlat.find((e: EditorElement) => e.id === selected.parentId) ?? null : null}
+          pages={pages}
           onUpdate={updateElement}
+          onBatchUpdate={commitBatchUpdateElements}
           onDelete={deleteSelected}
+          onBringToFront={bringToFront}
+          onSendToBack={sendToBack}
+          onBringForward={bringForward}
+          onSendBackward={sendBackward}
+          onDuplicate={duplicate}
         />
       </div>
       )}
@@ -753,28 +992,32 @@ export function Editor() {
         <div className="animate-fade-up">
           <CossToolbar className="rounded-full border bg-background/70 p-1 shadow-[0_10px_40px_-10px_rgb(0,0,0,0.18)] backdrop-blur-xl supports-[backdrop-filter]:bg-background/70">
           <ToolbarGroup>
-            <ToolbarButton className={toolClass("select")} onClick={() => setActiveTool("select")}>
+            <ToolbarButton className={toolClass("select")} onClick={() => setActiveTool("select")} title="选择 (V)">
               <MousePointer2 aria-hidden="true" className="size-3.5" />
               Select
             </ToolbarButton>
-            <ToolbarButton className={toolClass("hand")} onClick={() => setActiveTool("hand")}>
+            <ToolbarButton className={toolClass("hand")} onClick={() => setActiveTool("hand")} title="抓手 (H)">
               <Hand aria-hidden="true" className="size-3.5" />
               Hand
-            </ToolbarButton>
-            <ToolbarButton className={toolClass("frame")} onClick={() => setActiveTool("frame")}>
-              <FrameIcon aria-hidden="true" className="size-3.5" />
-              Frame
             </ToolbarButton>
           </ToolbarGroup>
           <ToolbarSeparator />
           <ToolbarGroup>
-            <ToolbarButton className={toolClass("rectangle")} onClick={() => setActiveTool("rectangle")}>
+            <ToolbarButton className={toolClass("rectangle")} onClick={() => setActiveTool("rectangle")} title="矩形 (R)">
               <Square aria-hidden="true" className="size-3.5" />
               Rectangle
             </ToolbarButton>
-            <ToolbarButton className={toolClass("text")} onClick={() => setActiveTool("text")}>
+            <ToolbarButton className={toolClass("text")} onClick={() => setActiveTool("text")} title="文字 (T)">
               <Type aria-hidden="true" className="size-3.5" />
               Text
+            </ToolbarButton>
+            <ToolbarButton className={toolClass("connector")} onClick={() => setActiveTool("connector")} title="连接线 (E)">
+              <svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="4" cy="5" r="2.5" fill="currentColor" />
+                <path d="M 4 5 H 12 Q 16 5 16 9 V 15 Q 16 19 12 19 H 20" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M 17 16 L 20 19 L 17 22" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              连接线
             </ToolbarButton>
           </ToolbarGroup>
           </CossToolbar>

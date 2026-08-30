@@ -2,7 +2,7 @@
 
 import { Field as FieldPrimitive } from "@base-ui/react/field";
 import type React from "react";
-import { cn } from "@outlin/editor/lib/utils";
+import { cn } from "@bluepen/editor/lib/utils";
 
 export function Field({
   className,

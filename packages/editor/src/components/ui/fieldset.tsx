@@ -2,7 +2,7 @@
 
 import { Fieldset as FieldsetPrimitive } from "@base-ui/react/fieldset";
 import type React from "react";
-import { cn } from "@outlin/editor/lib/utils";
+import { cn } from "@bluepen/editor/lib/utils";
 
 export function Fieldset({
   className,

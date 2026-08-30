@@ -2,7 +2,7 @@
 
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 import type React from "react";
-import { cn } from "@outlin/editor/lib/utils";
+import { cn } from "@bluepen/editor/lib/utils";
 
 export const PopoverCreateHandle: typeof PopoverPrimitive.createHandle =
   PopoverPrimitive.createHandle;
@@ -25,6 +25,19 @@ export function PopoverTrigger({
   );
 }
 
+export function PopoverBackdrop({
+  className,
+  ...props
+}: PopoverPrimitive.Backdrop.Props): React.ReactElement {
+  return (
+    <PopoverPrimitive.Backdrop
+      className={cn("fixed inset-0 z-40 bg-transparent cursor-default", className)}
+      data-slot="popover-backdrop"
+      {...props}
+    />
+  );
+}
+
 export function PopoverPopup({
   children,
   className,
@@ -34,6 +47,7 @@ export function PopoverPopup({
   alignOffset = 0,
   tooltipStyle = false,
   anchor,
+  backdrop = false,
   portalProps,
   ...props
 }: PopoverPrimitive.Popup.Props & {
@@ -44,9 +58,16 @@ export function PopoverPopup({
   alignOffset?: PopoverPrimitive.Positioner.Props["alignOffset"];
   tooltipStyle?: boolean;
   anchor?: PopoverPrimitive.Positioner.Props["anchor"];
+  backdrop?: boolean;
 }): React.ReactElement {
   return (
     <PopoverPrimitive.Portal {...portalProps}>
+      {backdrop && (
+        <PopoverPrimitive.Backdrop
+          className="fixed inset-0 z-40 bg-transparent cursor-default"
+          data-slot="popover-backdrop"
+        />
+      )}
       <PopoverPrimitive.Positioner
         align={align}
         alignOffset={alignOffset}

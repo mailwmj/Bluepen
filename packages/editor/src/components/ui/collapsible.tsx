@@ -2,7 +2,7 @@
 
 import { Collapsible as CollapsiblePrimitive } from "@base-ui/react/collapsible";
 import type React from "react";
-import { cn } from "@outlin/editor/lib/utils";
+import { cn } from "@bluepen/editor/lib/utils";
 
 export function Collapsible({
   ...props

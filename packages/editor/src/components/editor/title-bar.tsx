@@ -16,8 +16,8 @@ export function TitleBar({ maximized, onMinimize, onMaximize, onClose }: TitleBa
       onDoubleClick={onMaximize}
       className="flex h-9 shrink-0 select-none items-center gap-2 px-3"
     >
-      <img src="/brand/outlin-icon.svg" alt="Outlin" className="size-4" draggable={false} />
-      <span className="text-xs font-semibold tracking-tight text-neutral-200">Outlin</span>
+      <img src="/brand/bluepen-icon.svg" alt="Bluepen" className="size-4" draggable={false} />
+      <span className="text-xs font-semibold tracking-tight text-neutral-200">Bluepen</span>
 
       <div className="ml-auto flex items-center gap-0.5" onDoubleClick={(e) => e.stopPropagation()}>
         <button

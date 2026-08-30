@@ -2,7 +2,7 @@
 
 import { Avatar as AvatarPrimitive } from "@base-ui/react/avatar";
 import type React from "react";
-import { cn } from "@outlin/editor/lib/utils";
+import { cn } from "@bluepen/editor/lib/utils";
 
 export function Avatar({
   className,
