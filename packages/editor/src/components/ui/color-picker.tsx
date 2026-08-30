@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import * as React from "react";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
@@ -6,7 +6,7 @@ import { cn } from "@bluepen/editor/lib/utils";
 import { Popover, PopoverTrigger, PopoverPopup, PopoverClose } from "./popover";
 import { Input } from "./input";
 import { Button } from "./button";
-import { Pipette, ChevronDown, Ban, Check, X } from "lucide-react";
+import { Pipette, ChevronDown, Ban, X } from "lucide-react";
 import { Menu, MenuTrigger, MenuPopup, MenuItem } from "./menu";
 
 /* =========================================================================
@@ -295,7 +295,7 @@ function saveRecentColor(color: string) {
 }
 
 /* =========================================================================
-   2D Saturation / Value Canvas Area
+   2D Saturation / Value Canvas Area (Nothing Reticle Pointer)
    ========================================================================= */
 
 interface SaturationCanvasProps {
@@ -319,7 +319,6 @@ function SaturationCanvas({ hsva, onChange, onPointerUp }: SaturationCanvasProps
       const s = Math.round((x / rect.width) * 100);
       const v = Math.round((1 - y / rect.height) * 100);
 
-      // If opacity was 0 (transparent), restore to 1 so the color is immediately visible!
       const nextAlpha = hsva.a === 0 ? 1 : hsva.a;
       onChange({ ...hsva, s, v, a: nextAlpha });
     },
@@ -360,7 +359,7 @@ function SaturationCanvas({ hsva, onChange, onPointerUp }: SaturationCanvasProps
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerEnd}
       onPointerCancel={handlePointerEnd}
-      className="relative h-36 w-full cursor-crosshair overflow-hidden rounded-md select-none touch-none shadow-inner"
+      className="relative h-36 w-full cursor-crosshair overflow-hidden rounded-lg select-none touch-none border border-border-visible/80 shadow-xs"
       style={{
         backgroundColor: pureHueHex,
         backgroundImage: `
@@ -369,15 +368,17 @@ function SaturationCanvas({ hsva, onChange, onPointerUp }: SaturationCanvasProps
         `,
       }}
     >
-      {/* Handle */}
+      {/* Nothing Reticle Cursor Handle */}
       <div
-        className="pointer-events-none absolute size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-md ring-1 ring-black/20"
+        className="pointer-events-none absolute size-4.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgba(0,0,0,0.8)]"
         style={{
           left: `${hsva.s}%`,
           top: `${100 - hsva.v}%`,
           backgroundColor: rgbaToHex(hsvaToRgba(hsva)),
         }}
-      />
+      >
+        <div className="absolute inset-1/2 size-1 -translate-x-1/2 -translate-y-1/2 rounded-full bg-accent" />
+      </div>
     </div>
   );
 }
@@ -441,7 +442,7 @@ function HueSlider({ hue, onChange, onPointerUp }: HueSliderProps) {
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerEnd}
       onPointerCancel={handlePointerEnd}
-      className="relative h-3 w-full cursor-pointer rounded-full select-none touch-none shadow-2xs"
+      className="relative h-3 w-full cursor-pointer rounded-full border border-border-visible/40 select-none touch-none shadow-2xs"
       style={{
         backgroundImage: `linear-gradient(to right,
           #FF0000 0%,
@@ -455,7 +456,7 @@ function HueSlider({ hue, onChange, onPointerUp }: HueSliderProps) {
       }}
     >
       <div
-        className="pointer-events-none absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-md ring-1 ring-black/25"
+        className="pointer-events-none absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgba(0,0,0,0.6)]"
         style={{
           left: `${(hue / 360) * 100}%`,
           backgroundColor: thumbColor,
@@ -525,13 +526,13 @@ function AlphaSlider({ hsva, onChange, onPointerUp }: AlphaSliderProps) {
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerEnd}
       onPointerCancel={handlePointerEnd}
-      className="relative h-3 w-full cursor-pointer overflow-hidden rounded-full select-none touch-none shadow-2xs"
+      className="relative h-3 w-full cursor-pointer overflow-hidden rounded-full border border-border-visible/40 select-none touch-none shadow-2xs"
       style={{
         backgroundImage: `
-          linear-gradient(45deg, #cbd5e1 25%, transparent 25%),
-          linear-gradient(-45deg, #cbd5e1 25%, transparent 25%),
-          linear-gradient(45deg, transparent 75%, #cbd5e1 75%),
-          linear-gradient(-45deg, transparent 75%, #cbd5e1 75%)
+          linear-gradient(45deg, #333333 25%, transparent 25%),
+          linear-gradient(-45deg, #333333 25%, transparent 25%),
+          linear-gradient(45deg, transparent 75%, #333333 75%),
+          linear-gradient(-45deg, transparent 75%, #333333 75%)
         `,
         backgroundSize: "8px 8px",
         backgroundPosition: "0 0, 0 4px, 4px -4px, -4px 0px",
@@ -547,7 +548,7 @@ function AlphaSlider({ hsva, onChange, onPointerUp }: AlphaSliderProps) {
 
       {/* Thumb Handle */}
       <div
-        className="pointer-events-none absolute top-1/2 size-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-md ring-1 ring-black/25"
+        className="pointer-events-none absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgba(0,0,0,0.6)]"
         style={{
           left: `${hsva.a * 100}%`,
           backgroundColor: rgbaToHex(hsvaToRgba(hsva)),
@@ -577,22 +578,22 @@ export function ColorSwatchBadge({
   return (
     <div
       className={cn(
-        "relative size-6 shrink-0 overflow-hidden rounded border border-border/80 shadow-2xs select-none",
+        "relative size-6.5 shrink-0 overflow-hidden rounded-md border border-border-visible/80 shadow-2xs select-none",
         className
       )}
       style={{
         backgroundImage: `
-          linear-gradient(45deg, #cbd5e1 25%, transparent 25%),
-          linear-gradient(-45deg, #cbd5e1 25%, transparent 25%),
-          linear-gradient(45deg, transparent 75%, #cbd5e1 75%),
-          linear-gradient(-45deg, transparent 75%, #cbd5e1 75%)
+          linear-gradient(45deg, #333333 25%, transparent 25%),
+          linear-gradient(-45deg, #333333 25%, transparent 25%),
+          linear-gradient(45deg, transparent 75%, #333333 75%),
+          linear-gradient(-45deg, transparent 75%, #333333 75%)
         `,
         backgroundSize: "6px 6px",
         backgroundPosition: "0 0, 0 3px, 3px -3px, -3px 0px",
       }}
     >
       {isTransparent ? (
-        <div className="flex size-full items-center justify-center bg-background/90 text-destructive">
+        <div className="flex size-full items-center justify-center bg-popover/90 text-accent">
           <Ban className="size-3.5 stroke-[2.5]" />
         </div>
       ) : (
@@ -697,33 +698,31 @@ export function ColorPickerPanel({
   const currentOpacityPercent = Math.round(hsva.a * 100);
 
   return (
-    <div className={cn("flex w-64 flex-col gap-2.5 p-3 text-xs", className)}>
+    <div className={cn("flex w-72 flex-col gap-3 p-4 text-xs font-sans bg-popover text-popover-foreground rounded-xl border border-border-visible shadow-2xl select-none", className)}>
       {/* 0. Header with Title and Close Button */}
-      <div className="flex items-center justify-between pb-1 border-b border-border/60">
-        <span className="text-[11px] font-semibold text-foreground/80">{title}</span>
+      <div className="flex items-center justify-between pb-2 border-b border-border">
+        <span className="font-mono text-xs font-bold tracking-wider text-foreground uppercase">
+          {title}
+        </span>
         {onClose ? (
-          <Button
+          <button
             type="button"
-            variant="ghost"
-            size="icon-xs"
             onClick={onClose}
-            className="size-5 cursor-pointer rounded text-muted-foreground hover:text-foreground"
+            className="flex size-5.5 items-center justify-center rounded-sm text-muted-foreground hover:bg-surface-raised hover:text-foreground transition-colors cursor-pointer"
             title="关闭面板"
           >
             <X className="size-3.5" />
-          </Button>
+          </button>
         ) : (
           <PopoverClose
             render={
-              <Button
+              <button
                 type="button"
-                variant="ghost"
-                size="icon-xs"
-                className="size-5 cursor-pointer rounded text-muted-foreground hover:text-foreground"
+                className="flex size-5.5 items-center justify-center rounded-sm text-muted-foreground hover:bg-surface-raised hover:text-foreground transition-colors cursor-pointer"
                 title="关闭面板"
               >
                 <X className="size-3.5" />
-              </Button>
+              </button>
             }
           />
         )}
@@ -746,7 +745,7 @@ export function ColorPickerPanel({
             size="icon-xs"
             title="吸管取色"
             onClick={handleEyeDropper}
-            className="size-7 shrink-0 cursor-pointer rounded-full border-border/80 text-foreground/80 hover:text-primary hover:border-primary/50"
+            className="size-8 shrink-0 cursor-pointer rounded-lg border-border-visible/80 bg-surface text-foreground hover:bg-surface-raised hover:border-primary/50 transition-colors"
           >
             <Pipette className="size-3.5" />
           </Button>
@@ -771,78 +770,81 @@ export function ColorPickerPanel({
       </div>
 
       {/* 3. Value Inputs & Format Dropdown */}
-      <div className="flex items-center gap-1.5 pt-0.5">
+      <div className="flex items-center gap-2 pt-0.5 font-mono">
         {/* Format Select Menu */}
         <Menu>
           <MenuTrigger
             render={
               <Button
-                variant="ghost"
+                variant="outline"
                 size="xs"
-                className="h-7 px-1.5 text-[11px] font-medium text-foreground/80 gap-0.5"
+                className="h-7.5 px-2.5 text-[11px] font-mono font-medium tracking-wider text-foreground bg-surface border-border-visible/80 gap-1 rounded-md hover:bg-surface-raised transition-colors"
               >
                 <span>{format}</span>
                 <ChevronDown className="size-3 opacity-60" />
               </Button>
             }
           />
-          <MenuPopup align="start">
-            <MenuItem onClick={() => setFormat("HEX")}>
-              HEX {format === "HEX" && <Check className="ml-auto size-3" />}
+          <MenuPopup align="start" className="min-w-[80px] font-mono text-xs border-border-visible">
+            <MenuItem onClick={() => setFormat("HEX")} className="flex items-center justify-between font-mono">
+              <span>HEX</span>
+              {format === "HEX" && <div className="size-1.5 rounded-full bg-accent" />}
             </MenuItem>
-            <MenuItem onClick={() => setFormat("RGB")}>
-              RGB {format === "RGB" && <Check className="ml-auto size-3" />}
+            <MenuItem onClick={() => setFormat("RGB")} className="flex items-center justify-between font-mono">
+              <span>RGB</span>
+              {format === "RGB" && <div className="size-1.5 rounded-full bg-accent" />}
             </MenuItem>
-            <MenuItem onClick={() => setFormat("HSL")}>
-              HSL {format === "HSL" && <Check className="ml-auto size-3" />}
+            <MenuItem onClick={() => setFormat("HSL")} className="flex items-center justify-between font-mono">
+              <span>HSL</span>
+              {format === "HSL" && <div className="size-1.5 rounded-full bg-accent" />}
             </MenuItem>
           </MenuPopup>
         </Menu>
 
         {/* Dynamic Format Inputs */}
         {format === "HEX" && (
-          <div className="flex min-w-0 flex-1 items-center gap-1">
-            <div className="relative flex min-w-0 flex-1 items-center">
-              <span className="absolute left-2 text-[11px] text-muted-foreground select-none">#</span>
-              <Input
-                size="sm"
-                value={currentHex}
-                onChange={(e) => {
-                  const val = e.target.value.trim().replace(/^#/, "");
-                  if (/^[0-9a-fA-F]{0,8}$/.test(val)) {
-                    if (val.length === 6 || val.length === 3 || val.length === 8) {
-                      const newRgba = parseColor(`#${val}`, currentOpacityPercent);
-                      setHsva(rgbaToHsva(newRgba));
-                      onChange(`#${val.toUpperCase()}`, Math.round(newRgba.a * 100));
-                      saveRecentColor(`#${val.toUpperCase()}`);
-                      setRecentColors(getRecentColors());
-                    }
+          <div className="flex min-w-0 flex-1 items-center gap-1.5 font-mono">
+            <Input
+              size="sm"
+              value={currentHex}
+              prefix="#"
+              onChange={(e) => {
+                const val = e.target.value.trim().replace(/^#/, "");
+                if (/^[0-9a-fA-F]{0,8}$/.test(val)) {
+                  if (val.length === 6 || val.length === 3 || val.length === 8) {
+                    const newRgba = parseColor(`#${val}`, currentOpacityPercent);
+                    setHsva(rgbaToHsva(newRgba));
+                    onChange(`#${val.toUpperCase()}`, Math.round(newRgba.a * 100));
+                    saveRecentColor(`#${val.toUpperCase()}`);
+                    setRecentColors(getRecentColors());
                   }
-                }}
-                className="h-7 pl-5 pr-1 font-mono text-[11px] uppercase"
-                placeholder="FFFFFF"
-              />
-            </div>
-            <div className="flex w-14 shrink-0 items-center gap-0.5">
+                }
+              }}
+              className="h-7.5 min-w-0 flex-1 font-mono text-xs uppercase border-border-visible/80 bg-surface rounded-md focus-within:border-foreground"
+              inputClassName="font-mono text-xs uppercase tracking-wider"
+              placeholder="FFFFFF"
+            />
+            <div className="w-16 shrink-0">
               <Input
                 size="sm"
                 type="number"
                 min={0}
                 max={100}
                 value={currentOpacityPercent}
+                suffix="%"
                 onChange={(e) => {
                   const o = clamp(Number(e.target.value) || 0, 0, 100);
                   handleHsvaChange({ ...hsva, a: o / 100 });
                 }}
-                className="h-7 px-1 text-center font-mono text-[11px]"
+                className="h-7.5 w-full font-mono text-xs border-border-visible/80 bg-surface rounded-md focus-within:border-foreground"
+                inputClassName="text-center font-mono text-xs"
               />
-              <span className="text-[10px] text-muted-foreground">%</span>
             </div>
           </div>
         )}
 
         {format === "RGB" && (
-          <div className="grid min-w-0 flex-1 grid-cols-4 gap-1">
+          <div className="grid min-w-0 flex-1 grid-cols-4 gap-1 font-mono">
             <Input
               size="sm"
               type="number"
@@ -855,8 +857,9 @@ export function ColorPickerPanel({
                 setHsva(rgbaToHsva(nextRgba));
                 onChange(rgbaToHex(nextRgba), Math.round(nextRgba.a * 100));
               }}
-              title="Red"
-              className="h-7 px-1 text-center font-mono text-[10px]"
+              title="Red (0-255)"
+              className="h-7.5 border-border-visible/80 bg-surface rounded-md"
+              inputClassName="text-center font-mono text-[10px] px-0.5"
             />
             <Input
               size="sm"
@@ -870,8 +873,9 @@ export function ColorPickerPanel({
                 setHsva(rgbaToHsva(nextRgba));
                 onChange(rgbaToHex(nextRgba), Math.round(nextRgba.a * 100));
               }}
-              title="Green"
-              className="h-7 px-1 text-center font-mono text-[10px]"
+              title="Green (0-255)"
+              className="h-7.5 border-border-visible/80 bg-surface rounded-md"
+              inputClassName="text-center font-mono text-[10px] px-0.5"
             />
             <Input
               size="sm"
@@ -885,8 +889,9 @@ export function ColorPickerPanel({
                 setHsva(rgbaToHsva(nextRgba));
                 onChange(rgbaToHex(nextRgba), Math.round(nextRgba.a * 100));
               }}
-              title="Blue"
-              className="h-7 px-1 text-center font-mono text-[10px]"
+              title="Blue (0-255)"
+              className="h-7.5 border-border-visible/80 bg-surface rounded-md"
+              inputClassName="text-center font-mono text-[10px] px-0.5"
             />
             <Input
               size="sm"
@@ -894,18 +899,20 @@ export function ColorPickerPanel({
               min={0}
               max={100}
               value={currentOpacityPercent}
+              suffix="%"
               onChange={(e) => {
                 const o = clamp(Number(e.target.value) || 0, 0, 100);
                 handleHsvaChange({ ...hsva, a: o / 100 });
               }}
               title="Opacity %"
-              className="h-7 px-1 text-center font-mono text-[10px]"
+              className="h-7.5 border-border-visible/80 bg-surface rounded-md"
+              inputClassName="text-center font-mono text-[10px]"
             />
           </div>
         )}
 
         {format === "HSL" && (
-          <div className="grid min-w-0 flex-1 grid-cols-4 gap-1">
+          <div className="grid min-w-0 flex-1 grid-cols-4 gap-1 font-mono">
             <Input
               size="sm"
               type="number"
@@ -918,8 +925,9 @@ export function ColorPickerPanel({
                 setHsva(rgbaToHsva(nextRgba));
                 onChange(rgbaToHex(nextRgba), Math.round(nextRgba.a * 100));
               }}
-              title="Hue"
-              className="h-7 px-1 text-center font-mono text-[10px]"
+              title="Hue (0-360)"
+              className="h-7.5 border-border-visible/80 bg-surface rounded-md"
+              inputClassName="text-center font-mono text-[10px] px-0.5"
             />
             <Input
               size="sm"
@@ -933,8 +941,9 @@ export function ColorPickerPanel({
                 setHsva(rgbaToHsva(nextRgba));
                 onChange(rgbaToHex(nextRgba), Math.round(nextRgba.a * 100));
               }}
-              title="Saturation"
-              className="h-7 px-1 text-center font-mono text-[10px]"
+              title="Saturation %"
+              className="h-7.5 border-border-visible/80 bg-surface rounded-md"
+              inputClassName="text-center font-mono text-[10px] px-0.5"
             />
             <Input
               size="sm"
@@ -948,8 +957,9 @@ export function ColorPickerPanel({
                 setHsva(rgbaToHsva(nextRgba));
                 onChange(rgbaToHex(nextRgba), Math.round(nextRgba.a * 100));
               }}
-              title="Lightness"
-              className="h-7 px-1 text-center font-mono text-[10px]"
+              title="Lightness %"
+              className="h-7.5 border-border-visible/80 bg-surface rounded-md"
+              inputClassName="text-center font-mono text-[10px] px-0.5"
             />
             <Input
               size="sm"
@@ -957,12 +967,14 @@ export function ColorPickerPanel({
               min={0}
               max={100}
               value={currentOpacityPercent}
+              suffix="%"
               onChange={(e) => {
                 const o = clamp(Number(e.target.value) || 0, 0, 100);
                 handleHsvaChange({ ...hsva, a: o / 100 });
               }}
               title="Opacity %"
-              className="h-7 px-1 text-center font-mono text-[10px]"
+              className="h-7.5 border-border-visible/80 bg-surface rounded-md"
+              inputClassName="text-center font-mono text-[10px]"
             />
           </div>
         )}
@@ -975,20 +987,24 @@ export function ColorPickerPanel({
         size="xs"
         onClick={handleSetTransparent}
         className={cn(
-          "h-7 w-full justify-center gap-1.5 text-[11px] text-muted-foreground hover:text-foreground cursor-pointer",
+          "h-7.5 w-full justify-center gap-1.5 font-mono text-[11px] tracking-wider text-muted-foreground hover:text-foreground transition-colors cursor-pointer border-border-visible/80 bg-surface hover:bg-surface-raised",
           (color === "transparent" || color === "none" || currentOpacityPercent === 0) &&
-            "border-destructive/50 bg-destructive/5 text-destructive font-medium"
+            "border-accent/80 bg-accent-subtle text-accent font-semibold"
         )}
       >
-        <Ban className="size-3 text-destructive" />
-        <span>设为透明 / 无填充</span>
+        <Ban className="size-3 text-accent" />
+        <span>设为透明 / NO FILL</span>
       </Button>
 
       {/* 5. Recently Used Swatches */}
-      <div className="flex flex-col gap-1.5 border-t border-border/60 pt-2">
+      <div className="flex flex-col gap-2 border-t border-border pt-2.5">
         <div className="flex items-center justify-between">
-          <span className="text-[10px] font-semibold text-muted-foreground tracking-wide">最近使用</span>
-          <span className="text-[9px] text-muted-foreground/60">{recentColors.length} 个</span>
+          <span className="nd-label text-[10px] font-mono text-muted-foreground uppercase tracking-widest">
+            最近使用
+          </span>
+          <span className="nd-num text-[10px] font-mono text-muted-foreground/70">
+            {recentColors.length} 个
+          </span>
         </div>
         <div className="grid grid-cols-8 gap-1.5">
           {recentColors.slice(0, 16).map((c, idx) => {
@@ -1015,22 +1031,22 @@ export function ColorPickerPanel({
                   }
                 }}
                 className={cn(
-                  "group relative size-5.5 cursor-pointer rounded overflow-hidden border border-border/80 transition-transform duration-100 hover:scale-115 active:scale-95",
-                  isCurrent && "ring-2 ring-primary ring-offset-1"
+                  "group relative size-6.5 cursor-pointer rounded-md overflow-hidden border border-border-visible/70 transition-all duration-150 hover:scale-110 active:scale-95",
+                  isCurrent && "ring-2 ring-accent ring-offset-2 ring-offset-popover shadow-xs"
                 )}
                 style={{
                   backgroundImage: `
-                    linear-gradient(45deg, #cbd5e1 25%, transparent 25%),
-                    linear-gradient(-45deg, #cbd5e1 25%, transparent 25%),
-                    linear-gradient(45deg, transparent 75%, #cbd5e1 75%),
-                    linear-gradient(-45deg, transparent 75%, #cbd5e1 75%)
+                    linear-gradient(45deg, #333333 25%, transparent 25%),
+                    linear-gradient(-45deg, #333333 25%, transparent 25%),
+                    linear-gradient(45deg, transparent 75%, #333333 75%),
+                    linear-gradient(-45deg, transparent 75%, #333333 75%)
                   `,
                   backgroundSize: "6px 6px",
                   backgroundPosition: "0 0, 0 3px, 3px -3px, -3px 0px",
                 }}
               >
                 {isItemTransparent ? (
-                  <div className="flex size-full items-center justify-center bg-background/90 text-destructive">
+                  <div className="flex size-full items-center justify-center bg-popover/90 text-accent">
                     <Ban className="size-3" />
                   </div>
                 ) : (
@@ -1086,14 +1102,14 @@ export function ColorPickerRow({
   };
 
   return (
-    <div className={cn("flex items-center gap-1.5", className)}>
+    <div className={cn("flex items-center gap-2 font-mono", className)}>
       {/* Color Swatch Trigger (Base UI Popover with backdrop to isolate outside click) */}
       <Popover open={open} onOpenChange={setOpen}>
         <PopoverTrigger
           render={
             <button
               type="button"
-              className="group relative cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-ring rounded"
+              className="group relative cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-accent rounded-md transition-transform active:scale-95"
               title="点击打开选色面板"
             >
               <ColorSwatchBadge color={color} opacity={opacity} className="transition-transform group-hover:scale-105" />
@@ -1104,7 +1120,7 @@ export function ColorPickerRow({
           backdrop={true}
           align="start"
           sideOffset={6}
-          className="p-0 border-border/80 shadow-xl"
+          className="border-none bg-transparent shadow-none p-0 before:hidden [&>[data-slot=popover-viewport]]:p-0"
         >
           <ColorPickerPanel
             color={color}
@@ -1120,37 +1136,38 @@ export function ColorPickerRow({
       <Input
         size="sm"
         value={hexValue}
+        prefix="#"
         onChange={(e) => {
-          const v = e.target.value.trim();
+          const v = e.target.value.trim().replace(/^#/, "");
           if (v.toLowerCase() === "transparent" || v === "none") {
             handleColorPicked("transparent", 0);
           } else {
-            const valHex = v.startsWith("#") ? v : `#${v}`;
-            handleColorPicked(valHex, opacity);
+            handleColorPicked(`#${v}`, opacity);
           }
         }}
-        className="h-7 min-w-0 flex-1 font-mono text-[11px] uppercase"
+        className="h-7.5 min-w-0 flex-1 font-mono text-xs uppercase border-border-visible/80 bg-surface rounded-md focus-within:border-foreground"
+        inputClassName="font-mono text-xs uppercase tracking-wider"
       />
 
       {/* Opacity % */}
-      <div className="flex w-16 shrink-0 items-center gap-1">
+      <div className="w-16 shrink-0 font-mono">
         <Input
           size="sm"
           type="number"
           min={0}
           max={100}
           value={isTransparent ? 0 : opacity}
+          suffix="%"
           onChange={(e) => {
             const v = clamp(Number(e.target.value) || 0, 0, 100);
             handleColorPicked(color, v);
           }}
-          className="h-7 px-1 text-center font-mono text-[11px]"
+          className="h-7.5 w-full font-mono text-xs border-border-visible/80 bg-surface rounded-md focus-within:border-foreground"
+          inputClassName="text-center font-mono text-xs"
         />
-        <span className="text-[10px] text-muted-foreground">%</span>
       </div>
     </div>
   );
 }
 
 export { ColorPickerRow as ColorPicker };
-

@@ -1,16 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, memo } from "react";
 import { cn } from "@bluepen/editor/lib/utils";
 import { Button } from "@bluepen/editor/components/ui/button";
 import {
+  // Navigation / Shell icons
   Layers,
   Box,
-  Bookmark,
-  Smile,
-  Image as ImageIcon,
-  Compass,
-  PlusSquare,
   Search,
   Plus,
   Trash2,
@@ -22,61 +18,109 @@ import {
   ChevronRight,
   FolderPlus,
   MoreHorizontal,
-  Clock,
-  LayoutGrid,
-  ListFilter,
+  X,
+  Layout,
+
+  // Basic component icons
   Type,
   Square,
   Circle,
   Minus,
   ArrowRight,
+  Image as ImageIcon,
   Zap,
-  MousePointerClick,
+  RectangleHorizontal,
+  SquarePlay,
   Grid2X2,
-  Columns,
+  Table,
+  StickyNote,
   MapPin,
   PanelBottomOpen,
-  Maximize2,
+  AppWindow,
   GitBranch,
   BookOpen,
   Braces,
   Sparkles,
+
+  // Flowchart component icons
+  Route,
+  Diamond,
+  CircleDot,
+  FileText,
+  Binary,
+  SquareSplitVertical,
+  HardDriveDownload,
+  HardDrive,
+  Database,
+  Keyboard,
+  CreditCard,
+  Bookmark,
+  Monitor,
+  Wrench,
+  Hexagon,
+  Repeat,
+
+  // Form component icons
+  TextCursorInput,
   AlignLeft,
   ChevronsUpDown,
   Upload,
-  CircleDot,
   CheckSquare,
   ToggleLeft,
   ToggleRight,
   SlidersHorizontal,
   ListOrdered,
   CalendarDays,
+
+  // Navigation component icons
   Menu,
   PanelTop,
   Columns3,
   ChevronsRight,
-  Route,
+  LayoutTemplate,
+  FolderTree,
+  CalendarRange,
+  Clock,
+  ArrowLeftRight,
+  UploadCloud,
+  Palette,
+  FileSpreadsheet,
+  PanelBottomClose,
+  PanelRightClose,
+  BellRing,
+  LayoutDashboard,
+  SearchCode,
+  TableProperties,
+  FormInput,
+  LockKeyhole,
+  Workflow,
+
+  // Container component icons
   Smartphone,
-  Layout,
+  PanelLeft,
+  PanelBottom,
+
+  // Display component icons
   Badge,
   Tag,
   User,
+  Users,
   AlertTriangle,
   TrendingUp,
   Gauge,
   PackageOpen,
-  X,
-  Sliders,
-  Settings,
-  Heart,
   Star,
-  Bell,
-  Mail,
-  Home,
-  Check,
+  Link2,
+  SeparatorHorizontal,
+  Loader2,
+  MessageSquare,
+  HelpCircle,
+  MousePointerClick,
+  Video,
 } from "lucide-react";
 import type { ComponentType, EditorElement, Page } from "./types";
 import { library, type LibraryComponent } from "./library/index";
+import { webLibrary } from "./library/web-components";
 
 interface LeftSidebarProps {
   pages: Page[];
@@ -96,281 +140,299 @@ interface LeftSidebarProps {
   onAddAsset: (type: ComponentType) => void;
 }
 
-// Map component icons to visual miniature previews
-function ComponentMiniPreview({ type, icon }: { type: ComponentType; icon: string }) {
+export function getElementIcon(type: ComponentType) {
   switch (type) {
+    // Basic Wireframe
     case "text":
-      return (
-        <div className="flex flex-col items-center justify-center text-neutral-700">
-          <div className="flex items-center gap-0.5 text-[11px] font-semibold text-neutral-800">
-            <span>Text</span>
-            <ChevronDown className="size-2 text-neutral-400" />
-          </div>
-        </div>
-      );
+      return Type;
     case "rectangle":
-      return <div className="size-5.5 rounded-xs border-2 border-neutral-600 bg-white" />;
+      return Square;
     case "circle":
-      return <div className="size-5.5 rounded-full border-2 border-neutral-600 bg-white" />;
+      return Circle;
     case "line":
-      return <div className="h-0.5 w-6 rotate-[-25deg] bg-neutral-700" />;
+      return Minus;
     case "arrow":
-      return (
-        <div className="flex items-center">
-          <div className="h-0.5 w-4.5 bg-neutral-700" />
-          <div className="size-0 border-y-3 border-l-5 border-y-transparent border-l-neutral-700" />
-        </div>
-      );
+      return ArrowRight;
     case "image":
-      return (
-        <div className="flex size-6 items-center justify-center rounded-xs border border-neutral-400 bg-neutral-100">
-          <ImageIcon className="size-3.5 text-neutral-500" />
-        </div>
-      );
+      return ImageIcon;
     case "hotspot":
-      return (
-        <div className="flex size-6 items-center justify-center rounded-xs border-2 border-dashed border-blue-500 bg-blue-50/70">
-          <Zap className="size-3.5 fill-blue-500 text-blue-500" />
-        </div>
-      );
+      return Zap;
     case "button":
-      return (
-        <div className="rounded-xs border border-blue-500 px-1 py-0.5 text-[8px] font-bold text-blue-600">
-          Btn
-        </div>
-      );
+      return RectangleHorizontal;
     case "button-primary":
-      return (
-        <div className="rounded-xs bg-blue-600 px-1 py-0.5 text-[8px] font-bold text-white shadow-xs">
-          Btn
-        </div>
-      );
+      return SquarePlay;
     case "placeholder":
-      return (
-        <div className="relative flex size-6 items-center justify-center border border-neutral-400 bg-white">
-          <svg className="absolute inset-0 size-full" preserveAspectRatio="none">
-            <line x1="0" y1="0" x2="100%" y2="100%" stroke="#94A3B8" strokeWidth="1" />
-            <line x1="0" y1="100%" x2="100%" y2="0" stroke="#94A3B8" strokeWidth="1" />
-          </svg>
-        </div>
-      );
+      return Grid2X2;
     case "table":
-      return (
-        <div className="grid size-6 grid-cols-2 grid-rows-2 border border-neutral-400 bg-white">
-          <div className="border-r border-b border-neutral-300 bg-neutral-100" />
-          <div className="border-b border-neutral-300 bg-neutral-100" />
-          <div className="border-r border-neutral-300" />
-          <div />
-        </div>
-      );
+      return Table;
     case "sticky-note":
-      return (
-        <div className="flex size-5.5 flex-col rounded-xs bg-amber-200 p-0.5 shadow-xs">
-          <div className="h-0.5 w-3 rounded-full bg-amber-700/60" />
-          <div className="mt-0.5 h-0.5 w-2 rounded-full bg-amber-700/40" />
-        </div>
-      );
+      return StickyNote;
     case "pin-note":
-      return (
-        <div className="flex size-5.5 items-center justify-center rounded-full bg-amber-400 shadow-xs">
-          <span className="text-[9px] font-bold text-amber-950">1</span>
-        </div>
-      );
+      return MapPin;
     case "scroll-panel":
-      return (
-        <div className="relative size-6 rounded-xs border border-neutral-400 bg-white">
-          <div className="absolute top-0.5 right-0.5 bottom-0.5 w-1 rounded-full bg-neutral-300" />
-        </div>
-      );
+      return PanelBottomOpen;
     case "modal-dialog":
-      return (
-        <div className="flex size-6 flex-col overflow-hidden rounded-xs border border-neutral-400 bg-white shadow-xs">
-          <div className="h-1.5 w-full bg-neutral-200" />
-          <div className="flex-1 bg-white" />
-        </div>
-      );
+      return AppWindow;
     case "mind-map":
-      return <GitBranch className="size-4.5 text-blue-600" />;
+      return GitBranch;
     case "document":
-      return <BookOpen className="size-4.5 text-neutral-600" />;
+      return BookOpen;
     case "code-block":
-      return <Braces className="size-4.5 text-neutral-600" />;
+      return Braces;
     case "ai-component":
-      return <Sparkles className="size-4.5 text-purple-600" />;
-    case "input":
-      return (
-        <div className="flex h-3.5 w-7 items-center border border-neutral-400 bg-white px-0.5 text-[6px] text-neutral-400">
-          Text |
-        </div>
-      );
-    case "textarea":
-      return (
-        <div className="flex h-4 w-7 flex-col border border-neutral-400 bg-white p-0.5 text-[6px] text-neutral-400">
-          Text |
-        </div>
-      );
-    case "select":
-      return (
-        <div className="flex h-3.5 w-7 items-center justify-between border border-neutral-400 bg-white px-0.5 text-[6px]">
-          <span className="h-0.5 w-3 bg-neutral-400" />
-          <ChevronDown className="size-2 text-neutral-500" />
-        </div>
-      );
-    case "file-upload":
-      return <Upload className="size-4 text-neutral-600" />;
-    case "radio":
-      return (
-        <div className="flex size-4 items-center justify-center rounded-full border-2 border-blue-600">
-          <div className="size-1.5 rounded-full bg-blue-600" />
-        </div>
-      );
-    case "checkbox":
-      return (
-        <div className="flex size-4 items-center justify-center rounded-xs bg-blue-600 text-white">
-          <Check className="size-3 stroke-[3]" />
-        </div>
-      );
-    case "switch-android":
-      return (
-        <div className="flex h-2.5 w-6 items-center rounded-full bg-blue-300 p-0.5">
-          <div className="size-2 rounded-full bg-blue-600" />
-        </div>
-      );
-    case "switch-ios":
-      return (
-        <div className="flex h-3 w-6 items-center justify-end rounded-full bg-blue-600 p-0.5">
-          <div className="size-2 rounded-full bg-white" />
-        </div>
-      );
-    case "slider":
-      return (
-        <div className="flex h-1 w-6 items-center rounded-full bg-neutral-300">
-          <div className="size-2 rounded-full border border-blue-600 bg-white" />
-        </div>
-      );
-    case "stepper":
-      return (
-        <div className="flex h-3.5 w-7 items-center justify-between border border-neutral-400 bg-white px-0.5 text-[7px] text-neutral-600">
-          <span>-</span>
-          <span className="font-bold">1</span>
-          <span>+</span>
-        </div>
-      );
-    case "mobile-frame":
-      return <Smartphone className="size-4.5 text-neutral-700" />;
-    case "browser-frame":
-      return <Layout className="size-4.5 text-neutral-700" />;
-    // Flowchart & Connector Mini Previews
+      return Sparkles;
+
+    // Flowchart & Connectors
     case "connector":
-      return (
-        <svg className="size-6 text-neutral-700" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <circle cx="4" cy="5" r="2" fill="currentColor" />
-          <path d="M 4 5 H 12 Q 16 5 16 9 V 15 Q 16 19 12 19 H 20" strokeLinecap="round" strokeLinejoin="round" />
-          <path d="M 17 16 L 20 19 L 17 22" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-      );
+      return Route;
     case "flow-process":
-      return <div className="h-4 w-6 border-1.5 border-neutral-700 bg-white rounded-xs" />;
+      return Square;
     case "flow-decision":
-      return <div className="size-4 rotate-45 border-1.5 border-neutral-700 bg-white rounded-2xs" />;
+      return Diamond;
     case "flow-start-end":
-      return <div className="h-3.5 w-6 rounded-full border-1.5 border-neutral-700 bg-white" />;
+      return CircleDot;
     case "flow-document":
-      return (
-        <svg className="h-4.5 w-6" viewBox="0 0 24 18" fill="white" stroke="#3F3F46" strokeWidth="1.5">
-          <path d="M 1 1 H 23 V 13 Q 17.5 17 12 13 T 1 13 Z" />
-        </svg>
-      );
+      return FileText;
     case "flow-data":
-      return (
-        <svg className="h-4 w-6" viewBox="0 0 24 16" fill="white" stroke="#3F3F46" strokeWidth="1.5">
-          <polygon points="5,1 23,1 19,15 1,15" />
-        </svg>
-      );
+      return Binary;
     case "flow-subprocess":
-      return (
-        <svg className="h-4 w-6" viewBox="0 0 24 16" fill="white" stroke="#3F3F46" strokeWidth="1.5">
-          <rect x="1" y="1" width="22" height="14" rx="1" />
-          <line x1="5" y1="1" x2="5" y2="15" />
-          <line x1="19" y1="1" x2="19" y2="15" />
-        </svg>
-      );
+      return SquareSplitVertical;
     case "flow-external-data":
-      return (
-        <svg className="h-4.5 w-6" viewBox="0 0 24 18" fill="white" stroke="#3F3F46" strokeWidth="1.5">
-          <path d="M 1 1 H 20 A 3 8 0 0 1 20 17 H 1 A 3 8 0 0 0 1 1 Z" />
-        </svg>
-      );
+      return HardDriveDownload;
     case "flow-internal-storage":
-      return (
-        <svg className="h-4 w-6" viewBox="0 0 24 16" fill="white" stroke="#3F3F46" strokeWidth="1.5">
-          <rect x="1" y="1" width="22" height="14" rx="1" />
-          <line x1="1" y1="4" x2="23" y2="4" />
-          <line x1="5" y1="1" x2="5" y2="15" />
-        </svg>
-      );
+      return HardDrive;
     case "flow-queue":
-      return (
-        <svg className="size-5" viewBox="0 0 20 20" fill="white" stroke="#3F3F46" strokeWidth="1.5">
-          <circle cx="10" cy="10" r="8" />
-          <line x1="10" y1="18" x2="18" y2="18" />
-        </svg>
-      );
+      return Layers;
     case "flow-database":
-      return (
-        <svg className="h-5 w-4.5" viewBox="0 0 18 20" fill="white" stroke="#3F3F46" strokeWidth="1.5">
-          <ellipse cx="9" cy="4" rx="8" ry="3" />
-          <path d="M 1 4 V 16 A 8 3 0 0 0 17 16 V 4" />
-        </svg>
-      );
+      return Database;
     case "flow-manual-input":
-      return (
-        <svg className="h-4 w-6" viewBox="0 0 24 16" fill="white" stroke="#3F3F46" strokeWidth="1.5">
-          <polygon points="1,4 23,1 23,15 1,15" />
-        </svg>
-      );
+      return Keyboard;
     case "flow-card":
-      return (
-        <svg className="h-4 w-6" viewBox="0 0 24 16" fill="white" stroke="#3F3F46" strokeWidth="1.5">
-          <polygon points="5,1 23,1 23,15 1,15 1,5" />
-        </svg>
-      );
+      return CreditCard;
     case "flow-tape":
-      return (
-        <svg className="h-4.5 w-6" viewBox="0 0 24 18" fill="white" stroke="#3F3F46" strokeWidth="1.5">
-          <path d="M 1 3 Q 6.5 0 12 3 T 23 3 V 15 Q 17.5 18 12 15 T 1 15 Z" />
-        </svg>
-      );
+      return Bookmark;
     case "flow-display":
-      return (
-        <svg className="h-4 w-6" viewBox="0 0 24 16" fill="white" stroke="#3F3F46" strokeWidth="1.5">
-          <path d="M 4 1 H 18 L 23 8 L 18 15 H 4 Q 0 8 4 1 Z" />
-        </svg>
-      );
+      return Monitor;
     case "flow-manual-op":
-      return (
-        <svg className="h-4 w-6" viewBox="0 0 24 16" fill="white" stroke="#3F3F46" strokeWidth="1.5">
-          <polygon points="1,1 23,1 19,15 5,15" />
-        </svg>
-      );
+      return Wrench;
     case "flow-preparation":
-      return (
-        <svg className="h-4 w-6" viewBox="0 0 24 16" fill="white" stroke="#3F3F46" strokeWidth="1.5">
-          <polygon points="5,1 19,1 23,8 19,15 5,15 1,8" />
-        </svg>
-      );
+      return Hexagon;
     case "flow-loop-limit":
-      return (
-        <svg className="h-4 w-6" viewBox="0 0 24 16" fill="white" stroke="#3F3F46" strokeWidth="1.5">
-          <polygon points="4,1 20,1 23,4 23,15 1,15 1,4" />
-        </svg>
-      );
+      return Repeat;
+
+    // Form
+    case "input":
+      return TextCursorInput;
+    case "textarea":
+      return AlignLeft;
+    case "select":
+      return ChevronsUpDown;
+    case "file-upload":
+      return Upload;
+    case "radio":
+      return CircleDot;
+    case "checkbox":
+      return CheckSquare;
+    case "switch-android":
+      return ToggleLeft;
+    case "switch-ios":
+    case "switch":
+      return ToggleRight;
+    case "slider":
+      return SlidersHorizontal;
+    case "stepper":
+      return ListOrdered;
+    case "date-picker":
+      return CalendarDays;
+    case "search":
+      return Search;
+
+    // Navigation
+    case "dropdown-menu":
+      return ChevronDown;
+    case "popup-menu":
+      return Menu;
+    case "navbar":
+      return PanelTop;
+    case "tabs":
+      return Columns3;
+    case "pagination":
+      return ChevronsRight;
+    case "breadcrumb":
+      return Route;
+    case "stepper-nav":
+      return ListOrdered;
+
+    // Containers & Devices
+    case "mobile-frame":
+      return Smartphone;
+    case "browser-frame":
+      return Layout;
+    case "card":
+      return Square;
+    case "sidebar":
+      return PanelLeft;
+    case "header":
+      return PanelTop;
+    case "footer":
+      return PanelBottom;
+
+    // Display & Feedback
+    case "badge":
+      return Badge;
+    case "chip":
+      return Tag;
+    case "avatar":
+      return User;
+    case "avatar-group":
+      return Users;
+    case "alert":
+      return AlertTriangle;
+    case "stat":
+      return TrendingUp;
+    case "progress":
+      return Gauge;
+    case "empty-state":
+      return PackageOpen;
+    case "rating":
+      return Star;
+    case "divider":
+      return SeparatorHorizontal;
+    case "link":
+      return Link2;
+    case "spinner":
+      return Loader2;
+    case "toast":
+      return MessageSquare;
+    case "tooltip":
+      return HelpCircle;
+    case "video":
+      return Video;
+
+    // Web Navigation
+    case "web-dropdown":
+      return ChevronDown;
+    case "web-menu":
+      return Menu;
+    case "web-top-nav":
+      return PanelTop;
+    case "web-tabs":
+      return Columns3;
+    case "web-breadcrumb":
+      return Route;
+    case "web-pagination":
+      return ChevronsRight;
+    case "web-steps":
+      return ListOrdered;
+
+    // Web Form
+    case "web-input":
+      return TextCursorInput;
+    case "web-input-number":
+      return ListOrdered;
+    case "web-textarea":
+      return AlignLeft;
+    case "web-select":
+      return ChevronsUpDown;
+    case "web-cascader":
+      return FolderTree;
+    case "web-tree-select":
+      return GitBranch;
+    case "web-auto-complete":
+      return Search;
+    case "web-tag-input":
+      return Tag;
+    case "web-date-picker":
+      return CalendarDays;
+    case "web-date-range-picker":
+      return CalendarRange;
+    case "web-time-picker":
+      return Clock;
+    case "web-radio-group":
+      return CircleDot;
+    case "web-checkbox-group":
+      return CheckSquare;
+    case "web-switch":
+      return ToggleRight;
+    case "web-slider":
+      return SlidersHorizontal;
+    case "web-transfer":
+      return ArrowLeftRight;
+    case "web-upload":
+      return UploadCloud;
+    case "web-color-picker":
+      return Palette;
+
+    // Web Data Display
+    case "web-table":
+      return Table;
+    case "web-descriptions":
+      return FileSpreadsheet;
+    case "web-tree":
+      return FolderTree;
+    case "web-collapse":
+      return PanelBottomClose;
+    case "web-statistic-card":
+      return TrendingUp;
+    case "web-tag":
+      return Tag;
+    case "web-timeline":
+      return Clock;
+    case "web-badge":
+      return Badge;
+    case "web-avatar-group":
+      return Users;
+
+    // Web Feedback
+    case "web-modal":
+      return AppWindow;
+    case "web-drawer":
+      return PanelRightClose;
+    case "web-alert":
+      return AlertTriangle;
+    case "web-popconfirm":
+      return HelpCircle;
+    case "web-notification":
+      return BellRing;
+    case "web-tips":
+      return HelpCircle;
+    case "web-message":
+      return MessageSquare;
+    case "web-skeleton":
+      return Layers;
+    case "web-empty-state":
+      return PackageOpen;
+
+    // Web Blocks
+    case "web-admin-layout":
+      return LayoutDashboard;
+    case "web-filter-bar":
+      return SearchCode;
+    case "web-crud-table":
+      return TableProperties;
+    case "web-form-layout":
+      return FormInput;
+    case "web-login-card":
+      return LockKeyhole;
+    case "web-steps-form":
+      return Workflow;
+
     default:
-      return <Box className="size-4 text-neutral-600" />;
+      return Box;
   }
 }
 
-function LayerTreeItem({
+// Map component icons to visual miniature previews using Lucide icons
+function ComponentMiniPreview({ type }: { type: ComponentType; icon?: string }) {
+  const IconComponent = getElementIcon(type);
+  return (
+    <div className="flex size-7 items-center justify-center rounded-xs transition-transform duration-150 group-hover:scale-110">
+      <IconComponent className="size-5 text-foreground/85 transition-colors group-hover:text-foreground stroke-[1.75]" />
+    </div>
+  );
+}
+
+const LayerTreeItem = memo(function LayerTreeItem({
   el,
   selectedId,
   selectedIds,
@@ -390,10 +452,20 @@ function LayerTreeItem({
   depth?: number;
 }) {
   const [expanded, setExpanded] = useState(true);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editName, setEditName] = useState(el.name);
   const hasChildren = el.children && el.children.length > 0;
   const isSelected = selectedIds && selectedIds.length > 0 ? selectedIds.includes(el.id) : selectedId === el.id;
+  const ElementIcon = getElementIcon(el.type);
+
+  useEffect(() => {
+    if (!isEditing) {
+      setEditName(el.name);
+    }
+  }, [el.name, isEditing]);
 
   const handleClick = (e: React.MouseEvent) => {
+    if (isEditing) return;
     if (e.shiftKey && onSelectIds) {
       const current = selectedIds && selectedIds.length > 0 ? selectedIds : (selectedId ? [selectedId] : []);
       const next = current.includes(el.id)
@@ -409,62 +481,123 @@ function LayerTreeItem({
     }
   };
 
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditName(el.name);
+    setIsEditing(true);
+  };
+
+  const handleSaveRename = () => {
+    const trimmed = editName.trim();
+    if (trimmed && trimmed !== el.name) {
+      onUpdateElement(el.id, { name: trimmed });
+    } else {
+      setEditName(el.name);
+    }
+    setIsEditing(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      handleSaveRename();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setEditName(el.name);
+      setIsEditing(false);
+    }
+  };
+
   return (
-    <div>
+    <div className="relative">
       <div
         className={cn(
-          "group flex h-7 cursor-pointer items-center gap-1.5 rounded-sm pr-1.5 text-xs transition-colors",
-          isSelected ? "bg-blue-50 text-blue-700 font-medium" : "text-neutral-600 hover:bg-neutral-100",
+          "group flex h-7.5 cursor-pointer items-center gap-1.5 rounded-md px-2 text-xs transition-all duration-150 select-none",
+          isSelected
+            ? "bg-surface-raised text-foreground font-bold border border-border-visible"
+            : "text-muted-foreground hover:bg-surface-raised/50 hover:text-foreground",
+          !el.visible && "opacity-40"
         )}
-        style={{ paddingLeft: `${8 + depth * 12}px` }}
+        style={{ paddingLeft: `${6 + depth * 12}px` }}
         onClick={handleClick}
+        onDoubleClick={handleDoubleClick}
       >
         {hasChildren ? (
           <button
             type="button"
-            className="flex size-4 shrink-0 items-center justify-center rounded-sm hover:bg-accent"
+            className="flex size-4 shrink-0 items-center justify-center rounded-xs hover:bg-surface-raised text-muted-foreground hover:text-foreground"
             onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
           >
             {expanded ? <ChevronDown className="size-3" /> : <ChevronRight className="size-3" />}
           </button>
         ) : (
-          <span className="size-4 shrink-0" />
+          <span className="size-3.5 shrink-0" />
         )}
 
-        <span className="truncate flex-1">{el.name}</span>
+        {/* Element Type Icon */}
+        <ElementIcon className={cn("size-3.5 shrink-0 transition-colors", isSelected ? "text-foreground" : "text-muted-foreground/70")} />
 
-        {el.locked && <Lock aria-hidden="true" className="size-3 shrink-0 text-neutral-400" />}
+        {/* Element Name or Inline Edit Input */}
+        {isEditing ? (
+          <input
+            ref={(input) => {
+              if (input) {
+                input.focus();
+                input.select();
+              }
+            }}
+            type="text"
+            value={editName}
+            onChange={(e) => setEditName(e.target.value)}
+            onBlur={handleSaveRename}
+            onKeyDown={handleKeyDown}
+            onClick={(e) => e.stopPropagation()}
+            onDoubleClick={(e) => e.stopPropagation()}
+            className="h-5.5 flex-1 min-w-0 rounded-xs border border-border-visible bg-background px-1 text-xs font-medium text-foreground outline-none focus:border-foreground"
+          />
+        ) : (
+          <span
+            className="truncate flex-1 text-xs font-medium tracking-normal"
+            title="双击重命名"
+          >
+            {el.name}
+          </span>
+        )}
 
-        <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-          <button
-            type="button"
-            className="flex size-4 items-center justify-center rounded-sm hover:bg-neutral-200"
-            onClick={(e) => { e.stopPropagation(); onUpdateElement(el.id, { visible: !el.visible }); }}
-            aria-label={el.visible ? "隐藏" : "显示"}
-          >
-            {el.visible ? <Eye className="size-3 text-neutral-600" /> : <EyeOff className="size-3 text-neutral-400" />}
-          </button>
-          <button
-            type="button"
-            className="flex size-4 items-center justify-center rounded-sm hover:bg-neutral-200"
-            onClick={(e) => { e.stopPropagation(); onUpdateElement(el.id, { locked: !el.locked }); }}
-            aria-label={el.locked ? "解锁" : "锁定"}
-          >
-            {el.locked ? <Lock className="size-3 text-neutral-600" /> : <Unlock className="size-3 text-neutral-400" />}
-          </button>
-          <button
-            type="button"
-            className="flex size-4 items-center justify-center rounded-sm text-neutral-400 hover:bg-destructive/10 hover:text-destructive"
-            onClick={(e) => { e.stopPropagation(); onDeleteElement(el.id); }}
-            aria-label="删除"
-          >
-            <Trash2 className="size-3" />
-          </button>
-        </div>
+        {/* Hover Action Buttons */}
+        {!isEditing && (
+          <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+            <button
+              type="button"
+              className="flex size-4 items-center justify-center rounded-xs text-muted-foreground hover:text-foreground hover:bg-surface-raised"
+              onClick={(e) => { e.stopPropagation(); onUpdateElement(el.id, { visible: !el.visible }); }}
+              title={el.visible ? "隐藏图层" : "显示图层"}
+            >
+              {el.visible ? <Eye className="size-3" /> : <EyeOff className="size-3 text-muted-foreground/50" />}
+            </button>
+            <button
+              type="button"
+              className="flex size-4 items-center justify-center rounded-xs text-muted-foreground hover:text-foreground hover:bg-surface-raised"
+              onClick={(e) => { e.stopPropagation(); onUpdateElement(el.id, { locked: !el.locked }); }}
+              title={el.locked ? "解锁图层" : "锁定图层"}
+            >
+              {el.locked ? <Lock className="size-3 text-accent" /> : <Unlock className="size-3 text-muted-foreground/50" />}
+            </button>
+            <button
+              type="button"
+              className="flex size-4 items-center justify-center rounded-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+              onClick={(e) => { e.stopPropagation(); onDeleteElement(el.id); }}
+              title="删除图层"
+            >
+              <Trash2 className="size-3" />
+            </button>
+          </div>
+        )}
       </div>
 
+      {/* Children List with Indentation Tree Line */}
       {hasChildren && expanded && (
-        <div className="overflow-hidden">
+        <div className="relative border-l border-border-visible/40 ml-3.5 pl-0.5 space-y-0.5 my-0.5">
           {el.children.map((child) => (
             <LayerTreeItem
               key={child.id}
@@ -482,11 +615,11 @@ function LayerTreeItem({
       )}
     </div>
   );
-}
+});
 
-type NavTab = "pages" | "components";
+type NavTab = "pages" | "components" | "web";
 
-export function LeftSidebar({
+export const LeftSidebar = memo(function LeftSidebar({
   pages,
   activePageId,
   onPageSelect,
@@ -503,7 +636,7 @@ export function LeftSidebar({
   onDeleteElement,
   onAddAsset,
 }: LeftSidebarProps) {
-  const [activeTab, setActiveTab] = useState<NavTab>("components");
+  const [activeTab, setActiveTab] = useState<NavTab>("web");
   const [searchQuery, setSearchQuery] = useState("");
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
 
@@ -515,25 +648,37 @@ export function LeftSidebar({
   };
 
   const filteredLibrary = library.filter((item) => {
+    if (item.category.startsWith("Web")) return false;
     return searchQuery === "" || item.label.toLowerCase().includes(searchQuery.toLowerCase());
+  });
+
+  const filteredWebLibrary = webLibrary.filter((item) => {
+    return searchQuery === "" || item.label.toLowerCase().includes(searchQuery.toLowerCase()) || item.type.toLowerCase().includes(searchQuery.toLowerCase());
   });
 
   const allCategories = ["基础", "流程", "表单", "导航", "容器", "展示"];
   const groupedCategories = allCategories.filter((cat) =>
     filteredLibrary.some((c) => c.category === cat),
   );
+
+  const webCategories = ["Web导航", "Web表单", "Web展示", "Web反馈", "Web模版"];
+  const groupedWebCategories = webCategories.filter((cat) =>
+    filteredWebLibrary.some((c) => c.category === cat),
+  );
+
   const roots = elements.filter((el) => !el.parentId || !elements.some((p) => p.id === el.parentId));
 
-  const navItems: { id: NavTab; label: string; icon: typeof Layers }[] = [
-    { id: "pages", label: "目录", icon: Layers },
-    { id: "components", label: "组件", icon: Box },
+  const navItems: { id: NavTab; label: string; dockLabel: string; icon: typeof Layers }[] = [
+    { id: "pages", label: "CATALOG", dockLabel: "PAGES", icon: Layers },
+    { id: "components", label: "LIBRARY", dockLabel: "LIBS", icon: Box },
+    { id: "web", label: "WEB TEMPLATES", dockLabel: "WEB", icon: LayoutTemplate },
   ];
 
   return (
-    <div className="flex h-full shrink-0 select-none border-r border-neutral-200 bg-white">
+    <div className="flex h-full shrink-0 select-none border-r border-border bg-surface text-foreground">
       {/* 1. PRIMARY NARROW DOCK (48px) */}
-      <div className="flex w-12 shrink-0 flex-col items-center justify-between border-r border-neutral-200 bg-neutral-50/80 py-2">
-        <div className="flex flex-col items-center gap-1">
+      <div className="flex w-12 shrink-0 flex-col items-center justify-between border-r border-border bg-surface py-2">
+        <div className="flex flex-col items-center gap-1.5">
           {navItems.map((item) => {
             const isActive = activeTab === item.id;
             const Icon = item.icon;
@@ -542,90 +687,105 @@ export function LeftSidebar({
                 key={item.id}
                 type="button"
                 className={cn(
-                  "group relative flex size-10 flex-col items-center justify-center rounded-lg text-neutral-600 transition-all hover:bg-neutral-200/70 active:scale-95",
-                  isActive && "bg-white text-blue-600 shadow-xs font-semibold ring-1 ring-black/5",
+                  "group relative flex size-10 flex-col items-center justify-center rounded-lg font-mono transition-all duration-150 cursor-pointer select-none",
+                  isActive
+                    ? "bg-surface-raised text-foreground font-bold border border-border-visible shadow-2xs"
+                    : "text-muted-foreground hover:bg-surface-raised/50 hover:text-foreground"
                 )}
                 onClick={() => setActiveTab(item.id)}
                 title={item.label}
               >
-                <Icon className={cn("size-4.5 transition-transform", isActive && "text-blue-600 scale-105")} />
-                <span className={cn("mt-0.5 text-[9px] leading-none", isActive ? "font-bold text-blue-600" : "text-neutral-600")}>
-                  {item.label}
+                <Icon className={cn("size-4 transition-transform duration-150", isActive && "scale-105 text-foreground")} />
+                <span
+                  className={cn(
+                    "mt-0.5 font-mono text-[8px] tracking-wider uppercase leading-none",
+                    isActive ? "text-foreground font-bold" : "text-muted-foreground/70"
+                  )}
+                >
+                  {item.dockLabel}
                 </span>
-                {isActive && (
-                  <div className="absolute left-0 top-2 bottom-2 w-0.5 rounded-r bg-blue-600" />
-                )}
               </button>
             );
           })}
         </div>
 
-        {/* Bottom Settings Button */}
+        {/* Bottom Status / More Button */}
         <button
           type="button"
-          className="flex size-8 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-200 hover:text-neutral-700"
-          title="更多设置"
+          className="flex size-8 items-center justify-center rounded-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+          title="设置与信息"
         >
           <MoreHorizontal className="size-4" />
         </button>
       </div>
 
       {/* 2. SECONDARY DRAWER PANEL (248px) */}
-      <aside className="flex w-62 flex-col overflow-hidden bg-white text-neutral-800">
-        {/* ===================== TAB: COMPONENTS ===================== */}
-        {activeTab === "components" && (
+      <aside className="flex w-62 flex-col overflow-hidden bg-surface text-foreground">
+        {/* ===================== TAB: WEB TEMPLATES & COMPONENTS ===================== */}
+        {activeTab === "web" && (
           <div className="flex h-full flex-col">
             {/* Search Bar */}
-            <div className="border-b border-neutral-100 p-2.5">
+            <div className="border-b border-border p-2">
               <div className="relative flex items-center">
-                <Search className="pointer-events-none absolute left-2.5 size-3.5 text-neutral-400" />
+                <Search className="pointer-events-none absolute left-2 size-3 text-muted-foreground" />
                 <input
                   type="text"
-                  placeholder="素材海量搜"
+                  placeholder="SEARCH WEB..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="h-8 w-full rounded-md border border-neutral-200 bg-neutral-50/60 pl-8 pr-7 text-xs text-neutral-800 placeholder-neutral-400 outline-none transition-all focus:border-blue-500 focus:bg-white focus:ring-1 focus:ring-blue-500"
+                  className="h-7 w-full rounded-xs border border-border-visible bg-background pl-7 pr-6 font-mono text-[11px] uppercase tracking-wider text-foreground placeholder:text-muted-foreground/60 outline-none transition-colors focus:border-foreground"
                 />
                 {searchQuery && (
                   <button
                     type="button"
                     onClick={() => setSearchQuery("")}
-                    className="absolute right-2 text-neutral-400 hover:text-neutral-600"
+                    className="absolute right-2 text-muted-foreground hover:text-foreground cursor-pointer"
                   >
-                    <X className="size-3.5" />
+                    <X className="size-3" />
                   </button>
                 )}
               </div>
             </div>
 
-            {/* Component Groups & 3-Column Grid */}
-            <div className="flex-1 overflow-y-auto p-2.5 space-y-3">
-              {groupedCategories.map((cat) => {
-                const items = filteredLibrary.filter((c) => c.category === cat);
-                const isCollapsed = Boolean(collapsedCategories[cat]);
+            {/* Web Component Groups */}
+            <div className="flex-1 overflow-y-auto p-2 space-y-2.5">
+              {groupedWebCategories.map((cat) => {
+                const items = filteredWebLibrary.filter((c) => c.category === cat);
+                const isCollapsed = searchQuery.trim().length > 0 ? false : Boolean(collapsedCategories[cat]);
+                const isTemplateCat = cat === "Web模版";
+
+                const categoryLabels: Record<string, string> = {
+                  "Web导航": "导航与定位",
+                  "Web表单": "表单与输入",
+                  "Web展示": "数据展示",
+                  "Web反馈": "反馈与浮层",
+                  "Web模版": "业务区块模版",
+                };
 
                 return (
                   <div key={cat} className="space-y-1">
-                    {/* Collapsible Category Header (Image 2 style) */}
+                    {/* Collapsible Category Header */}
                     <button
                       type="button"
                       onClick={() => toggleCategory(cat)}
-                      className="flex w-full items-center gap-1.5 rounded-sm px-1 py-1 text-xs font-bold text-neutral-700 hover:bg-neutral-100 transition-colors"
+                      className="flex w-full items-center gap-1 rounded-xs px-1.5 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors cursor-pointer"
                     >
                       {isCollapsed ? (
-                        <ChevronRight className="size-3.5 text-neutral-400 transition-transform" />
+                        <ChevronRight className="size-3 text-muted-foreground" />
                       ) : (
-                        <ChevronDown className="size-3.5 text-neutral-400 transition-transform" />
+                        <ChevronDown className="size-3 text-muted-foreground" />
                       )}
-                      <span>{cat}</span>
-                      <span className="ml-auto text-[10px] font-normal text-neutral-400">
-                        {items.length}
+                      <span className="font-mono text-[11px] text-muted-foreground/70">[</span>
+                      <span className="text-xs font-semibold tracking-wide text-foreground/90">{categoryLabels[cat] || cat}</span>
+                      <span className="font-mono text-[11px] text-muted-foreground/70">]</span>
+                      <span className="ml-auto font-mono text-[10px] font-normal text-muted-foreground">
+                        {String(items.length).padStart(2, "0")}
                       </span>
                     </button>
 
                     {/* Component Grid */}
                     {!isCollapsed && (
-                      <div className="grid grid-cols-3 gap-2 pt-0.5">
+                      <div className={cn("gap-1.5 pt-0.5", isTemplateCat ? "grid grid-cols-2" : "grid grid-cols-3")}>
                         {items.map((item) => {
                           const isToolActive = activeTool === item.type;
                           return (
@@ -643,33 +803,150 @@ export function LeftSidebar({
                                   onAddAsset(item.type);
                                 }
                               }}
-                              title={`${item.label} (点击后在画布拖拽绘制，或直接拖拽置入)`}
+                              title={`${item.label} (点击在画布绘制或拖拽)`}
                               className={cn(
-                                "group relative flex cursor-pointer flex-col items-center justify-center rounded-lg border p-2 text-center transition-all duration-150 active:scale-95",
+                                "group relative flex cursor-pointer flex-col items-center justify-center rounded-md border p-1.5 text-center transition-all duration-150 active:scale-95 select-none",
                                 isToolActive
-                                  ? "border-blue-500 bg-blue-50/80 shadow-xs ring-2 ring-blue-500/20 font-medium"
-                                  : "border-neutral-100 bg-neutral-50/70 hover:border-blue-300 hover:bg-white hover:shadow-md",
+                                  ? "border-foreground bg-surface-raised text-foreground font-semibold ring-1 ring-border-visible shadow-2xs"
+                                  : "border-border/80 bg-surface-raised/50 hover:border-border-visible hover:bg-surface-raised text-muted-foreground hover:text-foreground",
+                                isTemplateCat && "py-2"
                               )}
                             >
                               {/* Shortcut tag in top-left */}
                               {item.shortcut && (
-                                <span className="absolute top-1 left-1 rounded bg-neutral-200/80 px-1 py-0.2 text-[8px] font-bold text-neutral-600">
+                                <span className="absolute top-1 left-1 rounded-2xs border border-border-visible/60 bg-background/80 px-1 font-mono text-[7.5px] font-semibold text-muted-foreground/80 group-hover:text-foreground group-hover:border-border-visible">
                                   {item.shortcut}
                                 </span>
                               )}
 
                               {/* Miniature Preview Box */}
-                              <div className="flex h-9 w-full items-center justify-center">
+                              <div className={cn("flex w-full items-center justify-center", isTemplateCat ? "h-9" : "h-8")}>
                                 <ComponentMiniPreview type={item.type} icon={item.icon} />
                               </div>
 
                               {/* Label */}
                               <span
                                 className={cn(
-                                  "mt-1 w-full truncate text-[11px]",
+                                  "mt-1 w-full truncate text-[11px] leading-tight transition-colors",
                                   isToolActive
-                                    ? "font-semibold text-blue-600"
-                                    : "text-neutral-700 group-hover:text-blue-600 group-hover:font-medium",
+                                    ? "font-bold text-foreground"
+                                    : "text-foreground/85 group-hover:text-foreground font-medium",
+                                )}
+                              >
+                                {item.label}
+                              </span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* ===================== TAB: COMPONENTS ===================== */}
+        {activeTab === "components" && (
+          <div className="flex h-full flex-col">
+            {/* Search Bar */}
+            <div className="border-b border-border p-2">
+              <div className="relative flex items-center">
+                <Search className="pointer-events-none absolute left-2 size-3 text-muted-foreground" />
+                <input
+                  type="text"
+                  placeholder="SEARCH COMPONENTS..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  className="h-7 w-full rounded-xs border border-border-visible bg-background pl-7 pr-6 font-mono text-[11px] uppercase tracking-wider text-foreground placeholder:text-muted-foreground/60 outline-none transition-colors focus:border-foreground"
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery("")}
+                    className="absolute right-2 text-muted-foreground hover:text-foreground cursor-pointer"
+                  >
+                    <X className="size-3" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Component Groups & 3-Column Grid */}
+            <div className="flex-1 overflow-y-auto p-2 space-y-2.5">
+              {groupedCategories.map((cat) => {
+                const items = filteredLibrary.filter((c) => c.category === cat);
+                const isCollapsed = searchQuery.trim().length > 0 ? false : Boolean(collapsedCategories[cat]);
+
+                return (
+                  <div key={cat} className="space-y-1">
+                    {/* Collapsible Category Header */}
+                    <button
+                      type="button"
+                      onClick={() => toggleCategory(cat)}
+                      className="flex w-full items-center gap-1 rounded-xs px-1.5 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors cursor-pointer"
+                    >
+                      {isCollapsed ? (
+                        <ChevronRight className="size-3 text-muted-foreground" />
+                      ) : (
+                        <ChevronDown className="size-3 text-muted-foreground" />
+                      )}
+                      <span className="font-mono text-[11px] text-muted-foreground/70">[</span>
+                      <span className="text-xs font-semibold tracking-wide text-foreground/90">{cat}</span>
+                      <span className="font-mono text-[11px] text-muted-foreground/70">]</span>
+                      <span className="ml-auto font-mono text-[10px] font-normal text-muted-foreground">
+                        {String(items.length).padStart(2, "0")}
+                      </span>
+                    </button>
+
+                    {/* Component Grid */}
+                    {!isCollapsed && (
+                      <div className="grid grid-cols-3 gap-1.5 pt-0.5">
+                        {items.map((item) => {
+                          const isToolActive = activeTool === item.type;
+                          return (
+                            <div
+                              key={item.type}
+                              draggable
+                              onDragStart={(e) => {
+                                e.dataTransfer.setData("application/json", JSON.stringify({ type: item.type }));
+                                e.dataTransfer.effectAllowed = "copy";
+                              }}
+                              onClick={() => {
+                                if (onSelectTool) {
+                                   onSelectTool(item.type);
+                                } else {
+                                  onAddAsset(item.type);
+                                }
+                              }}
+                              title={`${item.label} (点击在画布绘制或拖拽)`}
+                              className={cn(
+                                "group relative flex cursor-pointer flex-col items-center justify-center rounded-md border p-1.5 text-center transition-all duration-150 active:scale-95 select-none",
+                                isToolActive
+                                  ? "border-foreground bg-surface-raised text-foreground font-semibold ring-1 ring-border-visible shadow-2xs"
+                                  : "border-border/80 bg-surface-raised/50 hover:border-border-visible hover:bg-surface-raised text-muted-foreground hover:text-foreground",
+                              )}
+                            >
+                              {/* Shortcut tag in top-left */}
+                              {item.shortcut && (
+                                <span className="absolute top-1 left-1 rounded-2xs border border-border-visible/60 bg-background/80 px-1 font-mono text-[7.5px] font-semibold text-muted-foreground/80 group-hover:text-foreground group-hover:border-border-visible">
+                                  {item.shortcut}
+                                </span>
+                              )}
+
+                              {/* Miniature Preview Box */}
+                              <div className="flex h-8 w-full items-center justify-center">
+                                <ComponentMiniPreview type={item.type} icon={item.icon} />
+                              </div>
+
+                              {/* Label */}
+                              <span
+                                className={cn(
+                                  "mt-1 w-full truncate text-[11px] leading-tight transition-colors",
+                                  isToolActive
+                                    ? "font-bold text-foreground"
+                                    : "text-foreground/85 group-hover:text-foreground font-medium",
                                 )}
                               >
                                 {item.label}
@@ -688,94 +965,98 @@ export function LeftSidebar({
 
         {/* ===================== TAB: PAGES & CATALOG ===================== */}
         {activeTab === "pages" && (
-          <div className="flex h-full flex-col">
-            {/* Top Header */}
-            <div className="flex items-center justify-between border-b border-neutral-200 px-3 py-2.5">
-              <span className="text-xs font-bold text-neutral-900">画布</span>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={onPageAdd}
-                  className="flex size-6 items-center justify-center rounded hover:bg-neutral-100 text-neutral-600"
-                  title="新建页面"
-                >
-                  <Plus className="size-3.5" />
-                </button>
-                <button
-                  type="button"
-                  onClick={onPageAdd}
-                  className="flex size-6 items-center justify-center rounded hover:bg-neutral-100 text-neutral-600"
-                  title="新建文件夹"
-                >
-                  <FolderPlus className="size-3.5" />
-                </button>
-                <button
-                  type="button"
-                  className="flex size-6 items-center justify-center rounded hover:bg-neutral-100 text-neutral-600"
-                  title="搜索"
-                >
-                  <Search className="size-3.5" />
-                </button>
-                <button
-                  type="button"
-                  className="flex size-6 items-center justify-center rounded hover:bg-neutral-100 text-neutral-600"
-                  title="更多"
-                >
-                  <MoreHorizontal className="size-3.5" />
-                </button>
-              </div>
-            </div>
-
-            {/* Canvas / Pages List (Top section) */}
-            <div className="border-b border-neutral-200 p-2 space-y-1">
-              {pages.map((page) => {
-                const isActive = activePageId === page.id;
-                return (
-                  <div
-                    key={page.id}
-                    onClick={() => onPageSelect(page.id)}
-                    className={cn(
-                      "group flex h-8 cursor-pointer items-center justify-between rounded-md px-2.5 text-xs transition-colors",
-                      isActive ? "bg-neutral-100 font-bold text-neutral-900" : "text-neutral-600 hover:bg-neutral-50",
-                    )}
+          <div className="flex h-full flex-col overflow-hidden">
+            {/* Top Module: PAGES */}
+            <div className="flex shrink-0 flex-col border-b border-border">
+              {/* Header */}
+              <div className="flex items-center justify-between border-b border-border/50 px-3 py-2 bg-surface">
+                <div className="flex items-center gap-1.5">
+                  <span className="font-mono text-xs font-bold tracking-wider uppercase text-foreground">[ PAGES ]</span>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={onPageAdd}
+                    className="flex size-5.5 items-center justify-center rounded-xs text-muted-foreground hover:bg-surface-raised hover:text-foreground transition-colors cursor-pointer"
+                    title="新建页面"
                   >
-                    <div className="flex items-center gap-2">
-                      <Square className="size-3.5 text-neutral-500" />
-                      <span className="truncate">{page.name}</span>
-                    </div>
-                    {isActive && <div className="size-2 rounded-full bg-blue-600" />}
-                  </div>
-                );
-              })}
-            </div>
+                    <Plus className="size-3.5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={onPageAdd}
+                    className="flex size-5.5 items-center justify-center rounded-xs text-muted-foreground hover:bg-surface-raised hover:text-foreground transition-colors cursor-pointer"
+                    title="新建文件夹"
+                  >
+                    <FolderPlus className="size-3.5" />
+                  </button>
+                </div>
+              </div>
 
-            {/* Bottom Section: Layers */}
-            <div className="flex items-center justify-between border-b border-neutral-200 px-3 py-2 text-xs font-bold text-neutral-900">
-              <span>图层</span>
-              <div className="flex items-center gap-1 text-neutral-400">
-                <Search className="size-3.5 cursor-pointer hover:text-neutral-700" />
-                <ListFilter className="size-3.5 cursor-pointer hover:text-neutral-700" />
+              {/* Canvas / Pages List (Dedicated Height Area) */}
+              <div className="h-44 min-h-[120px] max-h-[200px] overflow-y-auto p-2 space-y-1 bg-surface">
+                {pages.map((page) => {
+                  const isActive = activePageId === page.id;
+                  return (
+                    <div
+                      key={page.id}
+                      onClick={() => onPageSelect(page.id)}
+                      className={cn(
+                        "group flex h-7.5 cursor-pointer items-center justify-between rounded-md px-2.5 text-xs transition-all duration-150 select-none",
+                        isActive
+                          ? "bg-surface-raised text-foreground font-bold border border-border-visible shadow-2xs"
+                          : "text-muted-foreground hover:bg-surface-raised/50 hover:text-foreground"
+                      )}
+                    >
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <Layout className={cn("size-3.5 shrink-0", isActive ? "text-foreground" : "text-muted-foreground/70")} />
+                        <span className="truncate text-xs font-medium tracking-normal">{page.name}</span>
+                      </div>
+                      {pages.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onPageDelete(page.id);
+                          }}
+                          className="opacity-0 group-hover:opacity-100 flex size-4 items-center justify-center rounded-xs text-muted-foreground hover:text-destructive transition-opacity"
+                          title="删除页面"
+                        >
+                          <X className="size-3" />
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
-            {/* Tree Items List */}
-            <div className="flex-1 overflow-y-auto p-2">
-              <div className="space-y-0.5">
-                {[...roots].reverse().map((el) => (
-                  <LayerTreeItem
-                    key={el.id}
-                    el={el}
-                    selectedId={selectedId}
-                    selectedIds={selectedIds}
-                    onSelect={onSelect}
-                    onSelectIds={onSelectIds}
-                    onUpdateElement={onUpdateElement}
-                    onDeleteElement={onDeleteElement}
-                  />
-                ))}
-                {roots.length === 0 && (
-                  <p className="px-3 py-4 text-center text-xs text-neutral-400">当前页面暂无图层</p>
-                )}
+            {/* Bottom Module: LAYERS */}
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2 text-xs font-bold bg-surface">
+                <span className="font-mono text-xs font-bold tracking-wider uppercase text-foreground">[ LAYERS ]</span>
+                <span className="nd-num text-[10px] font-mono text-muted-foreground">{String(roots.length).padStart(2, "0")}</span>
+              </div>
+
+              {/* Tree Items List */}
+              <div className="flex-1 overflow-y-auto p-2">
+                <div className="space-y-0.5">
+                  {[...roots].reverse().map((el) => (
+                    <LayerTreeItem
+                      key={el.id}
+                      el={el}
+                      selectedId={selectedId}
+                      selectedIds={selectedIds}
+                      onSelect={onSelect}
+                      onSelectIds={onSelectIds}
+                      onUpdateElement={onUpdateElement}
+                      onDeleteElement={onDeleteElement}
+                    />
+                  ))}
+                  {roots.length === 0 && (
+                    <p className="px-3 py-4 text-center font-mono text-[11px] text-muted-foreground uppercase tracking-wider">NO LAYERS</p>
+                  )}
+                </div>
               </div>
             </div>
           </div>
@@ -783,5 +1064,5 @@ export function LeftSidebar({
       </aside>
     </div>
   );
-}
+});
 

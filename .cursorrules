@@ -1,0 +1,4 @@
+﻿# Bluepen Project Rules
+
+Refer to `AGENTS.md` and `.agents/rules/nothing-design.md` for complete guidelines.
+All UI additions or modifications must strictly follow the Nothing UI/UX Design System defined in `.agents/skills/nothing-design/` and `docs/nothing-design/`.

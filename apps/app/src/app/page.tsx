@@ -3,7 +3,7 @@ import { Editor } from "@bluepen/editor";
 
 export default function AppPage() {
   return (
-    <ToastProvider position="bottom-center">
+    <ToastProvider position="top-center">
       <Editor />
     </ToastProvider>
   );

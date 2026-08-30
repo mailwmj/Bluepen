@@ -1,9 +1,24 @@
 import type { ComponentType } from "../types";
+import { webLibrary } from "./web-components";
+
+export type ComponentCategory =
+  | "基础"
+  | "流程"
+  | "表单"
+  | "导航"
+  | "容器"
+  | "展示"
+  | "模块"
+  | "Web导航"
+  | "Web表单"
+  | "Web展示"
+  | "Web反馈"
+  | "Web模版";
 
 export interface LibraryComponent {
   type: ComponentType;
   label: string;
-  category: "基础" | "流程" | "表单" | "导航" | "容器" | "展示" | "模块";
+  category: ComponentCategory;
   icon: string;
   shortcut?: string;
   defaultWidth: number;
@@ -11,28 +26,11 @@ export interface LibraryComponent {
   defaultProps?: Record<string, string | number | boolean>;
 }
 
+export { webLibrary };
+
 export const library: LibraryComponent[] = [
+  ...webLibrary,
   // ================= 流程图组件 (Flowchart & Connectors) =================
-  {
-    type: "connector",
-    label: "连接线",
-    category: "流程",
-    icon: "Route",
-    shortcut: "E",
-    defaultWidth: 160,
-    defaultHeight: 80,
-    defaultProps: {
-      routing: "orthogonal",
-      startArrow: "none",
-      endArrow: "arrow",
-      stroke: "#71717A",
-      borderWidth: 1.5,
-      strokeStyle: "solid",
-      radius: 8,
-      strokeEnabled: true,
-      text: "",
-    },
-  },
   {
     type: "flow-process",
     label: "流程",
@@ -73,7 +71,7 @@ export const library: LibraryComponent[] = [
     type: "flow-data",
     label: "数据",
     category: "流程",
-    icon: "Database",
+    icon: "Binary",
     defaultWidth: 130,
     defaultHeight: 60,
     defaultProps: { text: "数据", fill: "#FFFFFF", stroke: "#52525B", borderWidth: 1.5, fontSize: 13, align: "center", fillEnabled: true, strokeEnabled: true },
@@ -82,7 +80,7 @@ export const library: LibraryComponent[] = [
     type: "flow-subprocess",
     label: "子流程",
     category: "流程",
-    icon: "Columns",
+    icon: "SquareSplitVertical",
     defaultWidth: 140,
     defaultHeight: 70,
     defaultProps: { text: "子流程", fill: "#FFFFFF", stroke: "#52525B", borderWidth: 1.5, fontSize: 13, align: "center", fillEnabled: true, strokeEnabled: true },
@@ -91,7 +89,7 @@ export const library: LibraryComponent[] = [
     type: "flow-external-data",
     label: "外部数据",
     category: "流程",
-    icon: "Cylinder",
+    icon: "HardDriveDownload",
     defaultWidth: 130,
     defaultHeight: 70,
     defaultProps: { text: "外部数据", fill: "#FFFFFF", stroke: "#52525B", borderWidth: 1.5, fontSize: 13, align: "center", fillEnabled: true, strokeEnabled: true },
@@ -100,7 +98,7 @@ export const library: LibraryComponent[] = [
     type: "flow-internal-storage",
     label: "内部存储",
     category: "流程",
-    icon: "Grid2X2",
+    icon: "HardDrive",
     defaultWidth: 130,
     defaultHeight: 70,
     defaultProps: { text: "内部存储", fill: "#FFFFFF", stroke: "#52525B", borderWidth: 1.5, fontSize: 13, align: "center", fillEnabled: true, strokeEnabled: true },
@@ -109,7 +107,7 @@ export const library: LibraryComponent[] = [
     type: "flow-queue",
     label: "队列数据",
     category: "流程",
-    icon: "Circle",
+    icon: "Layers",
     defaultWidth: 70,
     defaultHeight: 70,
     defaultProps: { text: "队列", fill: "#FFFFFF", stroke: "#52525B", borderWidth: 1.5, fontSize: 13, align: "center", fillEnabled: true, strokeEnabled: true },
@@ -127,7 +125,7 @@ export const library: LibraryComponent[] = [
     type: "flow-manual-input",
     label: "人工输入",
     category: "流程",
-    icon: "FilePen",
+    icon: "Keyboard",
     defaultWidth: 130,
     defaultHeight: 60,
     defaultProps: { text: "人工输入", fill: "#FFFFFF", stroke: "#52525B", borderWidth: 1.5, fontSize: 13, align: "center", fillEnabled: true, strokeEnabled: true },
@@ -225,7 +223,7 @@ export const library: LibraryComponent[] = [
     shortcut: "L",
     defaultWidth: 200,
     defaultHeight: 16,
-    defaultProps: { stroke: "#71717A", strokeStyle: "solid", borderWidth: 1 },
+    defaultProps: { stroke: "#71717A", strokeStyle: "solid", borderWidth: 1.5 },
   },
   {
     type: "arrow",
@@ -234,7 +232,7 @@ export const library: LibraryComponent[] = [
     icon: "ArrowRight",
     defaultWidth: 180,
     defaultHeight: 20,
-    defaultProps: { stroke: "#3B82F6", strokeStyle: "solid", borderWidth: 1 },
+    defaultProps: { stroke: "#3B82F6", strokeStyle: "solid", borderWidth: 1.5 },
   },
   {
     type: "image",
@@ -243,7 +241,7 @@ export const library: LibraryComponent[] = [
     icon: "Image",
     defaultWidth: 240,
     defaultHeight: 160,
-    defaultProps: { radius: 6, label: "图片占位" },
+    defaultProps: { radius: 6, label: "图片占位", fit: "cover", src: "" },
   },
   {
     type: "hotspot",
@@ -259,7 +257,7 @@ export const library: LibraryComponent[] = [
     type: "button",
     label: "按钮",
     category: "基础",
-    icon: "MousePointerClick",
+    icon: "RectangleHorizontal",
     defaultWidth: 100,
     defaultHeight: 36,
     defaultProps: { text: "主要按钮", variant: "outline", radius: 6, fill: "#FFFFFF", stroke: "#3B82F6", textColor: "#2563EB", strokeEnabled: true, fillEnabled: true },
@@ -268,7 +266,7 @@ export const library: LibraryComponent[] = [
     type: "button-primary",
     label: "按钮2",
     category: "基础",
-    icon: "BoxSelect",
+    icon: "SquarePlay",
     defaultWidth: 100,
     defaultHeight: 36,
     defaultProps: { text: "操作按钮", variant: "filled", radius: 6, fill: "#2563EB", stroke: "#2563EB", textColor: "#FFFFFF", strokeEnabled: true, fillEnabled: true },
@@ -286,7 +284,7 @@ export const library: LibraryComponent[] = [
     type: "table",
     label: "表格",
     category: "基础",
-    icon: "Columns",
+    icon: "Table",
     defaultWidth: 460,
     defaultHeight: 220,
     defaultProps: { headers: "姓名,角色,部门,状态", rows: 4, cols: 4, headerBg: "#F1F5F9" },
@@ -295,7 +293,7 @@ export const library: LibraryComponent[] = [
     type: "sticky-note",
     label: "批注",
     category: "基础",
-    icon: "FileText",
+    icon: "StickyNote",
     shortcut: "N",
     defaultWidth: 180,
     defaultHeight: 160,
@@ -324,7 +322,7 @@ export const library: LibraryComponent[] = [
     type: "modal-dialog",
     label: "浮层",
     category: "基础",
-    icon: "Maximize2",
+    icon: "AppWindow",
     defaultWidth: 420,
     defaultHeight: 260,
     defaultProps: { title: "弹窗浮层标题", text: "这里是浮层提示内容或表单区域", confirmText: "确定", cancelText: "取消", radius: 8 },
@@ -371,7 +369,7 @@ export const library: LibraryComponent[] = [
     type: "input",
     label: "单行输入",
     category: "表单",
-    icon: "Type",
+    icon: "TextCursorInput",
     defaultWidth: 240,
     defaultHeight: 40,
     defaultProps: { label: "用户名", placeholder: "请输入内容...", radius: 6 },

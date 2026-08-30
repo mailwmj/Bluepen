@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, memo } from "react";
 import { cn } from "@bluepen/editor/lib/utils";
 import { Button } from "@bluepen/editor/components/ui/button";
 import { Input } from "@bluepen/editor/components/ui/input";
@@ -34,10 +34,10 @@ import {
   ChevronRight,
   Trash2,
   Copy,
-  BringToFront,
-  SendToBack,
   ArrowUp,
   ArrowDown,
+  ArrowUpToLine,
+  ArrowDownToLine,
   Link2,
   Unlink2,
   FlipHorizontal,
@@ -49,9 +49,12 @@ import {
   Plus,
   Minus,
   GripVertical,
+  Upload,
+  RotateCcw,
 } from "lucide-react";
 import type { EditorElement, Page } from "./types";
 import { showToast } from "./hooks/use-toast";
+import { processImageFile } from "./utils/image";
 import {
   calculateAlign,
   calculateDistribute,
@@ -77,12 +80,13 @@ interface RightPanelProps {
 
 
 const FONT_FAMILIES = [
-  { label: "PingFang SC", value: "PingFang SC, sans-serif" },
-  { label: "Microsoft YaHei", value: "'Microsoft YaHei', sans-serif" },
-  { label: "Inter", value: "Inter, sans-serif" },
-  { label: "Roboto", value: "Roboto, sans-serif" },
-  { label: "System UI", value: "system-ui, -apple-system, sans-serif" },
-  { label: "Monospace", value: "monospace" },
+  { label: "系统默认 (System)", value: "var(--font-sans)" },
+  { label: "微软雅黑 (Microsoft YaHei)", value: "'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif" },
+  { label: "苹方 (PingFang SC)", value: "'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', sans-serif" },
+  { label: "思源黑体 (Source Han Sans)", value: "'Source Han Sans SC', 'Noto Sans SC', sans-serif" },
+  { label: "Inter", value: "Inter, 'Microsoft YaHei UI', 'PingFang SC', sans-serif" },
+  { label: "Roboto", value: "Roboto, 'Microsoft YaHei UI', 'PingFang SC', sans-serif" },
+  { label: "等宽代码 (Monospace)", value: "var(--font-mono)" },
 ];
 
 const WEIGHT_OPTIONS = [
@@ -193,7 +197,7 @@ function NumField({
 }) {
   return (
     <label className={cn("flex min-w-0 flex-1 items-center gap-1.5", className)}>
-      {label && <span className="w-3.5 shrink-0 text-[10px] text-muted-foreground">{label}</span>}
+      {label && <span className="shrink-0 text-[10px] font-medium text-muted-foreground select-none">{label}</span>}
       <Input
         size="sm"
         type="number"
@@ -201,17 +205,17 @@ function NumField({
         min={min}
         max={max}
         step={step}
+        suffix={suffix}
         onChange={(e) => {
           const n = Number(e.target.value);
           if (!Number.isNaN(n)) onChange(n);
         }}
-        className="h-7 min-w-0 flex-1 px-1.5 text-xs"
+        className="h-7 min-w-0 flex-1 font-mono text-xs"
+        inputClassName="text-center font-mono text-xs"
       />
-      {suffix && <span className="shrink-0 text-[10px] text-muted-foreground">{suffix}</span>}
     </label>
   );
 }
-
 
 function OptionsListEditor({
   title = "选项",
@@ -257,6 +261,32 @@ function OptionsListEditor({
     updateItems(copy);
   };
 
+  const handleMoveUp = (index: number) => {
+    if (index <= 0) return;
+    const copy = [...items];
+    const temp = copy[index - 1];
+    copy[index - 1] = copy[index];
+    copy[index] = temp;
+    updateItems(copy);
+    if (mode === "single" && onSelectIndex && selectedIndex !== undefined) {
+      if (selectedIndex === index) onSelectIndex(index - 1);
+      else if (selectedIndex === index - 1) onSelectIndex(index);
+    }
+  };
+
+  const handleMoveDown = (index: number) => {
+    if (index >= items.length - 1) return;
+    const copy = [...items];
+    const temp = copy[index + 1];
+    copy[index + 1] = copy[index];
+    copy[index] = temp;
+    updateItems(copy);
+    if (mode === "single" && onSelectIndex && selectedIndex !== undefined) {
+      if (selectedIndex === index) onSelectIndex(index + 1);
+      else if (selectedIndex === index + 1) onSelectIndex(index);
+    }
+  };
+
   const handleDeleteItem = (index: number) => {
     if (items.length <= 1) return;
     const copy = items.filter((_, i) => i !== index);
@@ -298,11 +328,28 @@ function OptionsListEditor({
           return (
             <div
               key={index}
-              className="group relative flex items-center gap-1.5"
+              className="group relative flex items-center gap-1"
             >
-              {/* Drag Handle Icon on hover */}
-              <div className="flex size-4 shrink-0 items-center justify-center text-muted-foreground/0 group-hover:text-muted-foreground/60 transition-colors cursor-grab active:cursor-grabbing">
-                <GripVertical className="size-3.5" />
+              {/* Up / Down Move buttons */}
+              <div className="flex flex-col opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                <button
+                  type="button"
+                  onClick={() => handleMoveUp(index)}
+                  disabled={index === 0}
+                  className="size-3.5 flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-20 cursor-pointer disabled:cursor-default"
+                  title="上移"
+                >
+                  <ArrowUp className="size-2.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleMoveDown(index)}
+                  disabled={index === items.length - 1}
+                  className="size-3.5 flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-20 cursor-pointer disabled:cursor-default"
+                  title="下移"
+                >
+                  <ArrowDown className="size-2.5" />
+                </button>
               </div>
 
               {/* Input with Selection Indicator */}
@@ -313,13 +360,13 @@ function OptionsListEditor({
                   onChange={(e) => handleItemChange(index, e.target.value)}
                   placeholder={placeholder}
                   className={cn(
-                    "h-8 w-full rounded-md bg-muted/50 px-2.5 text-xs text-foreground placeholder:text-muted-foreground/50 transition-colors",
+                    "h-7 w-full rounded-md bg-muted/50 px-2 text-xs text-foreground placeholder:text-muted-foreground/50 transition-colors",
                     "border border-transparent focus:border-input focus:bg-background focus:outline-none focus:ring-1 focus:ring-ring",
-                    mode !== "none" ? "pr-7" : "pr-2"
+                    mode !== "none" ? "pr-6" : "pr-2",
                   )}
                 />
 
-                {/* Default/Selected Indicator (Blue ring or Grey ring on hover) */}
+                {/* Default/Selected Indicator */}
                 {mode !== "none" && (
                   <button
                     type="button"
@@ -331,13 +378,11 @@ function OptionsListEditor({
                         onToggleIndex(index);
                       }
                     }}
-                    className="absolute right-2 flex size-4 items-center justify-center cursor-pointer select-none"
+                    className="absolute right-1.5 flex size-4 items-center justify-center cursor-pointer select-none"
                   >
                     {isSelected ? (
-                      /* Blue active ring */
                       <div className="size-2.5 rounded-full border-2 border-blue-500 bg-white shadow-2xs transition-transform hover:scale-110" />
                     ) : (
-                      /* Grey ring only visible on hover */
                       <div className="size-2.5 rounded-full border-2 border-neutral-400 opacity-0 group-hover:opacity-100 hover:!border-blue-500 hover:!scale-125 transition-all" />
                     )}
                   </button>
@@ -352,7 +397,7 @@ function OptionsListEditor({
                 title="删除此项"
                 className={cn(
                   "flex size-6 shrink-0 items-center justify-center rounded text-muted-foreground hover:bg-destructive/10 hover:text-destructive transition-colors cursor-pointer",
-                  items.length <= 1 && "cursor-not-allowed opacity-30 hover:bg-transparent hover:text-muted-foreground"
+                  items.length <= 1 && "cursor-not-allowed opacity-30 hover:bg-transparent hover:text-muted-foreground",
                 )}
               >
                 <Minus className="size-3.5" />
@@ -365,7 +410,7 @@ function OptionsListEditor({
   );
 }
 
-export function RightPanel({
+export const RightPanel = memo(function RightPanel({
   element: rawElement,
   selectedElements,
   parent,
@@ -401,11 +446,38 @@ export function RightPanel({
 
   if (effectiveSelectedElements.length === 0 || !element) {
     return (
-      <aside className="flex w-64 shrink-0 flex-col overflow-hidden border-l bg-background/80 backdrop-blur-xl">
-        <div className="flex h-full flex-col items-center justify-center p-6 text-center">
-          <Square className="size-8 text-muted-foreground/40 mb-2" />
-          <p className="text-xs font-medium text-foreground/70">未选中任何组件</p>
-          <p className="mt-1 text-[11px] text-muted-foreground">在画布中点击或框选组件进行编辑</p>
+      <aside className="flex w-64 shrink-0 flex-col overflow-hidden border-l border-border bg-surface text-foreground">
+        <div className="flex h-10 items-center border-b border-border px-3">
+          <span className="font-mono text-xs font-bold tracking-wider uppercase text-foreground">[ CANVAS & INFO ]</span>
+        </div>
+        <div className="flex flex-1 flex-col gap-3 p-3 text-xs overflow-y-auto">
+          <div className="flex flex-col gap-2 rounded-md border border-border bg-surface-raised p-2.5">
+            <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-muted-foreground">[ SHORTCUTS ]</span>
+            <div className="flex flex-col gap-1.5 font-mono text-[11px] text-muted-foreground">
+              <div className="flex items-center justify-between">
+                <span>PAN CANVAS</span>
+                <kbd className="rounded-xs border border-border-visible bg-background px-1.5 py-0.5 text-[10px]">SPACE + DRAG</kbd>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>ZOOM</span>
+                <kbd className="rounded-xs border border-border-visible bg-background px-1.5 py-0.5 text-[10px]">CTRL + SCROLL</kbd>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>DUPLICATE</span>
+                <kbd className="rounded-xs border border-border-visible bg-background px-1.5 py-0.5 text-[10px]">CTRL + D</kbd>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>UNDO / REDO</span>
+                <kbd className="rounded-xs border border-border-visible bg-background px-1.5 py-0.5 text-[10px]">CTRL+Z / CTRL+Y</kbd>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex flex-1 flex-col items-center justify-center rounded-md border border-dashed border-border py-8 text-center">
+            <Square className="size-6 text-muted-foreground/40 mb-2" />
+            <p className="font-mono text-xs font-bold uppercase tracking-wider text-muted-foreground">NO SELECTION</p>
+            <p className="mt-1 font-mono text-[10px] text-muted-foreground/70 px-2 uppercase">SELECT AN ELEMENT TO INSPECT</p>
+          </div>
         </div>
       </aside>
     );
@@ -552,7 +624,7 @@ export function RightPanel({
   const prop = (key: string, fallback: string | number | boolean) => element.props[key] ?? fallback;
 
   // Geometry & Transforms
-  const isLineLike = element.type === "line" || element.type === "arrow";
+  const isLineLike = element.type === "line" || element.type === "arrow" || element.type === "connector";
   const isTextLike = TEXT_TYPES.has(element.type);
   const isShapeWithText = SHAPE_TYPES_WITH_TEXT.has(element.type);
 
@@ -581,7 +653,7 @@ export function RightPanel({
   const strokeEnabled = element.props.strokeEnabled !== false && element.props.strokeEnabled !== "false";
   const stroke = String(prop("stroke", "#D4D4D8"));
   const strokeOpacity = Number(prop("strokeOpacity", 100));
-  const borderWidth = Number(prop("borderWidth", 1));
+  const borderWidth = Number(prop("borderWidth", element.type === "connector" || isLineLike ? 1.5 : 1));
   const strokeStyle = String(prop("strokeStyle", "solid"));
   const strokePosition = String(prop("strokePosition", "inside"));
   const strokeSides = String(prop("strokeSides", "all"));
@@ -599,7 +671,7 @@ export function RightPanel({
   const hasText = isTextLike || Boolean(element.props.hasText) || textContent.length > 0;
   const fontSize = Number(prop("fontSize", 14));
   const fontWeight = Number(prop("fontWeight", 400));
-  const fontFamily = String(prop("fontFamily", "PingFang SC, sans-serif"));
+  const fontFamily = String(prop("fontFamily", "var(--font-sans)"));
   const textColor = String(prop("textColor", "#18181B"));
   const textOpacity = Number(prop("textOpacity", 100));
   const textAlign = String(prop("textAlign", prop("align", "center")));
@@ -704,24 +776,24 @@ export function RightPanel({
   };
 
   return (
-    <aside className="flex w-64 shrink-0 flex-col overflow-hidden border-l bg-background/80 backdrop-blur-xl">
+    <aside className="flex w-64 shrink-0 flex-col overflow-hidden border-l border-border bg-surface text-foreground">
       {/* Header & Tabs */}
-      <div className="border-b px-3 py-2">
-        <div className="flex items-center justify-between pb-1.5">
-          <div className="flex gap-1 rounded-md bg-muted/60 p-0.5 text-xs">
+      <div className="border-b border-border px-3 py-2">
+        <div className="flex items-center justify-between">
+          <div className="flex gap-1 rounded-xs bg-muted p-0.5 font-mono text-xs">
             <button
               type="button"
-              className={cn("rounded px-2.5 py-0.5 text-[11px] font-medium transition-colors", activeTab === "design" ? "bg-background text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground")}
+              className={cn("rounded-xs px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider transition-colors", activeTab === "design" ? "bg-surface text-foreground" : "text-muted-foreground hover:text-foreground")}
               onClick={() => setActiveTab("design")}
             >
-              设计
+              DESIGN
             </button>
             <button
               type="button"
-              className={cn("rounded px-2.5 py-0.5 text-[11px] font-medium transition-colors", activeTab === "inspect" ? "bg-background text-foreground shadow-xs" : "text-muted-foreground hover:text-foreground")}
+              className={cn("rounded-xs px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider transition-colors", activeTab === "inspect" ? "bg-surface text-foreground" : "text-muted-foreground hover:text-foreground")}
               onClick={() => setActiveTab("inspect")}
             >
-              代码 / Inspect
+              INSPECT
             </button>
           </div>
           <div className="flex items-center gap-0.5">
@@ -753,35 +825,8 @@ export function RightPanel({
           </div>
         </div>
 
-        {/* Name input or multi-selection badge */}
-        {isMulti ? (
-          <div className="flex items-center justify-between gap-1.5 rounded-md bg-blue-50/70 border border-blue-200/60 px-2 py-1 dark:bg-blue-950/30 dark:border-blue-800/40">
-            <div className="flex items-center gap-1.5 min-w-0">
-              <Layers className="size-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
-              <span className="text-xs font-semibold text-blue-700 dark:text-blue-300 truncate">
-                已选中 {effectiveSelectedElements.length} 个组件
-              </span>
-            </div>
-            <span className="shrink-0 rounded bg-blue-100 dark:bg-blue-900 px-1 py-0.2 text-[9px] font-mono font-medium text-blue-700 dark:text-blue-300">
-              MULTI
-            </span>
-          </div>
-        ) : (
-          <div className="flex items-center gap-1.5">
-            <Input
-              size="sm"
-              value={element.name}
-              onChange={(e) => onUpdate(element.id, { name: e.target.value })}
-              className="h-7 min-w-0 flex-1 font-medium text-xs"
-            />
-            <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[9px] font-mono uppercase text-muted-foreground">
-              {element.type}
-            </span>
-          </div>
-        )}
-
         {/* Quick Layer Operations */}
-        <div className="mt-2 flex items-center justify-between gap-1 rounded bg-muted/40 p-1">
+        <div className="mt-2 flex items-center justify-between gap-0.5 border-t border-border pt-1.5">
           <Button
             variant="ghost"
             size="icon-xs"
@@ -789,7 +834,7 @@ export function RightPanel({
             onClick={onBringToFront}
             disabled={!onBringToFront}
           >
-            <BringToFront className="size-3" />
+            <ArrowUpToLine className="size-3.5" />
           </Button>
           <Button
             variant="ghost"
@@ -798,7 +843,7 @@ export function RightPanel({
             onClick={onBringForward}
             disabled={!onBringForward || isMulti}
           >
-            <ArrowUp className="size-3" />
+            <ArrowUp className="size-3.5" />
           </Button>
           <Button
             variant="ghost"
@@ -807,7 +852,7 @@ export function RightPanel({
             onClick={onSendBackward}
             disabled={!onSendBackward || isMulti}
           >
-            <ArrowDown className="size-3" />
+            <ArrowDown className="size-3.5" />
           </Button>
           <Button
             variant="ghost"
@@ -816,9 +861,9 @@ export function RightPanel({
             onClick={onSendToBack}
             disabled={!onSendToBack}
           >
-            <SendToBack className="size-3" />
+            <ArrowDownToLine className="size-3.5" />
           </Button>
-          <Separator orientation="vertical" className="h-3.5" />
+          <Separator orientation="vertical" className="mx-0.5 h-3.5" />
           <Button
             variant="ghost"
             size="icon-xs"
@@ -826,7 +871,7 @@ export function RightPanel({
             onClick={onDuplicate}
             disabled={!onDuplicate}
           >
-            <Copy className="size-3" />
+            <Copy className="size-3.5" />
           </Button>
         </div>
       </div>
@@ -975,23 +1020,23 @@ export function RightPanel({
                   <NumField label="X" value={Math.round(element.x)} min={-10000} onChange={(v) => onUpdate(element.id, { x: v })} />
                   <NumField label="Y" value={Math.round(element.y)} min={-10000} onChange={(v) => onUpdate(element.id, { y: v })} />
                 </div>
-                {isLineLike ? (
+                {element.type === "line" || element.type === "arrow" ? (
                   <div className="flex gap-1.5">
                     <NumField label="L" value={Math.round(element.width)} min={1} onChange={(v) => onUpdate(element.id, { width: Math.max(1, v) })} suffix="px" />
                     <NumField label="↺" value={Math.round(element.rotation)} onChange={(v) => onUpdate(element.id, { rotation: v })} suffix="°" />
                   </div>
                 ) : element.type === "connector" ? (
-                  <div className="rounded-md bg-muted/40 p-2 text-[10px] text-muted-foreground flex flex-col gap-1">
+                  <div className="rounded-md bg-muted/40 p-2 text-[10px] text-muted-foreground flex flex-col gap-1 font-mono">
                     <div className="flex items-center justify-between">
-                      <span>起点连接:</span>
-                      <span className="font-medium text-foreground">
-                        {element.props.startElementId ? "已绑定节点" : "自由端点"}
+                      <span className="uppercase">起点节点:</span>
+                      <span className="font-semibold text-foreground">
+                        {element.props.startElementId ? "已绑定 (BOUND)" : "自由端点 (FREE)"}
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span>终点连接:</span>
-                      <span className="font-medium text-foreground">
-                        {element.props.endElementId ? "已绑定节点" : "自由端点"}
+                      <span className="uppercase">终点节点:</span>
+                      <span className="font-semibold text-foreground">
+                        {element.props.endElementId ? "已绑定 (BOUND)" : "自由端点 (FREE)"}
                       </span>
                     </div>
                   </div>
@@ -1039,8 +1084,130 @@ export function RightPanel({
             )}
           </Section>
 
+          {/* Connector Properties Section */}
+          {element.type === "connector" && (
+            <Section title="连线属性" collapsible defaultOpen={true}>
+              <div className="flex flex-col gap-2.5 text-xs">
+                {/* Routing Type */}
+                <div className="flex items-center gap-2">
+                  <span className="w-16 shrink-0 text-[10px] text-muted-foreground font-mono uppercase">路径样式</span>
+                  <div className="grid grid-cols-3 gap-1 flex-1">
+                    {([
+                      { id: "orthogonal", label: "折线" },
+                      { id: "straight", label: "直线" },
+                      { id: "curved", label: "曲线" },
+                    ] as const).map((route) => {
+                      const active = (element.props.routing || "orthogonal") === route.id;
+                      return (
+                        <button
+                          key={route.id}
+                          type="button"
+                          onClick={() => setProp("routing", route.id)}
+                          className={cn(
+                            "h-6 rounded text-[9px] font-mono uppercase tracking-wider transition-colors border select-none cursor-pointer",
+                            active
+                              ? "bg-foreground text-background border-foreground font-bold"
+                              : "bg-transparent text-muted-foreground border-border hover:border-foreground/40 hover:text-foreground"
+                          )}
+                        >
+                          {route.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Arrow Endpoints - Start Arrow */}
+                <div className="flex items-center gap-2">
+                  <span className="w-16 shrink-0 text-[10px] text-muted-foreground font-mono uppercase">起点端点</span>
+                  <Menu>
+                    <MenuTrigger
+                      render={
+                        <Button variant="outline" size="xs" className="h-7 flex-1 justify-between text-xs font-mono">
+                          <span className="truncate">
+                            {element.props.startArrow === "arrow" ? "箭头 (Arrow)" : element.props.startArrow === "circle" ? "圆点 (Circle)" : "无端点 (None)"}
+                          </span>
+                          <ChevronDown className="size-3 opacity-60" />
+                        </Button>
+                      }
+                    />
+                    <MenuPopup align="start">
+                      <MenuItem onClick={() => setProp("startArrow", "none")}>无端点 (None)</MenuItem>
+                      <MenuItem onClick={() => setProp("startArrow", "arrow")}>箭头 (Arrow)</MenuItem>
+                      <MenuItem onClick={() => setProp("startArrow", "circle")}>圆点 (Circle)</MenuItem>
+                    </MenuPopup>
+                  </Menu>
+                </div>
+
+                {/* Arrow Endpoints - End Arrow */}
+                <div className="flex items-center gap-2">
+                  <span className="w-16 shrink-0 text-[10px] text-muted-foreground font-mono uppercase">终点端点</span>
+                  <Menu>
+                    <MenuTrigger
+                      render={
+                        <Button variant="outline" size="xs" className="h-7 flex-1 justify-between text-xs font-mono">
+                          <span className="truncate">
+                            {element.props.endArrow === "none" ? "无端点 (None)" : element.props.endArrow === "circle" ? "圆点 (Circle)" : "箭头 (Arrow)"}
+                          </span>
+                          <ChevronDown className="size-3 opacity-60" />
+                        </Button>
+                      }
+                    />
+                    <MenuPopup align="start">
+                      <MenuItem onClick={() => setProp("endArrow", "none")}>无端点 (None)</MenuItem>
+                      <MenuItem onClick={() => setProp("endArrow", "arrow")}>箭头 (Arrow)</MenuItem>
+                      <MenuItem onClick={() => setProp("endArrow", "circle")}>圆点 (Circle)</MenuItem>
+                    </MenuPopup>
+                  </Menu>
+                </div>
+
+                {/* Corner Radius if orthogonal */}
+                {element.props.routing !== "straight" && (
+                  <div className="flex items-center gap-2">
+                    <span className="w-16 shrink-0 text-[10px] text-muted-foreground font-mono uppercase">拐角圆角</span>
+                    <NumField
+                      label="R"
+                      value={Number(element.props.radius ?? 8)}
+                      min={0}
+                      max={32}
+                      onChange={(v) => setProp("radius", Math.max(0, v))}
+                      suffix="px"
+                    />
+                  </div>
+                )}
+
+                {/* Text Label on Connector */}
+                <div className="flex items-center gap-2">
+                  <span className="w-16 shrink-0 text-[10px] text-muted-foreground font-mono uppercase">连线说明</span>
+                  <Input
+                    size="sm"
+                    value={String(prop("text", ""))}
+                    onChange={(e) => setProp("text", e.target.value)}
+                    placeholder="输入线条中点说明..."
+                    className="h-7 text-xs flex-1"
+                  />
+                </div>
+
+                {/* Reset Custom Path Button */}
+                {Boolean(element.props.customWaypoints) && (
+                  <div className="pt-1.5 flex items-center justify-between border-t border-border/50">
+                    <span className="text-[10px] text-muted-foreground font-mono uppercase">微调状态: 已手动调整</span>
+                    <button
+                      type="button"
+                      onClick={() => setProp("customWaypoints", "")}
+                      title="清除手动微调的折线位置，恢复全自动避障走线"
+                      className="rounded px-2 py-1 text-[10px] font-mono uppercase font-semibold bg-muted hover:bg-muted/80 text-foreground border border-border transition-colors cursor-pointer"
+                    >
+                      [恢复自动走线]
+                    </button>
+                  </div>
+                )}
+              </div>
+            </Section>
+          )}
+
           {/* Content & Text Section - 内容与文案 */}
-          {element.type !== "line" && element.type !== "arrow" && (
+          {element.type !== "line" && element.type !== "arrow" && element.type !== "connector" && (
             <Section title="内容与文案" collapsible defaultOpen={true}>
               <div className="flex flex-col gap-2.5 text-xs">
                 {/* 1. Switches */}
@@ -1576,16 +1743,172 @@ export function RightPanel({
                   </div>
                 )}
 
-                {/* 25. Placeholder / Hotspot / Image */}
-                {(element.type === "placeholder" || element.type === "hotspot" || element.type === "image") && (
+                {/* 25a. Placeholder / Hotspot */}
+                {(element.type === "placeholder" || element.type === "hotspot") && (
                   <div className="flex items-center gap-2">
                     <span className="w-16 shrink-0 text-[10px] text-muted-foreground">说明文案</span>
                     <Input
                       size="sm"
-                      value={String(prop("label", element.type === "hotspot" ? "热区 / Hotspot" : element.type === "image" ? "图片占位" : "占位符"))}
+                      value={String(prop("label", element.type === "hotspot" ? "热区 / Hotspot" : "占位符"))}
                       onChange={(e) => setProp("label", e.target.value)}
                       className="h-7 text-xs"
                     />
+                  </div>
+                )}
+
+                {/* 25b. Image Element Controls */}
+                {element.type === "image" && (
+                  <div className="space-y-3 pt-1">
+                    {Boolean(element.props.src) ? (
+                      <>
+                        <div className="flex items-center gap-3 rounded border border-border p-2 bg-neutral-900/10">
+                          <img
+                            src={String(element.props.src)}
+                            alt="preview"
+                            className="size-10 object-cover rounded border border-border shrink-0 bg-neutral-100 dark:bg-neutral-800"
+                          />
+                          <div className="min-w-0 flex-1 flex flex-col gap-0.5">
+                            <span className="text-[10px] font-mono text-foreground font-semibold truncate uppercase">
+                              {String(element.props.label || "IMAGE")}
+                            </span>
+                            <span className="text-[9px] font-mono text-muted-foreground uppercase">
+                              {Number(element.props.naturalWidth || element.width)} × {Number(element.props.naturalHeight || element.height)} PX
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Fit Mode Switcher */}
+                        <div className="flex items-center gap-2">
+                          <span className="w-16 shrink-0 text-[10px] text-muted-foreground font-mono uppercase">FIT MODE</span>
+                          <div className="grid grid-cols-3 gap-1 flex-1">
+                            {(["cover", "contain", "fill"] as const).map((fitMode) => {
+                              const active = (element.props.fit || "cover") === fitMode;
+                              return (
+                                <button
+                                  key={fitMode}
+                                  type="button"
+                                  onClick={() => setProp("fit", fitMode)}
+                                  className={cn(
+                                    "h-6 rounded text-[9px] font-mono uppercase tracking-wider transition-colors border select-none",
+                                    active
+                                      ? "bg-foreground text-background border-foreground font-bold"
+                                      : "bg-transparent text-muted-foreground border-border hover:border-foreground/40 hover:text-foreground"
+                                  )}
+                                >
+                                  {fitMode}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        {/* Actions: Replace, Reset Aspect Ratio, Clear */}
+                        <div className="flex items-center gap-1.5 pt-1">
+                          <label className="flex-1 flex items-center justify-center gap-1 h-7 rounded border border-border hover:border-foreground/50 text-[10px] font-mono uppercase tracking-wider text-muted-foreground hover:text-foreground cursor-pointer transition-colors select-none">
+                            <Upload className="size-3" />
+                            <span>替换</span>
+                            <input
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={async (e) => {
+                                const file = e.target.files?.[0];
+                                if (!file) return;
+                                try {
+                                  const processed = await processImageFile(file);
+                                  onUpdate(element.id, {
+                                    props: {
+                                      ...element.props,
+                                      src: processed.dataUrl,
+                                      naturalWidth: processed.naturalWidth,
+                                      naturalHeight: processed.naturalHeight,
+                                      label: processed.name,
+                                    },
+                                  });
+                                } catch (err) {
+                                  console.error("Replace image error:", err);
+                                }
+                              }}
+                            />
+                          </label>
+
+                          <button
+                            type="button"
+                            title="还原原始宽高比"
+                            onClick={() => {
+                              const nw = Number(element.props.naturalWidth);
+                              const nh = Number(element.props.naturalHeight);
+                              if (nw && nh) {
+                                const targetHeight = Math.round(element.width * (nh / nw));
+                                onUpdate(element.id, { height: targetHeight });
+                              }
+                            }}
+                            className="flex items-center justify-center gap-1 px-2 h-7 rounded border border-border hover:border-foreground/50 text-[10px] font-mono uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors select-none"
+                          >
+                            <RotateCcw className="size-3" />
+                            <span>比例</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            title="清除图片内容，恢复占位状态"
+                            onClick={() => {
+                              onUpdate(element.id, {
+                                props: {
+                                  ...element.props,
+                                  src: "",
+                                },
+                              });
+                            }}
+                            className="flex items-center justify-center size-7 rounded border border-border hover:border-red-500/50 hover:text-red-500 text-muted-foreground transition-colors select-none"
+                          >
+                            <Trash2 className="size-3" />
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <span className="w-16 shrink-0 text-[10px] text-muted-foreground">说明文案</span>
+                          <Input
+                            size="sm"
+                            value={String(prop("label", "图片占位"))}
+                            onChange={(e) => setProp("label", e.target.value)}
+                            className="h-7 text-xs"
+                          />
+                        </div>
+
+                        <label className="flex w-full items-center justify-center gap-1.5 h-8 rounded border border-dashed border-border hover:border-foreground/60 text-[10px] font-mono uppercase tracking-wider text-muted-foreground hover:text-foreground cursor-pointer transition-colors select-none">
+                          <Upload className="size-3.5" />
+                          <span>上传图片文件</span>
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0];
+                              if (!file) return;
+                              try {
+                                const processed = await processImageFile(file);
+                                onUpdate(element.id, {
+                                  width: processed.width,
+                                  height: processed.height,
+                                  props: {
+                                    ...element.props,
+                                    src: processed.dataUrl,
+                                    naturalWidth: processed.naturalWidth,
+                                    naturalHeight: processed.naturalHeight,
+                                    label: processed.name,
+                                  },
+                                });
+                              } catch (err) {
+                                console.error("Upload image error:", err);
+                              }
+                            }}
+                          />
+                        </label>
+                      </>
+                    )}
                   </div>
                 )}
 
@@ -1701,128 +2024,1382 @@ export function RightPanel({
                   </div>
                 )}
 
-                {/* 31. Connector Line Settings */}
-                {element.type === "connector" && (
-                  <div className="flex flex-col gap-2.5">
-                    {/* Routing Type */}
-                    <div className="flex items-center justify-between gap-1">
-                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">连线分支</span>
-                      <div className="flex flex-1 gap-1">
-                        {[
-                          { id: "orthogonal", label: "折线" },
-                          { id: "straight", label: "直线" },
-                          { id: "curved", label: "曲线" },
-                        ].map((rt) => (
-                          <Button
-                            key={rt.id}
-                            variant="ghost"
-                            size="xs"
-                            className={cn(
-                              "flex-1 h-6 text-[10px] border",
-                              String(prop("routing", "orthogonal")) === rt.id
-                                ? "bg-foreground text-background font-semibold"
-                                : "text-muted-foreground hover:text-foreground",
-                            )}
-                            onClick={() => setProp("routing", rt.id)}
-                          >
-                            {rt.label}
-                          </Button>
-                        ))}
-                      </div>
-                    </div>
+                {/* ========================================================================= */}
+                {/* 31. Web Templates & Components Properties */}
+                {/* ========================================================================= */}
 
-                    {/* Arrow Markers (Start & End) */}
-                    <div className="flex items-center justify-between gap-1.5">
-                      <div className="flex flex-1 items-center gap-1">
-                        <span className="shrink-0 text-[10px] text-muted-foreground">起点</span>
-                        <div className="flex flex-1 gap-0.5">
-                          {[
-                            { id: "none", label: "无" },
-                            { id: "arrow", label: "箭头" },
-                            { id: "circle", label: "圆点" },
-                          ].map((ar) => (
-                            <Button
-                              key={ar.id}
-                              variant="ghost"
-                              size="xs"
-                              className={cn(
-                                "flex-1 h-6 px-1 text-[9px] border",
-                                String(prop("startArrow", "none")) === ar.id
-                                  ? "bg-foreground text-background font-semibold"
-                                  : "text-muted-foreground hover:text-foreground",
-                              )}
-                              onClick={() => setProp("startArrow", ar.id)}
-                            >
-                              {ar.label}
-                            </Button>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="flex flex-1 items-center gap-1">
-                        <span className="shrink-0 text-[10px] text-muted-foreground">终点</span>
-                        <div className="flex flex-1 gap-0.5">
-                          {[
-                            { id: "none", label: "无" },
-                            { id: "arrow", label: "箭头" },
-                            { id: "circle", label: "圆点" },
-                          ].map((ar) => (
-                            <Button
-                              key={ar.id}
-                              variant="ghost"
-                              size="xs"
-                              className={cn(
-                                "flex-1 h-6 px-1 text-[9px] border",
-                                String(prop("endArrow", "arrow")) === ar.id
-                                  ? "bg-foreground text-background font-semibold"
-                                  : "text-muted-foreground hover:text-foreground",
-                              )}
-                              onClick={() => setProp("endArrow", ar.id)}
-                            >
-                              {ar.label}
-                            </Button>
-                          ))}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Corner Radius */}
+                {/* Web Dropdown */}
+                {element.type === "web-dropdown" && (
+                  <>
                     <div className="flex items-center gap-2">
-                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">转折圆角</span>
-                      <NumField
-                        value={Number(prop("radius", 8))}
-                        min={0}
-                        max={32}
-                        onChange={(v) => setProp("radius", v)}
-                        suffix="px"
-                      />
-                    </div>
-
-                    {/* Line Label */}
-                    <div className="flex items-center gap-2">
-                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">连线文本</span>
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">触发按钮</span>
                       <Input
                         size="sm"
-                        value={String(prop("text", ""))}
-                        onChange={(e) => setProp("text", e.target.value)}
-                        placeholder="如：是 / 否 / 条件"
+                        value={String(prop("triggerText", "下拉操作菜单"))}
+                        onChange={(e) => setProp("triggerText", e.target.value)}
                         className="h-7 text-xs"
                       />
                     </div>
+                    <OptionsListEditor
+                      title="下拉项列表 (支持 --- 分割线 / :danger 标红)"
+                      mode="none"
+                      value={String(prop("items", "查看详情,编辑信息,权限设置,---,导出数据,删除项目:danger"))}
+                      onChange={(v) => setProp("items", v)}
+                      placeholder="菜单项..."
+                    />
+                    <div className="flex items-center justify-between pt-0.5">
+                      <span className="text-[10px] text-muted-foreground">展开菜单</span>
+                      <label className="flex items-center gap-2 cursor-pointer text-xs font-medium select-none">
+                        <Checkbox
+                          checked={prop("isOpen", false) === true || prop("isOpen", false) === "true"}
+                          onCheckedChange={(c) => setProp("isOpen", Boolean(c))}
+                        />
+                        <span className="text-[11px] text-foreground/80">
+                          {prop("isOpen", false) === true || prop("isOpen", false) === "true" ? "展开显示下拉浮层" : "收起仅显示触发按钮"}
+                        </span>
+                      </label>
+                    </div>
+                  </>
+                )}
+
+                {/* Web Top Nav */}
+                {element.type === "web-top-nav" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">系统 Logo</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("logoText", "BLUEPEN SaaS"))}
+                        onChange={(e) => setProp("logoText", e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                    <OptionsListEditor
+                      title="顶部导航列表"
+                      mode="single"
+                      value={String(prop("links", "概览仪表盘,项目管理,数据资产,团队协作,系统配置"))}
+                      selectedIndex={Number(prop("activeIndex", 0))}
+                      onSelectIndex={(idx) => setProp("activeIndex", idx)}
+                      onChange={(v) => setProp("links", v)}
+                      placeholder="导航标题..."
+                    />
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">登录用户</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("userName", "Alex Morgan"))}
+                        onChange={(e) => setProp("userName", e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Web Menu */}
+                {element.type === "web-menu" && (() => {
+                  const showCategories = prop("showCategories", true) !== false && prop("showCategories", true) !== "false";
+                  const cat1 = String(prop("category1", "核心工作台"));
+                  const cat2 = String(prop("category2", "系统与权限"));
+                  const activeKey = String(prop("activeKey", "用户列表"));
+
+                  return (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <span className="w-16 shrink-0 text-[10px] text-muted-foreground">导航标题</span>
+                        <Input
+                          size="sm"
+                          value={String(prop("title", "控制台导航"))}
+                          onChange={(e) => setProp("title", e.target.value)}
+                          className="h-7 text-xs"
+                        />
+                      </div>
+
+                      <div className="flex items-center justify-between pt-0.5 pb-1 border-b border-border/50">
+                        <span className="text-[10px] text-muted-foreground">显示分类名</span>
+                        <label className="flex items-center gap-2 cursor-pointer text-xs font-medium select-none">
+                          <Checkbox
+                            checked={showCategories}
+                            onCheckedChange={(c) => setProp("showCategories", Boolean(c))}
+                          />
+                          <span className="text-[11px] text-foreground/80">
+                            {showCategories ? "开启分组分类标题" : "扁平一级菜单"}
+                          </span>
+                        </label>
+                      </div>
+
+                      {showCategories ? (
+                        <>
+                          {/* Category 1 */}
+                          <div className="flex flex-col gap-1.5 rounded-md border border-border/60 p-2 bg-surface-raised/20">
+                            <div className="flex items-center gap-2">
+                              <span className="w-14 shrink-0 text-[10px] text-muted-foreground font-mono uppercase">分类 1</span>
+                              <Input
+                                size="sm"
+                                value={cat1}
+                                onChange={(e) => setProp("category1", e.target.value)}
+                                className="h-6 text-xs font-semibold"
+                              />
+                            </div>
+                            <OptionsListEditor
+                              title="分类 1 菜单项"
+                              mode="none"
+                              value={String(prop("items1", prop("items", "分析概览,实时大屏")))}
+                              onChange={(v) => setProp("items1", v)}
+                              placeholder="菜单项名称..."
+                            />
+                          </div>
+
+                          {/* Category 2 */}
+                          <div className="flex flex-col gap-1.5 rounded-md border border-border/60 p-2 bg-surface-raised/20">
+                            <div className="flex items-center gap-2">
+                              <span className="w-14 shrink-0 text-[10px] text-muted-foreground font-mono uppercase">分类 2</span>
+                              <Input
+                                size="sm"
+                                value={cat2}
+                                onChange={(e) => setProp("category2", e.target.value)}
+                                className="h-6 text-xs font-semibold"
+                              />
+                            </div>
+                            <OptionsListEditor
+                              title="分类 2 菜单项"
+                              mode="none"
+                              value={String(prop("items2", "用户列表,角色策略,审计日志"))}
+                              onChange={(v) => setProp("items2", v)}
+                              placeholder="菜单项名称..."
+                            />
+                          </div>
+                        </>
+                      ) : (
+                        <OptionsListEditor
+                          title="一级菜单列表"
+                          mode="none"
+                          value={String(prop("items1", prop("items", "分析概览,实时大屏,用户列表,角色策略,审计日志")))}
+                          onChange={(v) => setProp("items1", v)}
+                          placeholder="菜单项名称..."
+                        />
+                      )}
+
+                      <div className="flex items-center gap-2 pt-1 border-t border-border/50">
+                        <span className="w-16 shrink-0 text-[10px] text-muted-foreground">当前选中项</span>
+                        <Input
+                          size="sm"
+                          value={activeKey}
+                          onChange={(e) => setProp("activeKey", e.target.value)}
+                          placeholder="输入选中菜单名称..."
+                          className="h-7 text-xs font-semibold"
+                        />
+                      </div>
+                    </>
+                  );
+                })()}
+
+                {/* Web Tabs */}
+                {element.type === "web-tabs" && (
+                  <>
+                    <OptionsListEditor
+                      title="选项卡列表"
+                      mode="single"
+                      value={String(prop("tabs", "全部订单,待支付(3),进行中(12),已完成,已退款"))}
+                      selectedIndex={Number(prop("activeIndex", 0))}
+                      onSelectIndex={(idx) => setProp("activeIndex", idx)}
+                      onChange={(v) => setProp("tabs", v)}
+                      placeholder="选项卡标题..."
+                    />
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">展示风格</span>
+                      <div className="grid grid-cols-2 gap-1 flex-1">
+                        {["line", "card"].map((v) => (
+                          <button
+                            key={v}
+                            type="button"
+                            onClick={() => setProp("variant", v)}
+                            className={cn(
+                              "h-6 rounded text-[10px] font-mono uppercase border",
+                              prop("variant", "line") === v
+                                ? "bg-foreground text-background border-foreground font-bold"
+                                : "bg-transparent text-muted-foreground border-border"
+                            )}
+                          >
+                            {v === "line" ? "线条 (Line)" : "卡片 (Card)"}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Web Breadcrumb */}
+                {element.type === "web-breadcrumb" && (
+                  <div className="flex items-center gap-2">
+                    <span className="w-16 shrink-0 text-[10px] text-muted-foreground">路径内容</span>
+                    <Input
+                      size="sm"
+                      value={String(prop("path", "工作台 / 研发项目 / 迭代计划 / 需求详情"))}
+                      onChange={(e) => setProp("path", e.target.value)}
+                      className="h-7 text-xs"
+                    />
                   </div>
                 )}
 
-                {/* 32. Flowchart Shape Text Content */}
-                {element.type.startsWith("flow-") && (
+                {/* Web Pagination */}
+                {element.type === "web-pagination" && (
+                  <div className="grid grid-cols-3 gap-2">
+                    <NumField label="当前页" value={Number(prop("current", 1))} min={1} onChange={(v) => setProp("current", Math.max(1, v))} />
+                    <NumField label="总记录数" value={Number(prop("total", 128))} min={1} onChange={(v) => setProp("total", Math.max(1, v))} />
+                    <NumField label="每页条数" value={Number(prop("pageSize", 10))} min={1} onChange={(v) => setProp("pageSize", Math.max(1, v))} />
+                  </div>
+                )}
+
+                {/* Web Steps */}
+                {element.type === "web-steps" && (
+                  <>
+                    <OptionsListEditor
+                      title="步骤节点"
+                      mode="none"
+                      value={String(prop("steps", "填写基本信息,配置权限策略,关联数据源,完成创建"))}
+                      onChange={(v) => setProp("steps", v)}
+                      placeholder="步骤标题..."
+                    />
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">当前步骤</span>
+                      <NumField
+                        value={Number(prop("current", 2))}
+                        min={1}
+                        max={10}
+                        onChange={(v) => setProp("current", Math.max(1, v))}
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Web Input */}
+                {element.type === "web-input" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">字段标签</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("label", "企业名称"))}
+                        onChange={(e) => setProp("label", e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">占位提示</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("placeholder", "请输入企业全称..."))}
+                        onChange={(e) => setProp("placeholder", e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">前缀文字</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("prefixText", ""))}
+                        onChange={(e) => setProp("prefixText", e.target.value)}
+                        placeholder="前缀文本 (选填)"
+                        className="h-7 text-xs font-mono"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">后缀文字</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("suffixText", ""))}
+                        onChange={(e) => setProp("suffixText", e.target.value)}
+                        placeholder="后缀文本 (选填)"
+                        className="h-7 text-xs font-mono"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between pt-0.5">
+                      <span className="text-[10px] text-muted-foreground">必填星号</span>
+                      <label className="flex items-center gap-2 cursor-pointer text-xs font-medium select-none">
+                        <Checkbox
+                          checked={prop("required", true) !== false && prop("required", true) !== "false"}
+                          onCheckedChange={(c) => setProp("required", Boolean(c))}
+                        />
+                        <span className="text-[11px] text-foreground/80">显示必填 * 标记</span>
+                      </label>
+                    </div>
+                  </>
+                )}
+
+                {/* Web Input Number */}
+                {element.type === "web-input-number" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">字段标签</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("label", "购买配额"))}
+                        onChange={(e) => setProp("label", e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">默认数值</span>
+                      <NumField
+                        value={Number(prop("value", 5))}
+                        onChange={(v) => setProp("value", v)}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">单位后缀</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("unit", "台"))}
+                        onChange={(e) => setProp("unit", e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Web Textarea */}
+                {element.type === "web-textarea" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">字段标签</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("label", "需求背景描述"))}
+                        onChange={(e) => setProp("label", e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">占位提示</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("placeholder", "请输入详细描述信息..."))}
+                        onChange={(e) => setProp("placeholder", e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">最大字数</span>
+                      <NumField
+                        value={Number(prop("maxLength", 200))}
+                        min={10}
+                        onChange={(v) => setProp("maxLength", v)}
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Web Select */}
+                {element.type === "web-select" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">字段标签</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("label", "所属部门"))}
+                        onChange={(e) => setProp("label", e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">当前选中</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("selected", "用户体验设计部 (UED)"))}
+                        onChange={(e) => setProp("selected", e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Web Cascader */}
+                {element.type === "web-cascader" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">字段标签</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("label", "所属区域"))}
+                        onChange={(e) => setProp("label", e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">选中路径</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("value", "广东省 / 深圳市 / 南山区"))}
+                        onChange={(e) => setProp("value", e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between pt-0.5">
+                      <span className="text-[10px] text-muted-foreground">展开级联</span>
+                      <label className="flex items-center gap-2 cursor-pointer text-xs font-medium select-none">
+                        <Checkbox
+                          checked={prop("isOpen", true) !== false && prop("isOpen", true) !== "false"}
+                          onCheckedChange={(c) => setProp("isOpen", Boolean(c))}
+                        />
+                        <span className="text-[11px] text-foreground/80">显示 3 级展开浮层</span>
+                      </label>
+                    </div>
+                  </>
+                )}
+
+                {/* Web Tree Select */}
+                {element.type === "web-tree-select" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">字段标签</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("label", "组织树节点"))}
+                        onChange={(e) => setProp("label", e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">选定节点</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("value", "技术中台 / 架构组"))}
+                        onChange={(e) => setProp("value", e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Web Auto Complete */}
+                {element.type === "web-auto-complete" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">搜索词</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("value", "Tencent"))}
+                        onChange={(e) => setProp("value", e.target.value)}
+                        className="h-7 text-xs font-bold"
+                      />
+                    </div>
+                    <OptionsListEditor
+                      title="联想候选列表"
+                      mode="none"
+                      value={String(prop("suggestions", "Tencent Cloud,Tencent Video,Tencent Meeting"))}
+                      onChange={(v) => setProp("suggestions", v)}
+                      placeholder="联想词..."
+                    />
+                    <div className="flex items-center justify-between pt-0.5">
+                      <span className="text-[10px] text-muted-foreground">展开联想</span>
+                      <label className="flex items-center gap-2 cursor-pointer text-xs font-medium select-none">
+                        <Checkbox
+                          checked={prop("isOpen", false) === true || prop("isOpen", false) === "true"}
+                          onCheckedChange={(c) => setProp("isOpen", Boolean(c))}
+                        />
+                        <span className="text-[11px] text-foreground/80">
+                          {prop("isOpen", false) === true || prop("isOpen", false) === "true" ? "展开显示联想浮层" : "收起仅显示搜索框"}
+                        </span>
+                      </label>
+                    </div>
+                  </>
+                )}
+
+                {/* Web Tag Input */}
+                {element.type === "web-tag-input" && (
+                  <OptionsListEditor
+                    title="已选标签"
+                    mode="none"
+                    value={String(prop("tags", "React 19,TDesign,Tauri 2"))}
+                    onChange={(v) => setProp("tags", v)}
+                    placeholder="标签名称..."
+                  />
+                )}
+
+                {/* Web Date Picker & Range */}
+                {(element.type === "web-date-picker" || element.type === "web-date-range-picker") && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">字段标签</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("label", element.type === "web-date-picker" ? "截止日期" : "统计周期"))}
+                        onChange={(e) => setProp("label", e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                    {element.type === "web-date-picker" ? (
+                      <div className="flex items-center gap-2">
+                        <span className="w-16 shrink-0 text-[10px] text-muted-foreground">选定日期</span>
+                        <Input
+                          size="sm"
+                          value={String(prop("value", "2026-09-01"))}
+                          onChange={(e) => setProp("value", e.target.value)}
+                          className="h-7 text-xs font-mono"
+                        />
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <span className="w-16 shrink-0 text-[10px] text-muted-foreground">开始日期</span>
+                          <Input
+                            size="sm"
+                            value={String(prop("startDate", "2026-08-01"))}
+                            onChange={(e) => setProp("startDate", e.target.value)}
+                            className="h-7 text-xs font-mono"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="w-16 shrink-0 text-[10px] text-muted-foreground">结束日期</span>
+                          <Input
+                            size="sm"
+                            value={String(prop("endDate", "2026-08-31"))}
+                            onChange={(e) => setProp("endDate", e.target.value)}
+                            className="h-7 text-xs font-mono"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="w-16 shrink-0 text-[10px] text-muted-foreground">快捷标签</span>
+                          <Input
+                            size="sm"
+                            value={String(prop("quickTag", "近30天"))}
+                            onChange={(e) => setProp("quickTag", e.target.value)}
+                            className="h-7 text-xs"
+                          />
+                        </div>
+                      </>
+                    )}
+                  </>
+                )}
+
+                {/* Web Time Picker */}
+                {element.type === "web-time-picker" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">字段标签</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("label", "执行时间"))}
+                        onChange={(e) => setProp("label", e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">时间数值</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("value", "14:30:00"))}
+                        onChange={(e) => setProp("value", e.target.value)}
+                        className="h-7 text-xs font-mono"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Web Radio Group */}
+                {element.type === "web-radio-group" && (
+                  <OptionsListEditor
+                    title="单选选项列表"
+                    mode="single"
+                    value={String(prop("options", "开发环境 (Dev),测试环境 (Test),生产环境 (Prod)"))}
+                    selectedIndex={Number(prop("selectedIndex", 0))}
+                    onSelectIndex={(idx) => setProp("selectedIndex", idx)}
+                    onChange={(v) => setProp("options", v)}
+                    placeholder="选项名称..."
+                  />
+                )}
+
+                {/* Web Checkbox Group */}
+                {element.type === "web-checkbox-group" && (() => {
+                  const checkedIndices = String(prop("checkedIndices", "0,1"))
+                    .split(",")
+                    .map((n) => Number(n.trim()))
+                    .filter((n) => !isNaN(n));
+
+                  return (
+                    <OptionsListEditor
+                      title="复选项列表"
+                      mode="multiple"
+                      value={String(prop("options", "站内信,企业微信,邮件通知,短信推送"))}
+                      selectedIndices={checkedIndices}
+                      onToggleIndex={(idx) => {
+                        const next = checkedIndices.includes(idx)
+                          ? checkedIndices.filter((i) => i !== idx)
+                          : [...checkedIndices, idx];
+                        setProp("checkedIndices", next.join(","));
+                      }}
+                      onChange={(v) => setProp("options", v)}
+                      placeholder="选项名称..."
+                    />
+                  );
+                })()}
+
+                {/* Web Switch */}
+                {element.type === "web-switch" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">开关文案</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("label", "自动容灾热备"))}
+                        onChange={(e) => setProp("label", e.target.value)}
+                        placeholder="输入开关标签..."
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between pt-0.5">
+                      <span className="text-[10px] text-muted-foreground">开关状态</span>
+                      <label className="flex items-center gap-2 cursor-pointer text-xs font-medium select-none">
+                        <Checkbox
+                          checked={prop("checked", true) !== false && prop("checked", true) !== "false"}
+                          onCheckedChange={(c) => setProp("checked", Boolean(c))}
+                        />
+                        <span className="text-[11px] text-foreground/80">
+                          {prop("checked", true) !== false && prop("checked", true) !== "false" ? "默认开启 (ON)" : "默认关闭 (OFF)"}
+                        </span>
+                      </label>
+                    </div>
+                  </>
+                )}
+
+                {/* Web Slider */}
+                {element.type === "web-slider" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">字段标签</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("label", "带宽限制 (Mbps)"))}
+                        onChange={(e) => setProp("label", e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">当前数值</span>
+                      <NumField
+                        value={Number(prop("value", 60))}
+                        min={Number(prop("min", 0))}
+                        max={Number(prop("max", 100))}
+                        onChange={(v) => setProp("value", v)}
+                        suffix="%"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Web Transfer */}
+                {element.type === "web-transfer" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">左栏标题</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("sourceTitle", "可选字段 (4)"))}
+                        onChange={(e) => setProp("sourceTitle", e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                    <OptionsListEditor
+                      title="可选源列表"
+                      mode="none"
+                      value={String(prop("sourceItems", "用户 ID,电子邮箱,注册时间,最后登录"))}
+                      onChange={(v) => setProp("sourceItems", v)}
+                      placeholder="字段名称..."
+                    />
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">右栏标题</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("targetTitle", "已选导出字段 (2)"))}
+                        onChange={(e) => setProp("targetTitle", e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                    <OptionsListEditor
+                      title="已选目标列表"
+                      mode="none"
+                      value={String(prop("targetItems", "真实姓名,手机号码"))}
+                      onChange={(v) => setProp("targetItems", v)}
+                      placeholder="字段名称..."
+                    />
+                  </>
+                )}
+
+                {/* Web Upload */}
+                {element.type === "web-upload" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">主提示语</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("title", "点击或将文件拖拽至此区域上传"))}
+                        onChange={(e) => setProp("title", e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">辅助说明</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("hint", "支持 PNG、JPG、PDF 或 ZIP 归档文件，单文件不超过 50MB"))}
+                        onChange={(e) => setProp("hint", e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Web Color Picker */}
+                {element.type === "web-color-picker" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">字段标签</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("label", "主题主色"))}
+                        onChange={(e) => setProp("label", e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">选定颜色</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("color", "#0052D9"))}
+                        onChange={(e) => setProp("color", e.target.value)}
+                        className="h-7 text-xs font-mono uppercase"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Web Table */}
+                {element.type === "web-table" && (
+                  <OptionsListEditor
+                    title="表头列名定义"
+                    mode="none"
+                    value={String(prop("columns", "应用名称,版本号,所属集群,运行状态,最后更新,操作"))}
+                    onChange={(v) => setProp("columns", v)}
+                    placeholder="列名..."
+                  />
+                )}
+
+                {/* Web Descriptions */}
+                {element.type === "web-descriptions" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">列表标题</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("title", "服务实例基本详情"))}
+                        onChange={(e) => setProp("title", e.target.value)}
+                        className="h-7 text-xs font-bold"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">每行列数</span>
+                      <NumField
+                        value={Number(prop("cols", 3))}
+                        min={1}
+                        max={6}
+                        onChange={(v) => setProp("cols", Math.max(1, v))}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] text-muted-foreground font-mono uppercase">键值项列表 (分号或换行分隔，冒号对齐)</span>
+                      <textarea
+                        value={String(prop("items", "实例 ID:ins-982143;运行环境:生产集群-华南;公网 IP:119.29.29.29;创建时间:2026-08-30;计费模式:按量计费;到期状态:正常运行"))}
+                        onChange={(e) => setProp("items", e.target.value)}
+                        rows={4}
+                        className="w-full resize-y rounded-md border border-input bg-background p-1.5 font-mono text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring leading-relaxed"
+                        placeholder="键:值;键:值..."
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Web Tree */}
+                {element.type === "web-tree" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">目录标题</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("title", "资源文件目录"))}
+                        onChange={(e) => setProp("title", e.target.value)}
+                        className="h-7 text-xs font-bold"
+                      />
+                    </div>
+                    <OptionsListEditor
+                      title="节点列表 (含 . 渲染为文件，:open 展开)"
+                      mode="none"
+                      value={String(prop("nodes", "src 源代码:open,components 界面组件,assets 媒体资源,package.json 配置"))}
+                      onChange={(v) => setProp("nodes", v)}
+                      placeholder="节点名称..."
+                    />
+                  </>
+                )}
+
+                {/* Web Collapse */}
+                {element.type === "web-collapse" && (
                   <div className="flex flex-col gap-1">
-                    <span className="text-[10px] text-muted-foreground">节点文本</span>
+                    <span className="text-[10px] text-muted-foreground font-mono uppercase">折叠面板 (标题:正文:open;...)</span>
                     <textarea
-                      value={String(prop("text", ""))}
-                      onChange={(e) => setProp("text", e.target.value)}
-                      placeholder="输入流程图节点文字..."
-                      rows={2}
-                      className="w-full resize-y rounded-md border border-input bg-background p-1.5 text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      value={String(prop("panels", "通用配置规则:支持自定义配置默认路由与访问策略;安全与防火墙:已开启 DDoS 基础防护与白名单拦截:open;日志归档策略:按日切分并保留最近 180 天"))}
+                      onChange={(e) => setProp("panels", e.target.value)}
+                      rows={4}
+                      className="w-full resize-y rounded-md border border-input bg-background p-1.5 font-sans text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring leading-relaxed"
+                      placeholder="面板标题:面板描述文本:open;..."
                     />
                   </div>
+                )}
+
+                {/* Web Statistic Card */}
+                {element.type === "web-statistic-card" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">指标标题</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("title", "今日活跃用户数 (DAU)"))}
+                        onChange={(e) => setProp("title", e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">指标数值</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("value", "148,290"))}
+                        onChange={(e) => setProp("value", e.target.value)}
+                        className="h-7 text-xs font-mono font-bold"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">涨跌幅度</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("delta", "+18.4%"))}
+                        onChange={(e) => setProp("delta", e.target.value)}
+                        className="h-7 text-xs font-mono"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">比较说明</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("subText", "较昨日同期"))}
+                        onChange={(e) => setProp("subText", e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between pt-0.5">
+                      <span className="text-[10px] text-muted-foreground">正向增长</span>
+                      <label className="flex items-center gap-2 cursor-pointer text-xs font-medium select-none">
+                        <Checkbox
+                          checked={prop("isPositive", true) !== false && prop("isPositive", true) !== "false"}
+                          onCheckedChange={(c) => setProp("isPositive", Boolean(c))}
+                        />
+                        <span className="text-[11px] text-foreground/80">
+                          {prop("isPositive", true) !== false && prop("isPositive", true) !== "false" ? "绿色上涨 (▲)" : "红色下跌 (▼)"}
+                        </span>
+                      </label>
+                    </div>
+                  </>
+                )}
+
+                {/* Web Tag */}
+                {element.type === "web-tag" && (
+                  <OptionsListEditor
+                    title="标签组 (支持 :success/:warning/:danger/:info)"
+                    mode="none"
+                    value={String(prop("tags", "运行中:success,待处理:warning,执行失败:danger,离线排队:default"))}
+                    onChange={(v) => setProp("tags", v)}
+                    placeholder="标签名:状态..."
+                  />
+                )}
+
+                {/* Web Timeline */}
+                {element.type === "web-timeline" && (
+                  <OptionsListEditor
+                    title="时间轴节点 (支持 :done/:process/:pending)"
+                    mode="none"
+                    value={String(prop("events", "14:32:45 提交发布单:done,14:35:10 自动化单元测试通过:done,14:40:00 灰度发布至50%流量:process,15:00:00 全量上线:pending"))}
+                    onChange={(v) => setProp("events", v)}
+                    placeholder="时间 事件名称:状态..."
+                  />
+                )}
+
+                {/* Web Badge */}
+                {element.type === "web-badge" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">徽章名称</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("label", "未读消息"))}
+                        onChange={(e) => setProp("label", e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">角标数字</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("count", "99+"))}
+                        onChange={(e) => setProp("count", e.target.value)}
+                        className="h-7 text-xs font-mono font-bold"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Web Avatar Group */}
+                {element.type === "web-avatar-group" && (
+                  <>
+                    <OptionsListEditor
+                      title="头像缩写列表"
+                      mode="none"
+                      value={String(prop("initials", "TX,BP,AL,WD"))}
+                      onChange={(v) => setProp("initials", v)}
+                      placeholder="头像缩写..."
+                    />
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">溢出文案</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("overflowText", "+6"))}
+                        onChange={(e) => setProp("overflowText", e.target.value)}
+                        className="h-7 text-xs font-mono font-bold"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Web Modal / Web Drawer */}
+                {(element.type === "web-modal" || element.type === "web-drawer") && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">标题名称</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("title", element.type === "web-modal" ? "新建集群节点配置" : "查看实例运行详情"))}
+                        onChange={(e) => setProp("title", e.target.value)}
+                        className="h-7 text-xs font-bold"
+                      />
+                    </div>
+                    {element.type === "web-modal" && (
+                      <div className="flex flex-col gap-1">
+                        <span className="text-[10px] text-muted-foreground">正文说明内容</span>
+                        <textarea
+                          value={String(prop("content", "请确认节点分配的 CPU 与内存资源，配置提交后将触发自动化部署流水线。"))}
+                          onChange={(e) => setProp("content", e.target.value)}
+                          rows={3}
+                          className="w-full resize-y rounded-md border border-input bg-background p-1.5 text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                        />
+                      </div>
+                    )}
+                    <div className="flex items-center gap-1.5 pt-0.5">
+                      <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                        <span className="w-12 shrink-0 text-[10px] text-muted-foreground">确定文案</span>
+                        <Input
+                          size="sm"
+                          value={String(prop("confirmText", element.type === "web-modal" ? "立即创建" : "保存修改"))}
+                          onChange={(e) => setProp("confirmText", e.target.value)}
+                          className="h-7 text-xs"
+                        />
+                      </div>
+                      <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                        <span className="w-12 shrink-0 text-[10px] text-muted-foreground">取消文案</span>
+                        <Input
+                          size="sm"
+                          value={String(prop("cancelText", element.type === "web-modal" ? "取消" : "关闭"))}
+                          onChange={(e) => setProp("cancelText", e.target.value)}
+                          className="h-7 text-xs"
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Web Alert */}
+                {element.type === "web-alert" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">提示标题</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("title", "系统维护升级通知"))}
+                        onChange={(e) => setProp("title", e.target.value)}
+                        className="h-7 text-xs font-bold"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">详细说明</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("description", "底层网络将于今日 24:00 进行例行维护，请提前做好数据保存。"))}
+                        onChange={(e) => setProp("description", e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">提示基调</span>
+                      <div className="grid grid-cols-4 gap-1 flex-1">
+                        {["info", "success", "warning", "error"].map((t) => (
+                          <button
+                            key={t}
+                            type="button"
+                            onClick={() => setProp("tone", t)}
+                            className={cn(
+                              "h-6 rounded text-[9px] font-mono uppercase border",
+                              prop("tone", "warning") === t
+                                ? "bg-foreground text-background border-foreground font-bold"
+                                : "bg-transparent text-muted-foreground border-border"
+                            )}
+                          >
+                            {t}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Web Popconfirm */}
+                {element.type === "web-popconfirm" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">提示问题</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("title", "确定要永久删除该记录吗？"))}
+                        onChange={(e) => setProp("title", e.target.value)}
+                        className="h-7 text-xs font-medium"
+                      />
+                    </div>
+                    <div className="flex items-center gap-1.5 pt-0.5">
+                      <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                        <span className="w-12 shrink-0 text-[10px] text-muted-foreground">确定文案</span>
+                        <Input
+                          size="sm"
+                          value={String(prop("confirmText", "确定"))}
+                          onChange={(e) => setProp("confirmText", e.target.value)}
+                          className="h-7 text-xs font-bold"
+                        />
+                      </div>
+                      <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                        <span className="w-12 shrink-0 text-[10px] text-muted-foreground">取消文案</span>
+                        <Input
+                          size="sm"
+                          value={String(prop("cancelText", "取消"))}
+                          onChange={(e) => setProp("cancelText", e.target.value)}
+                          className="h-7 text-xs"
+                        />
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Web Notification */}
+                {element.type === "web-notification" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">通知标题</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("title", "任务执行成功"))}
+                        onChange={(e) => setProp("title", e.target.value)}
+                        className="h-7 text-xs font-bold"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] text-muted-foreground">通知正文</span>
+                      <textarea
+                        value={String(prop("message", "您的数据导出任务已完成，点击可直接下载生成的报表文件。"))}
+                        onChange={(e) => setProp("message", e.target.value)}
+                        rows={2}
+                        className="w-full resize-y rounded-md border border-input bg-background p-1.5 text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">时间戳</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("time", "刚刚"))}
+                        onChange={(e) => setProp("time", e.target.value)}
+                        className="h-7 text-xs font-mono"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Web Tips */}
+                {element.type === "web-tips" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">提示标题</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("title", "系统状态提示"))}
+                        onChange={(e) => setProp("title", e.target.value)}
+                        className="h-7 text-xs font-bold"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] text-muted-foreground">提示说明内容</span>
+                      <textarea
+                        value={String(prop("content", "当前节点资源利用率正常，网络链路响应时延 12ms。"))}
+                        onChange={(e) => setProp("content", e.target.value)}
+                        rows={2}
+                        className="w-full resize-y rounded-md border border-input bg-background p-1.5 text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">状态基调</span>
+                      <div className="grid grid-cols-5 gap-1 flex-1">
+                        {["info", "success", "warning", "error", "default"].map((t) => (
+                          <button
+                            key={t}
+                            type="button"
+                            onClick={() => setProp("tone", t)}
+                            className={cn(
+                              "h-6 rounded text-[9px] font-mono uppercase border",
+                              prop("tone", "info") === t
+                                ? "bg-foreground text-background border-foreground font-bold"
+                                : "bg-transparent text-muted-foreground border-border"
+                            )}
+                          >
+                            {t}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">箭头方向</span>
+                      <div className="grid grid-cols-4 gap-1 flex-1">
+                        {["top", "bottom", "left", "right"].map((p) => (
+                          <button
+                            key={p}
+                            type="button"
+                            onClick={() => setProp("placement", p)}
+                            className={cn(
+                              "h-6 rounded text-[9px] font-mono uppercase border",
+                              prop("placement", "top") === p
+                                ? "bg-foreground text-background border-foreground font-bold"
+                                : "bg-transparent text-muted-foreground border-border"
+                            )}
+                          >
+                            {p}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between pt-0.5">
+                      <span className="text-[10px] text-muted-foreground">气泡尖角</span>
+                      <label className="flex items-center gap-2 cursor-pointer text-xs font-medium select-none">
+                        <Checkbox
+                          checked={prop("showArrow", true) !== false && prop("showArrow", true) !== "false"}
+                          onCheckedChange={(c) => setProp("showArrow", Boolean(c))}
+                        />
+                        <span className="text-[11px] text-foreground/80">显示指向尖角</span>
+                      </label>
+                    </div>
+                  </>
+                )}
+
+                {/* Web Message */}
+                {element.type === "web-message" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">提示文本</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("content", "操作成功：业务数据已实时同步至集群"))}
+                        onChange={(e) => setProp("content", e.target.value)}
+                        className="h-7 text-xs font-medium"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">状态类型</span>
+                      <div className="grid grid-cols-5 gap-1 flex-1">
+                        {["success", "warning", "error", "info", "loading"].map((t) => (
+                          <button
+                            key={t}
+                            type="button"
+                            onClick={() => setProp("tone", t)}
+                            className={cn(
+                              "h-6 rounded text-[9px] font-mono uppercase border",
+                              prop("tone", "success") === t
+                                ? "bg-foreground text-background border-foreground font-bold"
+                                : "bg-transparent text-muted-foreground border-border"
+                            )}
+                          >
+                            {t}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between pt-0.5">
+                      <span className="text-[10px] text-muted-foreground">关闭按钮</span>
+                      <label className="flex items-center gap-2 cursor-pointer text-xs font-medium select-none">
+                        <Checkbox
+                          checked={prop("closable", true) !== false && prop("closable", true) !== "false"}
+                          onCheckedChange={(c) => setProp("closable", Boolean(c))}
+                        />
+                        <span className="text-[11px] text-foreground/80">允许手动关闭 [X]</span>
+                      </label>
+                    </div>
+                  </>
+                )}
+
+                {/* Web Empty State */}
+                {element.type === "web-empty-state" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">缺省主标题</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("title", "暂无关联业务数据"))}
+                        onChange={(e) => setProp("title", e.target.value)}
+                        className="h-7 text-xs font-bold"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] text-muted-foreground">详细说明</span>
+                      <textarea
+                        value={String(prop("description", "当前筛选条件下未检索到任何符合条件的结果，请重新输入或清空重置"))}
+                        onChange={(e) => setProp("description", e.target.value)}
+                        rows={2}
+                        className="w-full resize-y rounded-md border border-input bg-background p-1.5 text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">按钮文案</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("buttonText", "新建一条记录"))}
+                        onChange={(e) => setProp("buttonText", e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Web Admin Layout */}
+                {element.type === "web-admin-layout" && (
+                  <div className="flex items-center gap-2">
+                    <span className="w-16 shrink-0 text-[10px] text-muted-foreground">后台名称</span>
+                    <Input
+                      size="sm"
+                      value={String(prop("systemTitle", "BLUEPEN 管理后台"))}
+                      onChange={(e) => setProp("systemTitle", e.target.value)}
+                      className="h-7 text-xs font-bold"
+                    />
+                  </div>
+                )}
+
+                {/* Web Filter Bar */}
+                {element.type === "web-filter-bar" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">搜索提示</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("keyword", "搜索关键词..."))}
+                        onChange={(e) => setProp("keyword", e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">部门筛选</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("dept", "全部部门"))}
+                        onChange={(e) => setProp("dept", e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">日期范围</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("dateRange", "2026-08-01 ~ 2026-08-31"))}
+                        onChange={(e) => setProp("dateRange", e.target.value)}
+                        className="h-7 text-xs font-mono"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Web CRUD Table */}
+                {element.type === "web-crud-table" && (
+                  <div className="flex items-center gap-2">
+                    <span className="w-16 shrink-0 text-[10px] text-muted-foreground">页面标题</span>
+                    <Input
+                      size="sm"
+                      value={String(prop("pageTitle", "服务集群实例列表"))}
+                      onChange={(e) => setProp("pageTitle", e.target.value)}
+                      className="h-7 text-xs font-bold"
+                    />
+                  </div>
+                )}
+
+                {/* Web Form Layout */}
+                {element.type === "web-form-layout" && (
+                  <div className="flex items-center gap-2">
+                    <span className="w-16 shrink-0 text-[10px] text-muted-foreground">表单标题</span>
+                    <Input
+                      size="sm"
+                      value={String(prop("formTitle", "新建企业级微服务实例"))}
+                      onChange={(e) => setProp("formTitle", e.target.value)}
+                      className="h-7 text-xs font-bold"
+                    />
+                  </div>
+                )}
+
+                {/* Web Login Card */}
+                {element.type === "web-login-card" && (
+                  <div className="flex items-center gap-2">
+                    <span className="w-16 shrink-0 text-[10px] text-muted-foreground">系统标题</span>
+                    <Input
+                      size="sm"
+                      value={String(prop("systemName", "BLUEPEN PROTOTYPE"))}
+                      onChange={(e) => setProp("systemName", e.target.value)}
+                      className="h-7 text-xs font-bold font-mono"
+                    />
+                  </div>
+                )}
+
+                {/* Web Steps Form */}
+                {element.type === "web-steps-form" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">步骤标题</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("stepTitle", "第一步：填写基础集群参数"))}
+                        onChange={(e) => setProp("stepTitle", e.target.value)}
+                        className="h-7 text-xs font-bold"
+                      />
+                    </div>
+                    <OptionsListEditor
+                      title="步骤列表"
+                      mode="none"
+                      value={String(prop("steps", "填写基本信息,配置权限策略,关联数据源,完成创建"))}
+                      onChange={(v) => setProp("steps", v)}
+                      placeholder="步骤标题..."
+                    />
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">当前步骤</span>
+                      <NumField
+                        value={Number(prop("current", 1))}
+                        min={1}
+                        max={10}
+                        onChange={(v) => setProp("current", Math.max(1, v))}
+                      />
+                    </div>
+                  </>
                 )}
               </div>
             </Section>
@@ -1966,7 +3543,7 @@ export function RightPanel({
                                     </button>
                                   }
                                 />
-                                <PopoverPopup backdrop={true} align="start" sideOffset={6} className="p-0 border-border/80 shadow-xl">
+                                <PopoverPopup backdrop={true} align="start" sideOffset={6} className="border-none bg-transparent shadow-none p-0 before:hidden [&>[data-slot=popover-viewport]]:p-0">
                                   <ColorPickerPanel
                                     title="渐变起始色"
                                     color={gradientStart}
@@ -1988,7 +3565,7 @@ export function RightPanel({
                                     </button>
                                   }
                                 />
-                                <PopoverPopup backdrop={true} align="start" sideOffset={6} className="p-0 border-border/80 shadow-xl">
+                                <PopoverPopup backdrop={true} align="start" sideOffset={6} className="border-none bg-transparent shadow-none p-0 before:hidden [&>[data-slot=popover-viewport]]:p-0">
                                   <ColorPickerPanel
                                     title="渐变结束色"
                                     color={gradientEnd}
@@ -2028,28 +3605,6 @@ export function RightPanel({
                       />
                       <span className="text-[11px] font-medium text-foreground/80">{isLineLike ? "线条" : "描边"}</span>
                     </label>
-
-                    {strokeEnabled && !isLineLike && (
-                      <div className="flex items-center gap-1">
-                        <Menu>
-                          <MenuTrigger
-                            render={
-                              <Button variant="ghost" size="xs" className="h-5 px-1.5 text-[10px] text-muted-foreground gap-0.5">
-                                <span>
-                                  {strokePosition === "outside" ? "外描边" : strokePosition === "center" ? "居中" : "内描边"}
-                                </span>
-                                <ChevronDown className="size-2.5 opacity-60" />
-                              </Button>
-                            }
-                          />
-                          <MenuPopup align="end">
-                            <MenuItem onClick={() => setProp("strokePosition", "inside")}>内描边 (Inside)</MenuItem>
-                            <MenuItem onClick={() => setProp("strokePosition", "center")}>居中描边 (Center)</MenuItem>
-                            <MenuItem onClick={() => setProp("strokePosition", "outside")}>外描边 (Outside)</MenuItem>
-                          </MenuPopup>
-                        </Menu>
-                      </div>
-                    )}
                   </div>
 
                   {strokeEnabled && (
@@ -2064,22 +3619,24 @@ export function RightPanel({
                       />
 
                       {/* Width & Style Row */}
-                      <div className="mt-1 flex items-center gap-1.5">
+                      <div className="mt-1 flex items-center gap-2">
                         <NumField
-                          label=""
+                          label="粗细"
                           value={borderWidth}
-                          min={1}
-                          onChange={(v) => setProp("borderWidth", Math.max(1, v))}
+                          min={0.5}
+                          step={0.5}
+                          max={64}
+                          onChange={(v) => setProp("borderWidth", Math.max(0.5, v))}
                           suffix="px"
                         />
                         <Menu>
                           <MenuTrigger
                             render={
-                              <Button variant="outline" size="xs" className="h-7 w-20 justify-between text-[10px]">
+                              <Button variant="outline" size="xs" className="h-7 flex-1 justify-between text-xs">
                                 <span>
                                   {strokeStyle === "dashed" ? "虚线" : strokeStyle === "dotted" ? "点线" : "实线"}
                                 </span>
-                                <ChevronDown className="size-2.5" />
+                                <ChevronDown className="size-3 opacity-60" />
                               </Button>
                             }
                           />
@@ -2089,24 +3646,45 @@ export function RightPanel({
                             <MenuItem onClick={() => setProp("strokeStyle", "dotted")}>点线 (Dotted)</MenuItem>
                           </MenuPopup>
                         </Menu>
+                      </div>
 
-                        {!isLineLike && (
+                      {/* Stroke Position & Sides Row */}
+                      {!isLineLike && (
+                        <div className="flex items-center gap-2">
                           <Menu>
                             <MenuTrigger
                               render={
-                                <Button variant="outline" size="xs" className="h-7 w-20 justify-between text-[10px]">
-                                  <span>
-                                    {strokeSides === "top"
-                                      ? "仅上"
-                                      : strokeSides === "bottom"
-                                      ? "仅下"
-                                      : strokeSides === "left"
-                                      ? "仅左"
-                                      : strokeSides === "right"
-                                      ? "仅右"
-                                      : "全边框"}
+                                <Button variant="outline" size="xs" className="h-7 flex-1 justify-between text-xs">
+                                  <span className="truncate">
+                                    {strokePosition === "outside" ? "外描边" : strokePosition === "center" ? "居中描边" : "内描边"}
                                   </span>
-                                  <ChevronDown className="size-2.5" />
+                                  <ChevronDown className="size-3 opacity-60" />
+                                </Button>
+                              }
+                            />
+                            <MenuPopup align="start">
+                              <MenuItem onClick={() => setProp("strokePosition", "inside")}>内描边 (Inside)</MenuItem>
+                              <MenuItem onClick={() => setProp("strokePosition", "center")}>居中描边 (Center)</MenuItem>
+                              <MenuItem onClick={() => setProp("strokePosition", "outside")}>外描边 (Outside)</MenuItem>
+                            </MenuPopup>
+                          </Menu>
+
+                          <Menu>
+                            <MenuTrigger
+                              render={
+                                <Button variant="outline" size="xs" className="h-7 flex-1 justify-between text-xs">
+                                  <span className="truncate">
+                                    {strokeSides === "top"
+                                      ? "仅上边框"
+                                      : strokeSides === "bottom"
+                                      ? "仅下边框"
+                                      : strokeSides === "left"
+                                      ? "仅左边框"
+                                      : strokeSides === "right"
+                                      ? "仅右边框"
+                                      : "全部边框"}
+                                  </span>
+                                  <ChevronDown className="size-3 opacity-60" />
                                 </Button>
                               }
                             />
@@ -2118,8 +3696,8 @@ export function RightPanel({
                               <MenuItem onClick={() => setProp("strokeSides", "right")}>仅右边框 (Right)</MenuItem>
                             </MenuPopup>
                           </Menu>
-                        )}
-                      </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -2137,6 +3715,7 @@ export function RightPanel({
               <div className="flex flex-col gap-2">
                 {/* Text Content */}
                 <textarea
+                  data-slot="element-text-input"
                   value={textContent}
                   onChange={(e) => {
                     setProp("text", e.target.value);
@@ -2297,4 +3876,4 @@ export function RightPanel({
       )}
     </aside>
   );
-}
+});

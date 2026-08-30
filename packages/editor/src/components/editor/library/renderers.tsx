@@ -1,5 +1,6 @@
 import type { ComponentType } from "../types";
 import { cn } from "@bluepen/editor/lib/utils";
+import { renderWebLibraryComponent } from "./web-renderers";
 import {
   SkeletonText,
   SkeletonImage,
@@ -97,6 +98,11 @@ export function renderLibraryComponent(
   props: Props,
   children?: React.ReactNode,
 ) {
+  if (type.startsWith("web-")) {
+    const webRes = renderWebLibraryComponent(type, props, children);
+    if (webRes) return webRes;
+  }
+
   switch (type) {
     // Basic Wireframe
     case "text": return <TextPreview props={props} />;
@@ -1490,19 +1496,46 @@ function RatingPreview({ props }: { props?: Props }) {
 }
 
 function ImagePreview({ props }: { props: Props }) {
+  const src = props.src ? String(props.src) : "";
   const label = String(val(props, "label", "图片占位"));
+  const fit = String(val(props, "fit", "cover")) as "cover" | "contain" | "fill" | "none" | "scale-down";
+  const radius = Number(val(props, "radius", 6));
   const fill = String(val(props, "fill", "#F4F4F5"));
   const stroke = String(val(props, "stroke", "#D4D4D8"));
-  const strokeEnabled = props.strokeEnabled !== false && props.strokeEnabled !== "false";
-  const strokeStyle = String(val(props, "strokeStyle", "dashed"));
+  const strokeEnabled = Boolean(props.strokeEnabled);
+  const strokeStyle = String(val(props, "strokeStyle", "solid"));
   const borderWidth = Number(val(props, "borderWidth", 1));
-  const radius = Number(val(props, "radius", 6));
+
+  if (src) {
+    return (
+      <div
+        className="relative size-full overflow-hidden select-none"
+        style={{
+          borderRadius: radius,
+          border: strokeEnabled ? `${borderWidth}px ${strokeStyle} ${stroke}` : "none",
+          backgroundColor: fill === "transparent" ? undefined : fill,
+        }}
+      >
+        <img
+          src={src}
+          alt={label || "Image"}
+          className="size-full pointer-events-none select-none block"
+          style={{
+            objectFit: fit,
+            borderRadius: radius > 0 ? Math.max(0, radius - (strokeEnabled ? borderWidth : 0)) : 0,
+          }}
+          draggable={false}
+        />
+      </div>
+    );
+  }
+
   return (
     <div
-      className="relative flex size-full items-center justify-center overflow-hidden"
+      className="relative flex size-full items-center justify-center overflow-hidden select-none"
       style={{
         backgroundColor: fill,
-        border: strokeEnabled ? `${borderWidth}px ${strokeStyle} ${stroke}` : "none",
+        border: (props.strokeEnabled !== false && props.strokeEnabled !== "false") ? `${borderWidth}px ${props.strokeStyle || "dashed"} ${stroke}` : "none",
         borderRadius: radius,
       }}
     >
@@ -2005,7 +2038,7 @@ function LinePreview({ props }: { props: Props }) {
   const strokeEnabled = props.strokeEnabled !== false && props.strokeEnabled !== "false";
   const stroke = strokeEnabled ? String(val(props, "stroke", "#71717A")) : "transparent";
   const strokeStyle = String(val(props, "strokeStyle", "solid"));
-  const borderWidth = Number(val(props, "borderWidth", 1));
+  const borderWidth = Number(val(props, "borderWidth", 1.5));
   const strokeDash = strokeStyle === "dashed" ? "6 4" : strokeStyle === "dotted" ? "2 3" : undefined;
   return (
     <div className="relative flex h-full w-full items-center justify-center pointer-events-none">
@@ -2029,7 +2062,7 @@ function ArrowPreview({ props }: { props: Props }) {
   const strokeEnabled = props.strokeEnabled !== false && props.strokeEnabled !== "false";
   const stroke = strokeEnabled ? String(val(props, "stroke", "#3B82F6")) : "transparent";
   const strokeStyle = String(val(props, "strokeStyle", "solid"));
-  const borderWidth = Number(val(props, "borderWidth", 1));
+  const borderWidth = Number(val(props, "borderWidth", 1.5));
   const strokeDash = strokeStyle === "dashed" ? "6 4" : strokeStyle === "dotted" ? "2 3" : undefined;
   const markerId = `arrowhead-${stroke.replace(/[^a-zA-Z0-9]/g, "")}`;
   return (

@@ -11,11 +11,12 @@ import {
   Play,
   Grid2X2,
   Download,
-  CheckCircle2,
-  CircleDashed,
+  Check,
   Save,
   FolderOpen,
   FilePlus2,
+  Sun,
+  Moon,
 } from "lucide-react";
 
 const ZOOM_PRESETS = [50, 75, 100, 125, 150, 200];
@@ -30,6 +31,8 @@ interface TopBarProps {
   activeTool?: string;
   previewing: boolean;
   demo?: boolean;
+  theme?: "dark" | "light";
+  onToggleTheme?: () => void;
   onUndo: () => void;
   onRedo: () => void;
   onSelectTool?: () => void;
@@ -53,6 +56,8 @@ export function TopBar({
   canRedo,
   previewing,
   showGrid,
+  theme = "dark",
+  onToggleTheme,
   onUndo,
   onRedo,
   onToggleGrid,
@@ -66,79 +71,97 @@ export function TopBar({
   onExport,
 }: TopBarProps) {
   return (
-    <header className="flex h-10 shrink-0 items-center justify-between border-b bg-background/75 px-2 backdrop-blur-xl supports-[backdrop-filter]:bg-background/75">
-      {/* Left */}
-      <div className="flex items-center gap-1">
-        <div className="flex items-center gap-1.5 pl-1 pr-1.5">
-          <img
-            src="/brand/bluepen-icon.svg"
-            alt="Bluepen"
-            className="size-[18px] shrink-0"
-          />
-          <span className="text-sm font-semibold tracking-tight text-foreground">{projectName}</span>
+    <header className="flex h-10 shrink-0 select-none items-center justify-between border-b border-border bg-surface px-3 text-foreground">
+      {/* Left: Brand & File Actions */}
+      <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-2 pr-1.5">
+          <span className="font-mono text-xs font-bold tracking-tight text-foreground uppercase">{projectName}</span>
           <div
-            className="flex items-center justify-center text-muted-foreground ml-0.5"
+            className="flex items-center justify-center"
             title={dirty ? "Unsaved changes" : "All changes saved"}
             aria-label={dirty ? "Unsaved changes" : "All changes saved"}
           >
             {dirty ? (
-              <CircleDashed aria-hidden="true" className="size-3.5 text-muted-foreground" />
+              <span className="size-2 rounded-full bg-accent animate-pulse shadow-[0_0_6px_var(--accent)]" />
             ) : (
-              <CheckCircle2 aria-hidden="true" className="size-3.5 text-emerald-500" />
+              <span className="size-1.5 rounded-full bg-success/80" />
             )}
           </div>
         </div>
 
-        <Separator orientation="vertical" className="mx-1 h-4" />
+        <Separator orientation="vertical" className="mx-1 h-3.5 bg-border" />
 
         <Button
           variant="ghost"
           size="icon-xs"
           onClick={onUndo}
           disabled={!canUndo}
-          aria-label="Undo"
-          title="Undo (Ctrl+Z)"
+          aria-label="撤销"
+          title="撤销 (Ctrl+Z)"
         >
-          <Undo2 aria-hidden="true" />
+          <Undo2 aria-hidden="true" className="size-3.5" />
         </Button>
         <Button
           variant="ghost"
           size="icon-xs"
           onClick={onRedo}
           disabled={!canRedo}
-          aria-label="Redo"
-          title="Redo (Ctrl+Y)"
+          aria-label="重做"
+          title="重做 (Ctrl+Y / Ctrl+Shift+Z)"
         >
-          <Redo2 aria-hidden="true" />
+          <Redo2 aria-hidden="true" className="size-3.5" />
         </Button>
 
-        <Separator orientation="vertical" className="mx-1 h-4" />
+        <Separator orientation="vertical" className="mx-1 h-3.5 bg-border" />
 
-        <Button variant="ghost" size="icon-xs" onClick={onNew} aria-label="New project" title="New project (Ctrl+N)">
-          <FilePlus2 aria-hidden="true" />
+        <Button variant="ghost" size="icon-xs" onClick={onNew} aria-label="新建项目" title="新建项目 (Ctrl+N)">
+          <FilePlus2 aria-hidden="true" className="size-3.5" />
         </Button>
-        <Button variant="ghost" size="icon-xs" onClick={onOpen} aria-label="Open project" title="Open project (Ctrl+O)">
-          <FolderOpen aria-hidden="true" />
+        <Button variant="ghost" size="icon-xs" onClick={onOpen} aria-label="打开项目" title="打开项目 (Ctrl+O)">
+          <FolderOpen aria-hidden="true" className="size-3.5" />
         </Button>
-        <Button variant="ghost" size="icon-xs" onClick={onSave} aria-label="Save project" title="Save (Ctrl+S)">
-          <Save aria-hidden="true" />
+        <Button variant="ghost" size="icon-xs" onClick={onSave} aria-label="保存项目" title="保存项目 (Ctrl+S)">
+          <Save aria-hidden="true" className="size-3.5" />
         </Button>
       </div>
 
-      {/* Right */}
-      <div className="flex items-center gap-1">
+      {/* Right: Mode & Tool Controls */}
+      <div className="flex items-center gap-1.5">
+        {/* Theme switch */}
+        {onToggleTheme && (
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            onClick={onToggleTheme}
+            aria-label={theme === "dark" ? "切换为浅色模式" : "切换为深色模式"}
+            title={theme === "dark" ? "切换为浅色模式" : "切换为深色模式"}
+            className="text-muted-foreground hover:text-foreground"
+          >
+            {theme === "dark" ? (
+              <Sun aria-hidden="true" className="size-3.5" />
+            ) : (
+              <Moon aria-hidden="true" className="size-3.5" />
+            )}
+          </Button>
+        )}
+
+        <Separator orientation="vertical" className="mx-1 h-3.5 bg-border" />
+
         {/* 1. Preview */}
         <Button
-          variant="ghost"
+          variant={previewing ? "default" : "ghost"}
           size="icon-xs"
           onClick={onPreview}
-          aria-label={previewing ? "Exit preview (Esc)" : "Preview (Prototype)"}
-          title={previewing ? "Exit preview (Esc)" : "Preview (Prototype)"}
-          className={cn("relative", previewing && "bg-foreground text-background hover:bg-foreground")}
+          aria-label={previewing ? "退出原型预览 (Esc)" : "原型预览 (Prototype)"}
+          title={previewing ? "退出原型预览 (Esc)" : "原型预览 (Prototype)"}
+          className={cn(
+            "relative",
+            previewing && "bg-primary text-primary-foreground font-mono",
+          )}
         >
           <Play aria-hidden="true" className="size-3.5" />
           {previewing && (
-            <span className="absolute -bottom-0.5 -right-0.5 size-1.5 rounded-full bg-orange-400" />
+            <span className="absolute -top-0.5 -right-0.5 size-1.5 rounded-full bg-accent" />
           )}
         </Button>
 
@@ -147,26 +170,25 @@ export function TopBar({
           variant="ghost"
           size="icon-xs"
           onClick={onExport}
-          aria-label="Export PNG"
-          title="Export PNG"
+          aria-label="导出为 PNG"
+          title="导出为 PNG"
         >
           <Download aria-hidden="true" className="size-3.5" />
         </Button>
 
         {/* 3. Grid toggle */}
         <Button
-          variant="ghost"
+          variant={showGrid ? "secondary" : "ghost"}
           size="icon-xs"
           onClick={onToggleGrid}
-          aria-label={showGrid ? "Hide grid" : "Show grid"}
-          title={showGrid ? "Hide grid" : "Show grid"}
-          className={cn("relative", showGrid && "bg-foreground text-background hover:bg-foreground")}
+          aria-label={showGrid ? "隐藏画布网格" : "显示画布网格"}
+          title={showGrid ? "隐藏画布网格" : "显示画布网格"}
+          className={cn("relative", showGrid && "border border-border-visible text-foreground")}
         >
           <Grid2X2 aria-hidden="true" className="size-3.5" />
-          {showGrid && (
-            <span className="absolute -bottom-0.5 -right-0.5 size-1.5 rounded-full bg-orange-400" />
-          )}
         </Button>
+
+        <Separator orientation="vertical" className="mx-1 h-3.5 bg-border" />
 
         {/* 4. Zoom */}
         <Menu>
@@ -175,41 +197,41 @@ export function TopBar({
               <Button
                 variant="ghost"
                 size="xs"
-                aria-label="Zoom options"
-                title="Zoom options"
-                className="gap-0.5 px-1.5 text-xs font-medium"
+                aria-label="画布缩放比例"
+                title="画布缩放比例"
+                className="gap-1 px-1.5 font-mono text-[11px] text-foreground hover:border hover:border-border-visible"
               >
-                {Math.round(zoom * 100)}%
-                <ChevronDown aria-hidden="true" className="size-3 opacity-60" />
+                <span>{Math.round(zoom * 100)}%</span>
+                <ChevronDown aria-hidden="true" className="size-3 text-muted-foreground" />
               </Button>
             }
           />
           <MenuPopup align="end">
-            <MenuItem onClick={onZoomIn} className="justify-between">
-              <span>Zoom in</span>
-              <span className="text-xs text-muted-foreground">Ctrl +</span>
+            <MenuItem onClick={onZoomIn} className="justify-between font-mono text-xs">
+              <span>放大</span>
+              <span className="text-[10px] text-muted-foreground">CTRL +</span>
             </MenuItem>
-            <MenuItem onClick={onZoomOut} className="justify-between">
-              <span>Zoom out</span>
-              <span className="text-xs text-muted-foreground">Ctrl -</span>
+            <MenuItem onClick={onZoomOut} className="justify-between font-mono text-xs">
+              <span>缩小</span>
+              <span className="text-[10px] text-muted-foreground">CTRL -</span>
             </MenuItem>
-            <MenuItem onClick={() => onZoomTo(1)} className="justify-between">
-              <span>Zoom to 100%</span>
-              <span className="text-xs text-muted-foreground">Ctrl 0</span>
+            <MenuItem onClick={() => onZoomTo(1)} className="justify-between font-mono text-xs">
+              <span>重置 100%</span>
+              <span className="text-[10px] text-muted-foreground">CTRL 0</span>
             </MenuItem>
-            <Separator className="my-1" />
+            <Separator className="my-1 bg-border" />
             {ZOOM_PRESETS.map((z) => (
               <MenuItem
                 key={z}
                 onClick={() => onZoomTo(z / 100)}
                 className={cn(
-                  "justify-between",
-                  Math.round(zoom * 100) === z && "text-foreground font-medium",
+                  "justify-between font-mono text-xs",
+                  Math.round(zoom * 100) === z && "text-foreground font-bold",
                 )}
               >
-                {z}%
+                <span>{z}%</span>
                 {Math.round(zoom * 100) === z && (
-                  <CheckCircle2 aria-hidden="true" className="size-3.5 text-orange-400" />
+                  <Check aria-hidden="true" className="size-3 text-foreground" />
                 )}
               </MenuItem>
             ))}

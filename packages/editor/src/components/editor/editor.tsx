@@ -31,6 +31,7 @@ import { library } from "./library/index";
 import { confirmLocal } from "./hooks/use-desktop";
 import { showToast } from "./hooks/use-toast";
 import { loadProjectLocal, saveProjectLocal, loadSettingsLocal, saveSettingsLocal } from "./hooks/local-store";
+import { processImageFile, extractImageFromClipboardData } from "./utils/image";
 import { cn } from "@bluepen/editor/lib/utils";
 
 function genId() {
@@ -132,6 +133,15 @@ export function Editor() {
   }, []);
   const [projectName, setProjectName] = useState("Untitled");
   const [dirty, setDirty] = useState(false);
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
+
+  const toggleTheme = useCallback(() => {
+    setTheme((prev) => {
+      const next = prev === "dark" ? "light" : "dark";
+      document.documentElement.classList.toggle("dark", next === "dark");
+      return next;
+    });
+  }, []);
 
   // Hydrate from local persistence on mount
   useEffect(() => {
@@ -156,6 +166,13 @@ export function Editor() {
       if (settings) {
         setZoom(settings.zoom ?? 1);
         setShowGrid(settings.showGrid ?? true);
+        if (settings.theme === "dark" || settings.theme === "light") {
+          setTheme(settings.theme);
+          document.documentElement.classList.toggle("dark", settings.theme === "dark");
+        } else {
+          const isDark = typeof document !== "undefined" && document.documentElement.classList.contains("dark");
+          setTheme(isDark ? "dark" : "light");
+        }
       }
       setDirty(false);
       setHydrated(true);
@@ -184,19 +201,29 @@ export function Editor() {
   useEffect(() => {
     if (!hydrated) return;
     const t = setTimeout(() => {
-      void saveSettingsLocal({ zoom, showGrid });
+      void saveSettingsLocal({ zoom, showGrid, theme });
     }, 600);
     return () => clearTimeout(t);
-  }, [zoom, showGrid, hydrated]);
+  }, [zoom, showGrid, theme, hydrated]);
+
+  const latestElementsRef = useRef(elements);
+  latestElementsRef.current = elements;
 
   const pushHistory = useCallback(
     (next: EditorElement[]) => {
       setHistory((prev) => {
         const trimmed = prev.slice(0, historyIndex + 1);
-        trimmed.push(JSON.parse(JSON.stringify(next)));
+        const snapshot =
+          typeof structuredClone === "function"
+            ? structuredClone(next)
+            : JSON.parse(JSON.stringify(next));
+        trimmed.push(snapshot);
+        if (trimmed.length > 50) {
+          trimmed.shift();
+        }
         return trimmed;
       });
-      setHistoryIndex((prev) => prev + 1);
+      setHistoryIndex((prev) => Math.min(prev + 1, 50));
     },
     [historyIndex],
   );
@@ -219,6 +246,29 @@ export function Editor() {
     [setElements, pushHistory],
   );
 
+  // Live update for dragging, resizing, rotating on canvas (does not push history on every tick)
+  const updateElementLive = useCallback(
+    (id: string, patch: Partial<EditorElement>) => {
+      const updateRecursive = (list: EditorElement[]): EditorElement[] => {
+        return list.map((node) => {
+          if (node.id === id) {
+            return { ...node, ...patch };
+          }
+          if (node.children && node.children.length > 0) {
+            return {
+              ...node,
+              children: updateRecursive(node.children),
+            };
+          }
+          return node;
+        });
+      };
+      setElements(updateRecursive(latestElementsRef.current));
+    },
+    [setElements],
+  );
+
+  // Discrete element updates (e.g. from RightPanel/Sidebar/Context-Menu), commits to history
   const updateElement = useCallback(
     (id: string, patch: Partial<EditorElement>) => {
       const updateRecursive = (list: EditorElement[]): EditorElement[] => {
@@ -235,14 +285,16 @@ export function Editor() {
           return node;
         });
       };
-      const next = updateRecursive(elements);
+      const next = updateRecursive(latestElementsRef.current);
       commit(next);
     },
-    [elements, commit],
+    [commit],
   );
 
-  const batchUpdateElements = useCallback(
+  // Live batch update for multi-element dragging/moving on canvas
+  const batchUpdateElementsLive = useCallback(
     (patches: Array<{ id: string; patch: Partial<EditorElement> }>) => {
+      if (!patches || patches.length === 0) return;
       const patchMap = new Map(patches.map((p) => [p.id, p.patch]));
       const updateRecursive = (list: EditorElement[]): EditorElement[] => {
         return list.map((node) => {
@@ -257,9 +309,9 @@ export function Editor() {
           return updated;
         });
       };
-      setElements(updateRecursive(elements));
+      setElements(updateRecursive(latestElementsRef.current));
     },
-    [elements, setElements],
+    [setElements],
   );
 
   const commitBatchUpdateElements = useCallback(
@@ -279,11 +331,15 @@ export function Editor() {
           return updated;
         });
       };
-      const next = updateRecursive(elements);
+      const next = updateRecursive(latestElementsRef.current);
       commit(next);
     },
-    [elements, commit],
+    [commit],
   );
+
+  const handleCommitCanvasGesture = useCallback(() => {
+    pushHistory(latestElementsRef.current);
+  }, [pushHistory]);
 
   const deleteElement = useCallback(
     (id: string) => {
@@ -305,6 +361,7 @@ export function Editor() {
         );
       commit(next);
       if (selectedId && doomed.has(selectedId)) setSelectedId(null);
+      setSelectedIds((prev) => prev.filter((item) => !doomed.has(item)));
     },
     [elements, commit, selectedId],
   );
@@ -324,11 +381,11 @@ export function Editor() {
       const el: EditorElement = {
         id: genId(),
         type,
-        name: lib?.label || type,
+        name: lib?.label || (type === "connector" ? "连接线" : type),
         x,
         y,
-        width: width ?? (lib?.defaultWidth || 200),
-        height: height ?? (lib?.defaultHeight || 100),
+        width: width ?? (lib?.defaultWidth || (type === "connector" ? 160 : 200)),
+        height: height ?? (lib?.defaultHeight || (type === "connector" ? 80 : 100)),
         rotation,
         opacity: 1,
         visible: true,
@@ -501,6 +558,117 @@ export function Editor() {
     [activeTool, addElement, elements],
   );
 
+  const lastCanvasPointerPosRef = useRef<{ x: number; y: number }>({ x: 200, y: 200 });
+
+  const insertImageFile = useCallback(
+    async (file: Blob | File, targetCanvasX?: number, targetCanvasY?: number) => {
+      try {
+        const processed = await processImageFile(file);
+
+        const snap = (v: number) => Math.round(v / 20) * 20;
+
+        let posX = targetCanvasX !== undefined ? targetCanvasX : lastCanvasPointerPosRef.current.x;
+        let posY = targetCanvasY !== undefined ? targetCanvasY : lastCanvasPointerPosRef.current.y;
+
+        if (targetCanvasX === undefined) {
+          const offset = (elements.length % 6) * 24;
+          posX = 140 + offset;
+          posY = 140 + offset;
+        }
+
+        let cx = snap(posX - processed.width / 2);
+        let cy = snap(posY - processed.height / 2);
+
+        let parentId: string | null = null;
+        const container = [...elements]
+          .reverse()
+          .find(
+            (el) =>
+              (el.type === "mobile-frame" || el.type === "browser-frame") &&
+              posX >= el.x && posX <= el.x + el.width &&
+              posY >= el.y && posY <= el.y + el.height,
+          );
+
+        if (container) {
+          parentId = container.id;
+          cx = snap(posX - container.x - processed.width / 2);
+          cy = snap(posY - container.y - processed.height / 2);
+        }
+
+        addElement(
+          "image",
+          cx,
+          cy,
+          parentId,
+          processed.width,
+          processed.height,
+          0,
+          {
+            src: processed.dataUrl,
+            naturalWidth: processed.naturalWidth,
+            naturalHeight: processed.naturalHeight,
+            fit: "cover",
+            label: processed.name || "图片",
+          },
+        );
+
+        showToast({
+          type: "success",
+          title: "图片已置入画布",
+          description: `${processed.naturalWidth} × ${processed.naturalHeight} PX`,
+          id: "insert-image",
+        });
+      } catch (err) {
+        console.error("Failed to insert image:", err);
+        showToast({
+          type: "error",
+          title: "无法读取图片数据",
+          id: "insert-image-error",
+        });
+      }
+    },
+    [elements, addElement],
+  );
+
+  useEffect(() => {
+    const handlePaste = async (e: ClipboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target) {
+        if (target.isContentEditable) return;
+        const tag = target.tagName?.toLowerCase();
+        if (tag === "input" || tag === "textarea" || tag === "select") return;
+      }
+
+      const imageFile = extractImageFromClipboardData(e.clipboardData);
+      if (imageFile) {
+        e.preventDefault();
+        await insertImageFile(imageFile);
+      }
+    };
+
+    window.addEventListener("paste", handlePaste);
+    return () => window.removeEventListener("paste", handlePaste);
+  }, [insertImageFile]);
+
+  const handlePasteAtContextPos = useCallback(async () => {
+    try {
+      if (navigator.clipboard && navigator.clipboard.read) {
+        const items = await navigator.clipboard.read();
+        for (const item of items) {
+          const imageType = item.types.find((t) => t.startsWith("image/"));
+          if (imageType) {
+            const blob = await item.getType(imageType);
+            await insertImageFile(blob);
+            return;
+          }
+        }
+      }
+      showToast({ title: "剪贴板中未发现图片", id: "no-clipboard-img" });
+    } catch {
+      showToast({ title: "请按 Ctrl+V 快捷键进行粘贴", id: "clipboard-key-hint" });
+    }
+  }, [insertImageFile]);
+
   const handleContextMenu = useCallback(
     (e: React.MouseEvent) => {
       if (previewing) return;
@@ -523,6 +691,64 @@ export function Editor() {
       setContextOpen(true);
     },
     [previewing, selectedIds],
+  );
+
+  const nudgeMove = useCallback(
+    (dx: number, dy: number) => {
+      if (selectedIds.length === 0) return;
+      const selectedSet = new Set(selectedIds);
+      const moveRecursive = (list: EditorElement[]): EditorElement[] => {
+        return list.map((el) => {
+          if (selectedSet.has(el.id) && !el.locked) {
+            return {
+              ...el,
+              x: el.x + dx,
+              y: el.y + dy,
+              children: el.children ? moveRecursive(el.children) : [],
+            };
+          }
+          if (el.children && el.children.length > 0) {
+            return {
+              ...el,
+              children: moveRecursive(el.children),
+            };
+          }
+          return el;
+        });
+      };
+      const next = moveRecursive(elements);
+      commit(next);
+    },
+    [selectedIds, elements, commit],
+  );
+
+  const nudgeResize = useCallback(
+    (dw: number, dh: number) => {
+      if (selectedIds.length === 0) return;
+      const selectedSet = new Set(selectedIds);
+      const resizeRecursive = (list: EditorElement[]): EditorElement[] => {
+        return list.map((el) => {
+          if (selectedSet.has(el.id) && !el.locked) {
+            return {
+              ...el,
+              width: Math.max(1, el.width + dw),
+              height: Math.max(1, el.height + dh),
+              children: el.children ? resizeRecursive(el.children) : [],
+            };
+          }
+          if (el.children && el.children.length > 0) {
+            return {
+              ...el,
+              children: resizeRecursive(el.children),
+            };
+          }
+          return el;
+        });
+      };
+      const next = resizeRecursive(elements);
+      commit(next);
+    },
+    [selectedIds, elements, commit],
   );
 
   useKeyboard({
@@ -553,6 +779,26 @@ export function Editor() {
     "Ctrl+A": () => {
       setSelectedIds(elements.filter((e) => e.visible).map((e) => e.id));
     },
+    // Directional Nudge (1px micro-adjustment)
+    "ArrowUp": () => nudgeMove(0, -1),
+    "ArrowDown": () => nudgeMove(0, 1),
+    "ArrowLeft": () => nudgeMove(-1, 0),
+    "ArrowRight": () => nudgeMove(1, 0),
+    // Shift + Directional Nudge (10px step)
+    "Shift+ArrowUp": () => nudgeMove(0, -10),
+    "Shift+ArrowDown": () => nudgeMove(0, 10),
+    "Shift+ArrowLeft": () => nudgeMove(-10, 0),
+    "Shift+ArrowRight": () => nudgeMove(10, 0),
+    // Alt + Directional Resize (1px micro-adjustment)
+    "Alt+ArrowUp": () => nudgeResize(0, -1),
+    "Alt+ArrowDown": () => nudgeResize(0, 1),
+    "Alt+ArrowLeft": () => nudgeResize(-1, 0),
+    "Alt+ArrowRight": () => nudgeResize(1, 0),
+    // Alt + Shift + Directional Resize (10px step)
+    "Alt+Shift+ArrowUp": () => nudgeResize(0, -10),
+    "Alt+Shift+ArrowDown": () => nudgeResize(0, 10),
+    "Alt+Shift+ArrowLeft": () => nudgeResize(-10, 0),
+    "Alt+Shift+ArrowRight": () => nudgeResize(10, 0),
   });
 
   const handleSidebarAdd = useCallback(
@@ -734,7 +980,32 @@ export function Editor() {
       ctx.rotate((el.rotation * Math.PI) / 180);
       const w = el.width * scale;
       const h = el.height * scale;
-      if (el.type === "text") {
+
+      if (el.type === "image" && el.props?.src) {
+        const imgSrc = String(el.props.src);
+        try {
+          const img = new Image();
+          img.crossOrigin = "anonymous";
+          await new Promise<void>((resolve) => {
+            img.onload = () => resolve();
+            img.onerror = () => resolve();
+            img.src = imgSrc;
+          });
+          const rad = Number(el.props.radius || 0) * scale;
+          if (rad > 0) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.roundRect(0, 0, w, h, rad);
+            ctx.clip();
+            ctx.drawImage(img, 0, 0, w, h);
+            ctx.restore();
+          } else {
+            ctx.drawImage(img, 0, 0, w, h);
+          }
+        } catch {
+          // Ignore image load failure
+        }
+      } else if (el.type === "text") {
         ctx.fillStyle = "#d4d4d8";
         const barH = Math.max(4, 6 * scale);
         const bars = [0.72, 0.5, 0.34];
@@ -806,14 +1077,14 @@ export function Editor() {
   });
 
   const toolClass = (tool: string) =>
-    `inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs transition-all duration-150 ease-apple focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring active:scale-95 ${
+    `inline-flex items-center gap-1 rounded-full px-2.5 py-1 font-mono text-[11px] font-medium tracking-wider uppercase transition-colors duration-150 focus-visible:outline-none select-none ${
       activeTool === tool
-        ? "bg-foreground text-background"
-        : "text-muted-foreground hover:bg-accent hover:text-foreground"
+        ? "bg-primary text-primary-foreground font-bold"
+        : "text-muted-foreground hover:bg-muted hover:text-foreground"
     }`;
 
   const content = (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-neutral-50">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground">
       <TopBar
         projectName={projectName}
         dirty={dirty}
@@ -824,6 +1095,8 @@ export function Editor() {
         activeTool={activeTool}
         previewing={previewing}
         demo={!isTauri}
+        theme={theme}
+        onToggleTheme={toggleTheme}
         onUndo={undo}
         onRedo={redo}
         onSelectTool={() => setActiveTool("select")}
@@ -855,8 +1128,8 @@ export function Editor() {
             previewing
             onZoomChange={setZoom}
             onSelect={setSelectedId}
-            onUpdateElement={updateElement}
-            onCommitMove={() => pushHistory(elements)}
+            onUpdateElement={updateElementLive}
+            onCommitMove={handleCommitCanvasGesture}
             onDelete={deleteSelected}
             onCanvasClick={handleCanvasClick}
           />
@@ -896,15 +1169,16 @@ export function Editor() {
                 onSelect={setSelectedId}
                 onSelectIds={setSelectedIds}
                 onSelectTool={setActiveTool}
-                onUpdateElement={updateElement}
-                onBatchUpdateElements={batchUpdateElements}
+                onUpdateElement={updateElementLive}
+                onBatchUpdateElements={batchUpdateElementsLive}
                 onCreateElement={(type, x, y, width, height, rotation, parentId, customProps) =>
                   addElement(type, x, y, parentId, width, height, rotation ?? 0, customProps)
                 }
-                onCommitMove={() => pushHistory(elements)}
+                onCommitMove={handleCommitCanvasGesture}
                 onDelete={deleteSelected}
                 onCanvasClick={handleCanvasClick}
                 onDropAsset={(type, x, y) => addElement(type, x, y)}
+                onDropFile={(file, x, y) => void insertImageFile(file, x, y)}
               />
             </ContextMenuTrigger>
             <ContextMenuPopup>
@@ -912,56 +1186,56 @@ export function Editor() {
                 <>
                   <ContextMenuItem closeOnClick onClick={duplicate}>
                     <Copy aria-hidden="true" className="opacity-80" />
-                    Duplicate
-                    <ContextMenuShortcut>⌘D</ContextMenuShortcut>
+                    克隆 (Duplicate)
+                    <ContextMenuShortcut>Ctrl+D</ContextMenuShortcut>
                   </ContextMenuItem>
                   <ContextMenuSeparator />
                   <ContextMenuItem closeOnClick onClick={bringForward}>
                     <ArrowUp aria-hidden="true" className="opacity-80" />
-                    上移一层 (Bring Forward)
-                    <ContextMenuShortcut>⌘]</ContextMenuShortcut>
+                    上移一层
+                    <ContextMenuShortcut>Ctrl+]</ContextMenuShortcut>
                   </ContextMenuItem>
                   <ContextMenuItem closeOnClick onClick={sendBackward}>
                     <ArrowDown aria-hidden="true" className="opacity-80" />
-                    下移一层 (Send Backward)
-                    <ContextMenuShortcut>⌘[</ContextMenuShortcut>
+                    下移一层
+                    <ContextMenuShortcut>Ctrl+[</ContextMenuShortcut>
                   </ContextMenuItem>
                   <ContextMenuItem closeOnClick onClick={bringToFront}>
                     <ArrowUpToLine aria-hidden="true" className="opacity-80" />
-                    置于顶层 (Bring to Front)
-                    <ContextMenuShortcut>⌘⇧]</ContextMenuShortcut>
+                    置于顶层
+                    <ContextMenuShortcut>Ctrl+Shift+]</ContextMenuShortcut>
                   </ContextMenuItem>
                   <ContextMenuItem closeOnClick onClick={sendToBack}>
                     <ArrowDownToLine aria-hidden="true" className="opacity-80" />
-                    置于底层 (Send to Back)
-                    <ContextMenuShortcut>⌘⇧[</ContextMenuShortcut>
+                    置于底层
+                    <ContextMenuShortcut>Ctrl+Shift+[</ContextMenuShortcut>
                   </ContextMenuItem>
                   <ContextMenuSeparator />
                   <ContextMenuItem closeOnClick onClick={deleteSelected} variant="destructive">
                     <Trash2 aria-hidden="true" className="opacity-80" />
-                    Delete
-                    <ContextMenuShortcut>⌫</ContextMenuShortcut>
+                    删除
+                    <ContextMenuShortcut>Del</ContextMenuShortcut>
                   </ContextMenuItem>
                   <ContextMenuSeparator />
                   <ContextMenuItem closeOnClick onClick={() => updateElement(contextElementId, { locked: true })}>
                     <Lock aria-hidden="true" className="opacity-80" />
-                    Lock
+                    锁定
                   </ContextMenuItem>
                   <ContextMenuItem closeOnClick onClick={() => updateElement(contextElementId, { visible: false })}>
                     <EyeOff aria-hidden="true" className="opacity-80" />
-                    Hide
+                    隐藏
                   </ContextMenuItem>
                 </>
               ) : (
                 <>
-                  <ContextMenuItem closeOnClick onClick={() => {}}>
+                  <ContextMenuItem closeOnClick onClick={handlePasteAtContextPos}>
                     <ClipboardPaste aria-hidden="true" className="opacity-80" />
-                    Paste here
+                    粘贴到此处
                   </ContextMenuItem>
                   <ContextMenuSeparator />
                   <ContextMenuItem closeOnClick onClick={() => setZoom(1)}>
                     <Maximize2 aria-hidden="true" className="opacity-80" />
-                    Fit to view
+                    重置缩放 (100%)
                   </ContextMenuItem>
                 </>
               )}
@@ -988,36 +1262,36 @@ export function Editor() {
 
       {/* Floating toolbar */}
       {!previewing && (
-        <div className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2">
+        <div className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2 select-none">
         <div className="animate-fade-up">
-          <CossToolbar className="rounded-full border bg-background/70 p-1 shadow-[0_10px_40px_-10px_rgb(0,0,0,0.18)] backdrop-blur-xl supports-[backdrop-filter]:bg-background/70">
+          <CossToolbar className="rounded-full border border-border-visible bg-surface/90 px-1.5 py-1 shadow-2xs backdrop-blur-md">
           <ToolbarGroup>
             <ToolbarButton className={toolClass("select")} onClick={() => setActiveTool("select")} title="选择 (V)">
-              <MousePointer2 aria-hidden="true" className="size-3.5" />
-              Select
+              <MousePointer2 aria-hidden="true" className="size-3" />
+              SELECT
             </ToolbarButton>
-            <ToolbarButton className={toolClass("hand")} onClick={() => setActiveTool("hand")} title="抓手 (H)">
-              <Hand aria-hidden="true" className="size-3.5" />
-              Hand
-            </ToolbarButton>
-          </ToolbarGroup>
-          <ToolbarSeparator />
-          <ToolbarGroup>
-            <ToolbarButton className={toolClass("rectangle")} onClick={() => setActiveTool("rectangle")} title="矩形 (R)">
-              <Square aria-hidden="true" className="size-3.5" />
-              Rectangle
-            </ToolbarButton>
-            <ToolbarButton className={toolClass("text")} onClick={() => setActiveTool("text")} title="文字 (T)">
-              <Type aria-hidden="true" className="size-3.5" />
-              Text
+            <ToolbarButton className={toolClass("hand")} onClick={() => setActiveTool("hand")} title="抓手 (H / 空格)">
+              <Hand aria-hidden="true" className="size-3" />
+              HAND
             </ToolbarButton>
             <ToolbarButton className={toolClass("connector")} onClick={() => setActiveTool("connector")} title="连接线 (E)">
-              <svg className="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <circle cx="4" cy="5" r="2.5" fill="currentColor" />
                 <path d="M 4 5 H 12 Q 16 5 16 9 V 15 Q 16 19 12 19 H 20" strokeLinecap="round" strokeLinejoin="round" />
                 <path d="M 17 16 L 20 19 L 17 22" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
-              连接线
+              FLOW
+            </ToolbarButton>
+          </ToolbarGroup>
+          <ToolbarSeparator className="mx-1 h-3.5 bg-border" />
+          <ToolbarGroup>
+            <ToolbarButton className={toolClass("rectangle")} onClick={() => setActiveTool("rectangle")} title="矩形 (R)">
+              <Square aria-hidden="true" className="size-3" />
+              RECT
+            </ToolbarButton>
+            <ToolbarButton className={toolClass("text")} onClick={() => setActiveTool("text")} title="文字 (T)">
+              <Type aria-hidden="true" className="size-3" />
+              TEXT
             </ToolbarButton>
           </ToolbarGroup>
           </CossToolbar>
@@ -1028,17 +1302,17 @@ export function Editor() {
     );
 
   if (!isTauri) {
-    return <div className="h-svh overflow-hidden">{content}</div>;
+    return <div className="h-svh overflow-hidden bg-background text-foreground">{content}</div>;
   }
 
   const framed = !windowMaximized && !windowFullscreen;
 
   return (
-    <div className={cn("h-svh bg-transparent", framed && "p-1.5")}>
+    <div className={cn("h-svh bg-background text-foreground", framed && "p-1.5")}>
       <div
         className={cn(
-          "flex h-full flex-col overflow-hidden bg-neutral-800",
-          framed && "rounded-xl shadow-[0_20px_70px_-15px_rgb(0,0,0,0.5)] ring-1 ring-black/40",
+          "flex h-full flex-col overflow-hidden bg-surface text-foreground border border-border",
+          framed && "rounded-lg shadow-2xs",
         )}
       >
         <TitleBar
@@ -1047,7 +1321,7 @@ export function Editor() {
           onMaximize={() => windowControls("maximize")}
           onClose={() => windowControls("close")}
         />
-        <div className={cn("flex min-h-0 flex-1 overflow-hidden bg-neutral-50", framed && "mx-1.5 mb-1.5 rounded-lg")}>
+        <div className={cn("flex min-h-0 flex-1 overflow-hidden bg-background", framed && "mx-1 mb-1 rounded-md")}>
           {content}
         </div>
       </div>

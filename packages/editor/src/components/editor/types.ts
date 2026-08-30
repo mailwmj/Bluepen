@@ -20,12 +20,25 @@ export type ComponentType =
   | "list" | "grid" | "timeline" | "kanban" | "calendar" | "chart"
   | "modal" | "drawer" | "sheet" | "popover" | "dropdown" | "command"
   | "form" | "icon-button" | "video"
-  // Flowchart & Connectors
+    // Flowchart & Connectors
   | "connector"
   | "flow-process" | "flow-decision" | "flow-start-end" | "flow-document" | "flow-data"
   | "flow-subprocess" | "flow-external-data" | "flow-internal-storage" | "flow-queue"
   | "flow-database" | "flow-manual-input" | "flow-card" | "flow-tape"
-  | "flow-display" | "flow-manual-op" | "flow-preparation" | "flow-loop-limit";
+  | "flow-display" | "flow-manual-op" | "flow-preparation" | "flow-loop-limit"
+  // Web Templates & Components (TDesign / Web System)
+  // Web 导航
+  | "web-dropdown" | "web-menu" | "web-top-nav" | "web-tabs" | "web-breadcrumb" | "web-pagination" | "web-steps"
+  // Web 表单
+  | "web-input" | "web-input-number" | "web-textarea" | "web-select" | "web-cascader" | "web-tree-select"
+  | "web-auto-complete" | "web-tag-input" | "web-date-picker" | "web-date-range-picker" | "web-time-picker"
+  | "web-radio-group" | "web-checkbox-group" | "web-switch" | "web-slider" | "web-transfer" | "web-upload" | "web-color-picker"
+  // Web 数据展示
+  | "web-table" | "web-tree" | "web-collapse" | "web-descriptions" | "web-statistic-card" | "web-tag" | "web-timeline" | "web-badge" | "web-avatar-group"
+  // Web 消息反馈与浮层
+  | "web-modal" | "web-drawer" | "web-alert" | "web-popconfirm" | "web-notification" | "web-tips" | "web-message" | "web-skeleton" | "web-empty-state"
+  // Web 经典模版与业务区块 (Page Blocks)
+  | "web-admin-layout" | "web-filter-bar" | "web-crud-table" | "web-form-layout" | "web-login-card" | "web-steps-form";
 
 export type AnchorPort = "top" | "right" | "bottom" | "left" | "center";
 

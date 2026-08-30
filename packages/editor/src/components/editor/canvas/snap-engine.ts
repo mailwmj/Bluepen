@@ -71,20 +71,32 @@ export function calculateSnapping(
   allElements: EditorElement[],
   zoom = 1,
   frameBounds?: { x: number; y: number; width: number; height: number } | null,
+  disabled = false,
 ): SnapResult {
-  const threshold = SNAP_THRESHOLD / Math.max(0.5, zoom);
+  if (disabled) {
+    return {
+      x: rawX,
+      y: rawY,
+      guides: [],
+      distances: [],
+    };
+  }
+
+  // Consistent, comfortable snap thresholds in screen pixels converted to canvas coordinates
+  const threshold = SNAP_THRESHOLD / Math.max(0.2, zoom);
+  const centerThreshold = (SNAP_THRESHOLD + 3) / Math.max(0.2, zoom);
 
   let snappedX = rawX;
   let snappedY = rawY;
   const guides: SnapGuideLine[] = [];
   const distances: DistanceBadge[] = [];
 
-  // Filter candidate target bounding boxes
+  // Filter candidate target bounding boxes (exclude connector lines)
   const targets: Rect[] = [];
 
   const collectTargets = (list: EditorElement[]) => {
     for (const el of list) {
-      if (el.id === activeId || !el.visible) continue;
+      if (el.id === activeId || !el.visible || el.type === "connector") continue;
       targets.push({
         id: el.id,
         x: el.x,
@@ -119,7 +131,7 @@ export function calculateSnapping(
   const activeBottom = rawY + height;
 
   // --- X-AXIS SNAPPING (Vertical Guide Lines) ---
-  let minDiffX = threshold + 1;
+  let bestScoreX = Infinity;
   let bestSnapX: number | null = null;
   let bestXGuide: SnapGuideLine | null = null;
   let matchedTargetX: Rect | null = null;
@@ -134,42 +146,48 @@ export function calculateSnapping(
       targetPoint: number;
       calcSnap: () => number;
       isCenter: boolean;
-      type: "edge" | "center";
+      priority: number; // 0: center-to-center, 1: same-edge, 2: cross-edge
     }> = [
-      // Left edge snaps
-      { activePoint: activeLeft, targetPoint: tLeft, calcSnap: () => tLeft, isCenter: false, type: "edge" },
-      { activePoint: activeLeft, targetPoint: tCenterX, calcSnap: () => tCenterX, isCenter: false, type: "edge" },
-      { activePoint: activeLeft, targetPoint: tRight, calcSnap: () => tRight, isCenter: false, type: "edge" },
+      // Center-to-center (highest priority - vertical midline alignment)
+      { activePoint: activeCenterX, targetPoint: tCenterX, calcSnap: () => tCenterX - width / 2, isCenter: true, priority: 0 },
 
-      // Center snaps
-      { activePoint: activeCenterX, targetPoint: tLeft, calcSnap: () => tLeft - width / 2, isCenter: false, type: "edge" },
-      { activePoint: activeCenterX, targetPoint: tCenterX, calcSnap: () => tCenterX - width / 2, isCenter: true, type: "center" },
-      { activePoint: activeCenterX, targetPoint: tRight, calcSnap: () => tRight - width / 2, isCenter: false, type: "edge" },
+      // Same-edge snaps (high priority)
+      { activePoint: activeLeft, targetPoint: tLeft, calcSnap: () => tLeft, isCenter: false, priority: 1 },
+      { activePoint: activeRight, targetPoint: tRight, calcSnap: () => tRight - width, isCenter: false, priority: 1 },
 
-      // Right edge snaps
-      { activePoint: activeRight, targetPoint: tLeft, calcSnap: () => tLeft - width, isCenter: false, type: "edge" },
-      { activePoint: activeRight, targetPoint: tCenterX, calcSnap: () => tCenterX - width, isCenter: false, type: "edge" },
-      { activePoint: activeRight, targetPoint: tRight, calcSnap: () => tRight - width, isCenter: false, type: "edge" },
+      // Cross-edge / center snaps
+      { activePoint: activeLeft, targetPoint: tCenterX, calcSnap: () => tCenterX, isCenter: false, priority: 2 },
+      { activePoint: activeLeft, targetPoint: tRight, calcSnap: () => tRight, isCenter: false, priority: 2 },
+      { activePoint: activeCenterX, targetPoint: tLeft, calcSnap: () => tLeft - width / 2, isCenter: false, priority: 2 },
+      { activePoint: activeCenterX, targetPoint: tRight, calcSnap: () => tRight - width / 2, isCenter: false, priority: 2 },
+      { activePoint: activeRight, targetPoint: tLeft, calcSnap: () => tLeft - width, isCenter: false, priority: 2 },
+      { activePoint: activeRight, targetPoint: tCenterX, calcSnap: () => tCenterX - width, isCenter: false, priority: 2 },
     ];
 
     for (const pair of xPairs) {
       const diff = Math.abs(pair.activePoint - pair.targetPoint);
-      if (diff <= threshold && diff < minDiffX) {
-        minDiffX = diff;
-        bestSnapX = pair.calcSnap();
-        matchedTargetX = t;
+      const maxThresh = pair.isCenter ? centerThreshold : threshold;
+      if (diff <= maxThresh) {
+        // Priority weighting: center-to-center gets 0.6x score bonus, same-edge gets 0.85x
+        const weight = pair.priority === 0 ? 0.6 : pair.priority === 1 ? 0.85 : 1.0;
+        const score = diff * weight;
+        if (score < bestScoreX) {
+          bestScoreX = score;
+          bestSnapX = pair.calcSnap();
+          matchedTargetX = t;
 
-        const startY = Math.min(rawY, t.y) - 16;
-        const endY = Math.max(rawY + height, t.y + t.height) + 16;
+          const startY = Math.min(rawY, t.y) - 24;
+          const endY = Math.max(rawY + height, t.y + t.height) + 24;
 
-        bestXGuide = {
-          id: `guide-x-${pair.targetPoint}-${t.id}`,
-          type: "vertical",
-          position: pair.targetPoint,
-          start: startY,
-          end: endY,
-          color: pair.isCenter ? "red" : "blue",
-        };
+          bestXGuide = {
+            id: `guide-x-${pair.targetPoint}-${t.id}`,
+            type: "vertical",
+            position: pair.targetPoint,
+            start: startY,
+            end: endY,
+            color: pair.isCenter ? "red" : "blue",
+          };
+        }
       }
     }
   }
@@ -223,7 +241,7 @@ export function calculateSnapping(
   }
 
   // --- Y-AXIS SNAPPING (Horizontal Guide Lines) ---
-  let minDiffY = threshold + 1;
+  let bestScoreY = Infinity;
   let bestSnapY: number | null = null;
   let bestYGuide: SnapGuideLine | null = null;
   let matchedTargetY: Rect | null = null;
@@ -238,42 +256,48 @@ export function calculateSnapping(
       targetPoint: number;
       calcSnap: () => number;
       isCenter: boolean;
-      type: "edge" | "center";
+      priority: number; // 0: center-to-center, 1: same-edge, 2: cross-edge
     }> = [
-      // Top edge snaps
-      { activePoint: activeTop, targetPoint: tTop, calcSnap: () => tTop, isCenter: false, type: "edge" },
-      { activePoint: activeTop, targetPoint: tCenterY, calcSnap: () => tCenterY, isCenter: false, type: "edge" },
-      { activePoint: activeTop, targetPoint: tBottom, calcSnap: () => tBottom, isCenter: false, type: "edge" },
+      // Center-to-center (highest priority - horizontal center / midline alignment)
+      { activePoint: activeCenterY, targetPoint: tCenterY, calcSnap: () => tCenterY - height / 2, isCenter: true, priority: 0 },
 
-      // Center snaps
-      { activePoint: activeCenterY, targetPoint: tTop, calcSnap: () => tTop - height / 2, isCenter: false, type: "edge" },
-      { activePoint: activeCenterY, targetPoint: tCenterY, calcSnap: () => tCenterY - height / 2, isCenter: true, type: "center" },
-      { activePoint: activeCenterY, targetPoint: tBottom, calcSnap: () => tBottom - height / 2, isCenter: false, type: "edge" },
+      // Same-edge snaps (high priority)
+      { activePoint: activeTop, targetPoint: tTop, calcSnap: () => tTop, isCenter: false, priority: 1 },
+      { activePoint: activeBottom, targetPoint: tBottom, calcSnap: () => tBottom - height, isCenter: false, priority: 1 },
 
-      // Bottom edge snaps
-      { activePoint: activeBottom, targetPoint: tTop, calcSnap: () => tTop - height, isCenter: false, type: "edge" },
-      { activePoint: activeBottom, targetPoint: tCenterY, calcSnap: () => tCenterY - height, isCenter: false, type: "edge" },
-      { activePoint: activeBottom, targetPoint: tBottom, calcSnap: () => tBottom - height, isCenter: false, type: "edge" },
+      // Cross-edge / center snaps
+      { activePoint: activeTop, targetPoint: tCenterY, calcSnap: () => tCenterY, isCenter: false, priority: 2 },
+      { activePoint: activeTop, targetPoint: tBottom, calcSnap: () => tBottom, isCenter: false, priority: 2 },
+      { activePoint: activeCenterY, targetPoint: tTop, calcSnap: () => tTop - height / 2, isCenter: false, priority: 2 },
+      { activePoint: activeCenterY, targetPoint: tBottom, calcSnap: () => tBottom - height / 2, isCenter: false, priority: 2 },
+      { activePoint: activeBottom, targetPoint: tTop, calcSnap: () => tTop - height, isCenter: false, priority: 2 },
+      { activePoint: activeBottom, targetPoint: tCenterY, calcSnap: () => tCenterY - height, isCenter: false, priority: 2 },
     ];
 
     for (const pair of yPairs) {
       const diff = Math.abs(pair.activePoint - pair.targetPoint);
-      if (diff <= threshold && diff < minDiffY) {
-        minDiffY = diff;
-        bestSnapY = pair.calcSnap();
-        matchedTargetY = t;
+      const maxThresh = pair.isCenter ? centerThreshold : threshold;
+      if (diff <= maxThresh) {
+        // Priority weighting: center-to-center gets 0.6x score bonus, same-edge gets 0.85x
+        const weight = pair.priority === 0 ? 0.6 : pair.priority === 1 ? 0.85 : 1.0;
+        const score = diff * weight;
+        if (score < bestScoreY) {
+          bestScoreY = score;
+          bestSnapY = pair.calcSnap();
+          matchedTargetY = t;
 
-        const startX = Math.min(rawX, t.x) - 16;
-        const endX = Math.max(rawX + width, t.x + t.width) + 16;
+          const startX = Math.min(rawX, t.x) - 24;
+          const endX = Math.max(rawX + width, t.x + t.width) + 24;
 
-        bestYGuide = {
-          id: `guide-y-${pair.targetPoint}-${t.id}`,
-          type: "horizontal",
-          position: pair.targetPoint,
-          start: startX,
-          end: endX,
-          color: pair.isCenter ? "red" : "blue",
-        };
+          bestYGuide = {
+            id: `guide-y-${pair.targetPoint}-${t.id}`,
+            type: "horizontal",
+            position: pair.targetPoint,
+            start: startX,
+            end: endX,
+            color: pair.isCenter ? "red" : "blue",
+          };
+        }
       }
     }
   }
@@ -334,16 +358,29 @@ export function calculateResizeSnapping(
   proposed: { x: number; y: number; width: number; height: number },
   allElements: EditorElement[],
   zoom = 1,
+  disabled = false,
+  preserveRatio?: number,
 ): SnapResult {
-  const threshold = SNAP_THRESHOLD / Math.max(0.5, zoom);
   let { x, y, width, height } = proposed;
+  if (disabled) {
+    return {
+      x,
+      y,
+      width,
+      height,
+      guides: [],
+      distances: [],
+    };
+  }
+
+  const threshold = SNAP_THRESHOLD / Math.max(0.2, zoom);
   const guides: SnapGuideLine[] = [];
   const distances: DistanceBadge[] = [];
 
   const targets: Rect[] = [];
   const collectTargets = (list: EditorElement[]) => {
     for (const el of list) {
-      if (el.id === activeId || !el.visible) continue;
+      if (el.id === activeId || !el.visible || el.type === "connector") continue;
       targets.push({
         id: el.id,
         x: el.x,
@@ -359,6 +396,7 @@ export function calculateResizeSnapping(
   collectTargets(allElements);
 
   // X-axis resize snapping
+  let snappedXAxis = false;
   if (handle.includes("e")) {
     const rawRight = x + width;
     let bestRight: number | null = null;
@@ -822,6 +860,49 @@ export function calculateEndpointSnapping(
   };
   collectGeometries(allElements);
 
+  // Priority 0: Fixed 15° angle snapping when Shift is held
+  if (fixedPoint && shiftHeld) {
+    const diffX = rawPoint.x - fixedPoint.x;
+    const diffY = rawPoint.y - fixedPoint.y;
+    const angle = (Math.atan2(diffY, diffX) * 180) / Math.PI;
+    const snappedA = Math.round(angle / 15) * 15;
+    const len = Math.max(10, Math.sqrt(diffX * diffX + diffY * diffY));
+    const rad = (snappedA * Math.PI) / 180;
+    snappedX = Math.round(fixedPoint.x + len * Math.cos(rad));
+    snappedY = Math.round(fixedPoint.y + len * Math.sin(rad));
+    snappedAngle = snappedA;
+
+    if (snappedA % 90 === 0) {
+      if (Math.abs(Math.cos(rad)) < 0.001) {
+        guides.push({
+          id: `guide-shift-v-${activeId}`,
+          type: "vertical",
+          position: fixedPoint.x,
+          start: Math.min(fixedPoint.y, snappedY) - 20,
+          end: Math.max(fixedPoint.y, snappedY) + 20,
+          color: "blue",
+        });
+      } else {
+        guides.push({
+          id: `guide-shift-h-${activeId}`,
+          type: "horizontal",
+          position: fixedPoint.y,
+          start: Math.min(fixedPoint.x, snappedX) - 20,
+          end: Math.max(fixedPoint.x, snappedX) + 20,
+          color: "blue",
+        });
+      }
+    }
+
+    return {
+      x: snappedX,
+      y: snappedY,
+      guides,
+      indicator: null,
+      snappedAngle,
+    };
+  }
+
   // Priority 1: 2D Key Anchor Snapping (Corners, Midpoints, Endpoints, Centers)
   let bestAnchor: TargetAnchor | null = null;
   let minAnchorDist = threshold;
@@ -1031,7 +1112,7 @@ export function calculateLineMoveSnapping(
   const targets: Rect[] = [];
   const collectTargets = (list: EditorElement[]) => {
     for (const el of list) {
-      if (el.id === activeId || !el.visible) continue;
+      if (el.id === activeId || !el.visible || el.type === "connector") continue;
       targets.push({
         id: el.id,
         x: el.x,

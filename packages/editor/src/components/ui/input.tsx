@@ -6,11 +6,14 @@ import { cn } from "@bluepen/editor/lib/utils";
 
 export type InputProps = Omit<
   InputPrimitive.Props & React.RefAttributes<HTMLInputElement>,
-  "size"
+  "size" | "prefix"
 > & {
   size?: "sm" | "default" | "lg" | number;
   unstyled?: boolean;
   nativeInput?: boolean;
+  prefix?: React.ReactNode;
+  suffix?: React.ReactNode;
+  inputClassName?: string;
 };
 
 export function Input({
@@ -18,18 +21,26 @@ export function Input({
   size = "default",
   unstyled = false,
   nativeInput = false,
+  prefix,
+  suffix,
+  inputClassName: customInputClassName,
   style,
   ...props
 }: InputProps): React.ReactElement {
   const inputClassName = cn(
-    "h-8.5 w-full min-w-0 rounded-[inherit] px-[calc(--spacing(3)-1px)] leading-8.5 outline-none [transition:background-color_5000000s_ease-in-out_0s] placeholder:text-muted-foreground/72 sm:h-7.5 sm:leading-7.5",
+    "h-8.5 w-full min-w-0 rounded-[inherit] px-2.5 leading-8.5 outline-none [transition:background-color_5000000s_ease-in-out_0s] placeholder:text-muted-foreground/72 sm:h-7.5 sm:leading-7.5 text-inherit font-[inherit]",
     size === "sm" &&
-      "h-7.5 px-[calc(--spacing(2.5)-1px)] leading-7.5 sm:h-6.5 sm:leading-6.5",
+      "h-7 px-2 text-xs leading-7 sm:h-6.5 sm:leading-6.5 sm:text-xs",
     size === "lg" && "h-9.5 leading-9.5 sm:h-8.5 sm:leading-8.5",
+    props.type === "number" &&
+      "[appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none",
     props.type === "search" &&
       "[&::-webkit-search-cancel-button]:appearance-none [&::-webkit-search-decoration]:appearance-none [&::-webkit-search-results-button]:appearance-none [&::-webkit-search-results-decoration]:appearance-none",
     props.type === "file" &&
       "text-muted-foreground file:me-3 file:bg-transparent file:font-medium file:text-foreground file:text-sm",
+    prefix && "pl-5",
+    suffix && "pr-5",
+    customInputClassName,
   );
 
   return (
@@ -37,13 +48,18 @@ export function Input({
       className={
         cn(
           !unstyled &&
-            "relative inline-flex w-full rounded-lg border border-input bg-background not-dark:bg-clip-padding text-base text-foreground shadow-xs/5 ring-ring/24 transition-shadow before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] not-has-disabled:not-has-focus-visible:not-has-aria-invalid:before:shadow-[0_1px_--theme(--color-black/4%)] has-focus-visible:has-aria-invalid:border-destructive/64 has-focus-visible:has-aria-invalid:ring-destructive/16 has-aria-invalid:border-destructive/36 has-focus-visible:border-ring has-autofill:bg-foreground/4 has-disabled:opacity-64 has-[:disabled,:focus-visible,[aria-invalid]]:shadow-none has-focus-visible:ring-[3px] sm:text-sm dark:bg-input/32 dark:has-autofill:bg-foreground/8 dark:has-aria-invalid:ring-destructive/24 dark:not-has-disabled:not-has-focus-visible:not-has-aria-invalid:before:shadow-[0_-1px_--theme(--color-white/6%)]",
+            "relative inline-flex items-center w-full rounded-md border border-border-visible bg-surface text-xs text-foreground transition-colors duration-150 has-focus-visible:border-foreground has-focus-visible:ring-1 has-focus-visible:ring-ring has-aria-invalid:border-destructive has-disabled:opacity-40",
           className,
         ) || undefined
       }
       data-size={size}
       data-slot="input-control"
     >
+      {prefix && (
+        <span className="pointer-events-none absolute left-2 select-none text-[11px] text-muted-foreground">
+          {prefix}
+        </span>
+      )}
       {nativeInput ? (
         <input
           className={inputClassName}
@@ -60,6 +76,11 @@ export function Input({
           style={style}
           {...props}
         />
+      )}
+      {suffix && (
+        <span className="pointer-events-none absolute right-1.5 select-none text-[10px] text-muted-foreground">
+          {suffix}
+        </span>
       )}
     </span>
   );

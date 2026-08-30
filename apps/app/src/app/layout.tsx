@@ -1,16 +1,47 @@
 import type { Metadata } from "next";
-import { Inter, Geist_Mono } from "next/font/google";
+import { Space_Grotesk, Space_Mono } from "next/font/google";
 import "./globals.css";
 import { cn } from "@bluepen/editor/lib/utils";
 
-const inter = Inter({
+const spaceGrotesk = Space_Grotesk({
   subsets: ["latin"],
   variable: "--font-sans",
+  weight: ["300", "400", "500", "600", "700"],
+  display: "swap",
+  fallback: [
+    "-apple-system",
+    "BlinkMacSystemFont",
+    "Segoe UI",
+    "PingFang SC",
+    "Hiragino Sans GB",
+    "Microsoft YaHei UI",
+    "Microsoft YaHei",
+    "Source Han Sans SC",
+    "Noto Sans SC",
+    "sans-serif",
+  ],
 });
 
-const geistMono = Geist_Mono({
+const spaceMono = Space_Mono({
   subsets: ["latin"],
   variable: "--font-mono",
+  weight: ["400", "700"],
+  display: "swap",
+  fallback: [
+    "ui-monospace",
+    "SFMono-Regular",
+    "Cascadia Code",
+    "Cascadia Mono",
+    "Segoe UI Mono",
+    "Menlo",
+    "Monaco",
+    "Consolas",
+    "PingFang SC",
+    "Microsoft YaHei UI",
+    "Microsoft YaHei",
+    "Noto Sans SC",
+    "monospace",
+  ],
 });
 
 export const metadata: Metadata = {
@@ -25,9 +56,17 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={cn("h-full antialiased", inter.variable, geistMono.variable)}
+      suppressHydrationWarning
+      className={cn("h-full antialiased dark", spaceGrotesk.variable, spaceMono.variable)}
     >
-      <body className="relative min-h-full">
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem("bluepen:settings");var m="dark";if(t){var s=JSON.parse(t);if(s.theme)m=s.theme;}if(m==="dark"||(m==="system"&&window.matchMedia("(prefers-color-scheme: dark)").matches)){document.documentElement.classList.add("dark");}else if(m==="light"){document.documentElement.classList.remove("dark");}}catch(e){}})();`,
+          }}
+        />
+      </head>
+      <body className="relative min-h-full bg-background text-foreground font-sans">
         <script
           dangerouslySetInnerHTML={{
             __html: `if ("__TAURI_INTERNALS__" in window) { var s=document.documentElement.style; s.background="transparent"; document.body.style.background="transparent"; }`,

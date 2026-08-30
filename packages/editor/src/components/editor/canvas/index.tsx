@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useCallback, useState, useEffect, useMemo } from "react";
+import { useRef, useCallback, useState, useEffect, useMemo, memo } from "react";
 import type { AnchorPort, ComponentType, EditorElement } from "../types";
 import { cn } from "@bluepen/editor/lib/utils";
 import { ElementRenderer } from "./elements/index";
@@ -20,11 +20,19 @@ import {
   calculateOrthogonalPath,
   calculateStraightPath,
   calculateCurvedPath,
+  getElementDynamicBounds,
+  getElementWorldBounds,
   ANCHOR_PORTS,
   PORT_LABELS,
+  getOrthogonalSegments,
+  moveOrthogonalSegment,
+  adaptCustomWaypoints,
+  buildRoundedSvgPath,
+  calculatePolylineMidpoint,
   type AnchorInfo,
   type Point,
   type Vector,
+  type Rect,
 } from "./connector-utils";
 
 interface CanvasProps {
@@ -55,9 +63,22 @@ interface CanvasProps {
   onDelete: () => void;
   onCanvasClick: (e: React.MouseEvent, canvasX: number, canvasY: number) => void;
   onDropAsset?: (type: ComponentType, x: number, y: number) => void;
+  onDropFile?: (file: File, x: number, y: number) => void;
 }
 
 const GRID_SIZE = 20;
+
+function createRotateCursorSvg(arcPath: string, arrow1Path: string, arrow2Path: string): string {
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none'><path d='${arcPath}' stroke='%23000000' stroke-width='3.5' stroke-linecap='round'/><path d='${arcPath}' stroke='%23FFFFFF' stroke-width='1.5' stroke-linecap='round'/><path d='${arrow1Path}' fill='%23000000' stroke='%23FFFFFF' stroke-width='1' stroke-linejoin='round'/><path d='${arrow2Path}' fill='%23000000' stroke='%23FFFFFF' stroke-width='1' stroke-linejoin='round'/></svg>`;
+  return `url("data:image/svg+xml,${svg}") 12 12, crosshair`;
+}
+
+const ROTATE_CURSORS = {
+  nw: createRotateCursorSvg("M 4 12 A 8 8 0 0 1 12 4", "M 8.5 1.5 L 14 4 L 8.5 6.5 Z", "M 1.5 8.5 L 4 14 L 6.5 8.5 Z"),
+  ne: createRotateCursorSvg("M 12 4 A 8 8 0 0 1 20 12", "M 15.5 1.5 L 10 4 L 15.5 6.5 Z", "M 17.5 8.5 L 20 14 L 22.5 8.5 Z"),
+  se: createRotateCursorSvg("M 20 12 A 8 8 0 0 1 12 20", "M 17.5 15.5 L 20 10 L 22.5 15.5 Z", "M 15.5 17.5 L 10 20 L 15.5 22.5 Z"),
+  sw: createRotateCursorSvg("M 12 20 A 8 8 0 0 1 4 12", "M 8.5 17.5 L 14 20 L 8.5 22.5 Z", "M 1.5 15.5 L 4 10 L 6.5 15.5 Z"),
+};
 
 type Interaction =
   | {
@@ -107,6 +128,8 @@ type Interaction =
       centerY: number;
       startRotation: number;
       startAngle: number;
+      currentRotation?: number;
+      corner?: "nw" | "ne" | "se" | "sw";
     }
   | {
       type: "corner-radius";
@@ -165,6 +188,16 @@ type Interaction =
       currentY: number;
       targetElementId: string | null;
       targetPort: AnchorPort | null;
+    }
+  | {
+      type: "connector-segment";
+      id: string;
+      segmentIndex: number;
+      isVertical: boolean;
+      initialWaypoints: Point[];
+      startX: number;
+      startY: number;
+      startPos: number;
     };
 
 function rectsIntersect(
@@ -190,7 +223,7 @@ function flattenElements(list: EditorElement[]): EditorElement[] {
   return result;
 }
 
-function SmartGuidesOverlay({
+const SmartGuidesOverlay = memo(function SmartGuidesOverlay({
   guides,
   indicator,
   zoom,
@@ -207,10 +240,10 @@ function SmartGuidesOverlay({
         {guides.map((g) => {
           const color =
             g.color === "red"
-              ? "#EF4444"
+              ? "var(--accent)"
               : g.color === "blue"
-              ? "#3B82F6"
-              : "#EC4899";
+              ? "var(--primary)"
+              : "var(--accent)";
 
           if (g.type === "vertical") {
             return (
@@ -241,23 +274,42 @@ function SmartGuidesOverlay({
           }
         })}
 
-        {/* Magnetic Snap Point Indicator (Figma/Axure style glowing target anchor/edge) */}
+        {/* Magnetic Snap Point Indicator */}
         {indicator && (
           <g transform={`translate(${indicator.x}, ${indicator.y})`}>
-            {/* Outer halo ring */}
-            <circle
-              r={8 / Math.max(0.5, zoom)}
-              fill="rgba(37, 99, 235, 0.25)"
-              stroke="#2563EB"
-              strokeWidth={1.5 / Math.max(0.5, zoom)}
-            />
-            {/* Core anchor dot */}
-            <circle
-              r={4 / Math.max(0.5, zoom)}
-              fill="#FFFFFF"
-              stroke="#2563EB"
-              strokeWidth={1.5 / Math.max(0.5, zoom)}
-            />
+            {indicator.type === "anchor" ? (
+              <>
+                <circle
+                  r={10 / Math.max(0.5, zoom)}
+                  fill="rgba(37, 99, 235, 0.25)"
+                  stroke="#2563EB"
+                  strokeWidth={2 / Math.max(0.5, zoom)}
+                />
+                <circle
+                  r={4 / Math.max(0.5, zoom)}
+                  fill="#2563EB"
+                  stroke="#FFFFFF"
+                  strokeWidth={1.5 / Math.max(0.5, zoom)}
+                />
+              </>
+            ) : (
+              <>
+                {/* Outer halo ring */}
+                <circle
+                  r={8 / Math.max(0.5, zoom)}
+                  fill="rgba(215, 25, 33, 0.2)"
+                  stroke="var(--accent)"
+                  strokeWidth={1.5 / Math.max(0.5, zoom)}
+                />
+                {/* Core anchor dot */}
+                <circle
+                  r={3 / Math.max(0.5, zoom)}
+                  fill="var(--accent)"
+                  stroke="var(--background)"
+                  strokeWidth={1 / Math.max(0.5, zoom)}
+                />
+              </>
+            )}
           </g>
         )}
       </svg>
@@ -268,7 +320,7 @@ function SmartGuidesOverlay({
         .map((g) => (
           <div
             key={`lbl-${g.id}`}
-            className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-bold text-[#EC4899] bg-white/95 shadow-xs border border-[#EC4899]/40 leading-none select-none"
+            className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-2xs px-1.5 py-0.5 font-mono text-[10px] font-bold text-accent bg-surface shadow-xs border border-accent/40 leading-none select-none"
             style={{
               left: g.labelPosition!.x,
               top: g.labelPosition!.y,
@@ -279,12 +331,12 @@ function SmartGuidesOverlay({
         ))}
     </div>
   );
-}
+});
 
 /**
- * Renders the marquee multi-selection box when dragging on empty canvas space (Image 1 style).
+ * Renders the marquee multi-selection box when dragging on empty canvas space.
  */
-function MarqueeSelectionOverlay({
+const MarqueeSelectionOverlay = memo(function MarqueeSelectionOverlay({
   interaction,
 }: {
   interaction: Interaction | null;
@@ -301,7 +353,7 @@ function MarqueeSelectionOverlay({
 
   return (
     <div
-      className="pointer-events-none absolute z-[40] border border-blue-500 bg-blue-500/15 select-none"
+      className="pointer-events-none absolute z-[40] border border-dashed border-primary bg-primary/10 select-none"
       style={{
         left,
         top,
@@ -310,12 +362,12 @@ function MarqueeSelectionOverlay({
       }}
     />
   );
-}
+});
 
 /**
  * Renders the live creation preview ghost when clicking and dragging a new shape or connector on the canvas.
  */
-function DrawingPreviewOverlay({
+const DrawingPreviewOverlay = memo(function DrawingPreviewOverlay({
   interaction,
   allElementsFlat,
   zoom,
@@ -330,8 +382,10 @@ function DrawingPreviewOverlay({
   if (interaction.type === "create-connector" || interaction.type === "connector-endpoint") {
     let startPoint: Point;
     let startDir: Vector | undefined;
+    let startBox: Rect | undefined;
     let endPoint: Point;
     let endDir: Vector | undefined;
+    let endBox: Rect | undefined;
 
     if (interaction.type === "create-connector") {
       const startEl = interaction.startElementId ? allElementsFlat.find((e) => e.id === interaction.startElementId) : null;
@@ -339,6 +393,7 @@ function DrawingPreviewOverlay({
         const anchor = getElementAnchor(startEl, interaction.startPort, allElementsFlat);
         startPoint = anchor.point;
         startDir = anchor.dir;
+        startBox = getElementWorldBounds(startEl, allElementsFlat);
       } else {
         startPoint = { x: interaction.startX, y: interaction.startY };
       }
@@ -348,6 +403,7 @@ function DrawingPreviewOverlay({
         const anchor = getElementAnchor(targetEl, interaction.targetPort, allElementsFlat);
         endPoint = anchor.point;
         endDir = anchor.dir;
+        endBox = getElementWorldBounds(targetEl, allElementsFlat);
       } else {
         endPoint = { x: interaction.currentX, y: interaction.currentY };
       }
@@ -360,6 +416,7 @@ function DrawingPreviewOverlay({
           const anchor = getElementAnchor(targetEl, interaction.targetPort, allElementsFlat);
           startPoint = anchor.point;
           startDir = anchor.dir;
+          startBox = getElementWorldBounds(targetEl, allElementsFlat);
         } else {
           startPoint = { x: interaction.currentX, y: interaction.currentY };
         }
@@ -367,18 +424,21 @@ function DrawingPreviewOverlay({
         const fixEl = interaction.fixedElementId ? allElementsFlat.find((e) => e.id === interaction.fixedElementId) : null;
         if (fixEl && interaction.fixedPort) {
           endDir = getElementAnchor(fixEl, interaction.fixedPort, allElementsFlat).dir;
+          endBox = getElementWorldBounds(fixEl, allElementsFlat);
         }
       } else {
         startPoint = interaction.fixedPoint;
         const fixEl = interaction.fixedElementId ? allElementsFlat.find((e) => e.id === interaction.fixedElementId) : null;
         if (fixEl && interaction.fixedPort) {
           startDir = getElementAnchor(fixEl, interaction.fixedPort, allElementsFlat).dir;
+          startBox = getElementWorldBounds(fixEl, allElementsFlat);
         }
         const targetEl = interaction.targetElementId ? allElementsFlat.find((e) => e.id === interaction.targetElementId) : null;
         if (targetEl && interaction.targetPort) {
           const anchor = getElementAnchor(targetEl, interaction.targetPort, allElementsFlat);
           endPoint = anchor.point;
           endDir = anchor.dir;
+          endBox = getElementWorldBounds(targetEl, allElementsFlat);
         } else {
           endPoint = { x: interaction.currentX, y: interaction.currentY };
         }
@@ -386,8 +446,8 @@ function DrawingPreviewOverlay({
     }
 
     const { d } = calculateOrthogonalPath(
-      { point: startPoint, dir: startDir },
-      { point: endPoint, dir: endDir },
+      { point: startPoint, dir: startDir, box: startBox },
+      { point: endPoint, dir: endDir, box: endBox },
       8,
     );
 
@@ -473,12 +533,12 @@ function DrawingPreviewOverlay({
       </div>
     </div>
   );
-}
+});
 
 /**
  * Dedicated layer rendering all smart reactive connector lines.
  */
-function ConnectorLinesLayer({
+const ConnectorLinesLayer = memo(function ConnectorLinesLayer({
   connectors,
   allElementsFlat,
   selectedIds,
@@ -487,6 +547,7 @@ function ConnectorLinesLayer({
   onSelect,
   onSelectIds,
   onStartEndpointDrag,
+  onStartSegmentDrag,
 }: {
   connectors: EditorElement[];
   allElementsFlat: EditorElement[];
@@ -496,12 +557,20 @@ function ConnectorLinesLayer({
   onSelect: (id: string | null) => void;
   onSelectIds?: (ids: string[]) => void;
   onStartEndpointDrag: (e: React.MouseEvent, connector: EditorElement, endpoint: "start" | "end") => void;
+  onStartSegmentDrag?: (
+    e: React.MouseEvent,
+    connector: EditorElement,
+    segmentIndex: number,
+    isVertical: boolean,
+    currentWaypoints: Point[],
+    startPos: number,
+  ) => void;
 }) {
   if (!connectors || connectors.length === 0) return null;
 
   return (
     <svg
-      className="pointer-events-none absolute top-0 left-0 overflow-visible z-[15]"
+      className="pointer-events-none absolute top-0 left-0 overflow-visible z-[5]"
       style={{ width: 1, height: 1 }}
     >
       <defs>
@@ -532,13 +601,16 @@ function ConnectorLinesLayer({
 
         let startPt: Point;
         let startDir: Vector | undefined;
+        let startBox: Rect | undefined;
         let endPt: Point;
         let endDir: Vector | undefined;
+        let endBox: Rect | undefined;
 
         if (startEl) {
           const anchor = getElementAnchor(startEl, (c.props.startPort as AnchorPort) || "right", allElementsFlat);
           startPt = anchor.point;
           startDir = anchor.dir;
+          startBox = getElementWorldBounds(startEl, allElementsFlat);
         } else {
           startPt = { x: Number(c.props.startPointX ?? c.x), y: Number(c.props.startPointY ?? c.y) };
         }
@@ -547,18 +619,55 @@ function ConnectorLinesLayer({
           const anchor = getElementAnchor(endEl, (c.props.endPort as AnchorPort) || "left", allElementsFlat);
           endPt = anchor.point;
           endDir = anchor.dir;
+          endBox = getElementWorldBounds(endEl, allElementsFlat);
         } else {
           endPt = { x: Number(c.props.endPointX ?? c.x + c.width), y: Number(c.props.endPointY ?? c.y + c.height) };
         }
 
         const routing = String(c.props.routing || "orthogonal");
         const radius = Number(c.props.radius ?? 8);
-        const { d, midpoint } =
-          routing === "straight"
-            ? calculateStraightPath({ point: startPt }, { point: endPt })
-            : routing === "curved"
-            ? calculateCurvedPath({ point: startPt, dir: startDir }, { point: endPt, dir: endDir })
-            : calculateOrthogonalPath({ point: startPt, dir: startDir }, { point: endPt, dir: endDir }, radius);
+
+        let customPts: Point[] | null = null;
+        if (c.props.customWaypoints && typeof c.props.customWaypoints === "string") {
+          try {
+            const parsed = JSON.parse(c.props.customWaypoints);
+            if (Array.isArray(parsed) && parsed.length >= 2) {
+              customPts = parsed;
+            }
+          } catch {}
+        }
+
+        let d: string;
+        let midpoint: Point;
+        let waypoints: Point[];
+
+        if (routing === "straight") {
+          const res = calculateStraightPath({ point: startPt }, { point: endPt });
+          d = res.d;
+          midpoint = res.midpoint;
+          waypoints = res.waypoints;
+        } else if (routing === "curved") {
+          const res = calculateCurvedPath({ point: startPt, dir: startDir }, { point: endPt, dir: endDir });
+          d = res.d;
+          midpoint = res.midpoint;
+          waypoints = res.waypoints;
+        } else {
+          if (customPts) {
+            const adapted = adaptCustomWaypoints(customPts, startPt, endPt);
+            d = buildRoundedSvgPath(adapted, radius);
+            midpoint = calculatePolylineMidpoint(adapted);
+            waypoints = adapted;
+          } else {
+            const res = calculateOrthogonalPath(
+              { point: startPt, dir: startDir, box: startBox },
+              { point: endPt, dir: endDir, box: endBox },
+              radius,
+            );
+            d = res.d;
+            midpoint = res.midpoint;
+            waypoints = res.waypoints;
+          }
+        }
 
         const stroke = String(c.props.stroke || "#71717A");
         const borderWidth = Number(c.props.borderWidth ?? 1.5);
@@ -568,25 +677,40 @@ function ConnectorLinesLayer({
         const endArrow = String(c.props.endArrow || "arrow");
         const text = String(c.props.text || "");
 
+        const handleSelectConnector = (e: React.MouseEvent) => {
+          if (previewing || c.locked) return;
+          e.stopPropagation();
+          if (e.shiftKey && onSelectIds) {
+            const next = selectedIds.includes(c.id)
+              ? selectedIds.filter((id) => id !== c.id)
+              : [...selectedIds, c.id];
+            onSelectIds(next);
+          } else {
+            onSelect(c.id);
+            onSelectIds?.([c.id]);
+          }
+        };
+
+        const scaleFactor = Math.max(0.5, zoom);
+
         return (
-          <g key={c.id} className="group pointer-events-auto cursor-pointer select-none">
+          <g
+            key={c.id}
+            data-element
+            data-element-id={c.id}
+            className="group pointer-events-auto cursor-pointer select-none"
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={handleSelectConnector}
+          >
             {/* Wide transparent hit path for easy clicking & selection */}
             <path
               d={d}
               fill="none"
               stroke="transparent"
-              strokeWidth={Math.max(16, 16 / zoom)}
-              onMouseDown={(e) => {
-                if (previewing || c.locked) return;
-                e.stopPropagation();
-                if (e.shiftKey && onSelectIds) {
-                  const next = selectedIds.includes(c.id) ? selectedIds.filter((id) => id !== c.id) : [...selectedIds, c.id];
-                  onSelectIds(next);
-                } else {
-                  onSelect(c.id);
-                  onSelectIds?.([c.id]);
-                }
-              }}
+              strokeWidth={Math.max(20, 20 / zoom)}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="cursor-pointer"
             />
 
             {/* Selection Halo Glow */}
@@ -599,6 +723,7 @@ function ConnectorLinesLayer({
                 strokeOpacity={0.35}
                 strokeLinecap="round"
                 strokeLinejoin="round"
+                className="pointer-events-none"
               />
             )}
 
@@ -611,13 +736,16 @@ function ConnectorLinesLayer({
               strokeDasharray={strokeDasharray}
               markerStart={startArrow === "arrow" ? `url(#arrow-start-${c.id})` : startArrow === "circle" ? `url(#circle-${c.id})` : undefined}
               markerEnd={endArrow === "arrow" ? `url(#arrow-end-${c.id})` : endArrow === "circle" ? `url(#circle-${c.id})` : undefined}
-              className="transition-colors group-hover:stroke-blue-500"
+              className="pointer-events-none transition-colors group-hover:stroke-blue-500"
             />
 
             {/* Midpoint Text Label */}
             {text && (
               <g
                 transform={`translate(${midpoint.x}, ${midpoint.y})`}
+                className="pointer-events-auto cursor-pointer"
+                onMouseDown={handleSelectConnector}
+                onClick={(e) => e.stopPropagation()}
                 onDoubleClick={(e) => {
                   e.stopPropagation();
                   onSelect(c.id);
@@ -657,33 +785,126 @@ function ConnectorLinesLayer({
               </g>
             )}
 
+            {/* Orthogonal Segment Drag Handles (for segment shifting / waypoints) */}
+            {isSelected && !previewing && !c.locked && routing === "orthogonal" && onStartSegmentDrag && (
+              <g className="pointer-events-auto">
+                {getOrthogonalSegments(waypoints)
+                  .filter((seg) => seg.length >= 14)
+                  .map((seg) => {
+                    const handleW = (seg.isVertical ? 6 : 14) / scaleFactor;
+                    const handleH = (seg.isVertical ? 14 : 6) / scaleFactor;
+                    const handleRx = 2.5 / scaleFactor;
+                    const strokeW = 1 / scaleFactor;
+                    const cursor = seg.isVertical ? "ew-resize" : "ns-resize";
+                    const hitPad = 8 / scaleFactor;
+                    const hitW = handleW + hitPad;
+                    const hitH = handleH + hitPad;
+
+                    return (
+                      <g
+                        key={`seg-${seg.index}`}
+                        className="group/segment pointer-events-auto select-none"
+                        style={{ cursor }}
+                        onClick={(e) => e.stopPropagation()}
+                        onMouseDown={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          onStartSegmentDrag(
+                            e,
+                            c,
+                            seg.index,
+                            seg.isVertical,
+                            waypoints,
+                            seg.isVertical ? seg.mid.x : seg.mid.y,
+                          );
+                        }}
+                      >
+                        {/* Invisible generous hit target to ensure stable and smooth grabbing */}
+                        <rect
+                          x={seg.mid.x - hitW / 2}
+                          y={seg.mid.y - hitH / 2}
+                          width={hitW}
+                          height={hitH}
+                          fill="transparent"
+                          stroke="transparent"
+                          style={{ cursor }}
+                        />
+                        {/* Crisp visible pill handle without jumping scale transforms */}
+                        <rect
+                          x={seg.mid.x - handleW / 2}
+                          y={seg.mid.y - handleH / 2}
+                          width={handleW}
+                          height={handleH}
+                          rx={handleRx}
+                          fill="#2563EB"
+                          stroke="#FFFFFF"
+                          strokeWidth={strokeW}
+                          className="pointer-events-none transition-colors group-hover/segment:fill-blue-500"
+                        />
+                        <title>{seg.isVertical ? "拖动平移垂直线段" : "拖动平移水平线段"}</title>
+                      </g>
+                    );
+                  })}
+              </g>
+            )}
+
             {/* Reconnection Endpoint Handles */}
             {isSelected && !previewing && !c.locked && (
               <>
-                <circle
-                  cx={startPt.x}
-                  cy={startPt.y}
-                  r={5 / Math.max(0.5, zoom)}
-                  fill="#FFFFFF"
-                  stroke="#2563EB"
-                  strokeWidth={2 / Math.max(0.5, zoom)}
-                  className="cursor-crosshair hover:scale-125 transition-transform"
-                  onMouseDown={(e) => onStartEndpointDrag(e, c, "start")}
+                <g
+                  className="group/endpoint pointer-events-auto select-none cursor-crosshair"
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    onStartEndpointDrag(e, c, "start");
+                  }}
                 >
+                  <circle
+                    cx={startPt.x}
+                    cy={startPt.y}
+                    r={10 / scaleFactor}
+                    fill="transparent"
+                    stroke="transparent"
+                    className="cursor-crosshair"
+                  />
+                  <circle
+                    cx={startPt.x}
+                    cy={startPt.y}
+                    r={5 / scaleFactor}
+                    fill="#2563EB"
+                    stroke="#FFFFFF"
+                    strokeWidth={2 / scaleFactor}
+                    className="pointer-events-none transition-colors group-hover/endpoint:fill-blue-500"
+                  />
                   <title>重新连接起点</title>
-                </circle>
-                <circle
-                  cx={endPt.x}
-                  cy={endPt.y}
-                  r={5 / Math.max(0.5, zoom)}
-                  fill="#FFFFFF"
-                  stroke="#2563EB"
-                  strokeWidth={2 / Math.max(0.5, zoom)}
-                  className="cursor-crosshair hover:scale-125 transition-transform"
-                  onMouseDown={(e) => onStartEndpointDrag(e, c, "end")}
+                </g>
+                <g
+                  className="group/endpoint pointer-events-auto select-none cursor-crosshair"
+                  onClick={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => {
+                    e.stopPropagation();
+                    onStartEndpointDrag(e, c, "end");
+                  }}
                 >
+                  <circle
+                    cx={endPt.x}
+                    cy={endPt.y}
+                    r={10 / scaleFactor}
+                    fill="transparent"
+                    stroke="transparent"
+                    className="cursor-crosshair"
+                  />
+                  <circle
+                    cx={endPt.x}
+                    cy={endPt.y}
+                    r={5 / scaleFactor}
+                    fill="#2563EB"
+                    stroke="#FFFFFF"
+                    strokeWidth={2 / scaleFactor}
+                    className="pointer-events-none transition-colors group-hover/endpoint:fill-blue-500"
+                  />
                   <title>重新连接终点</title>
-                </circle>
+                </g>
               </>
             )}
           </g>
@@ -691,23 +912,26 @@ function ConnectorLinesLayer({
       })}
     </svg>
   );
-}
+});
 
 /**
  * Unified multi-selection bounding box (Image 2 style)
  * Pointer events are strictly NONE so it never intercepts clicks on underlying elements or canvas.
  */
-function MultiSelectionBoundingBox({
+const MultiSelectionBoundingBox = memo(function MultiSelectionBoundingBox({
   selectedElements,
+  allElementsFlat,
 }: {
   selectedElements: EditorElement[];
+  allElementsFlat: EditorElement[];
 }) {
   if (selectedElements.length <= 1) return null;
 
-  const minX = Math.min(...selectedElements.map((e) => e.x));
-  const minY = Math.min(...selectedElements.map((e) => e.y));
-  const maxX = Math.max(...selectedElements.map((e) => e.x + e.width));
-  const maxY = Math.max(...selectedElements.map((e) => e.y + e.height));
+  const boundsList = selectedElements.map((e) => getElementDynamicBounds(e, allElementsFlat));
+  const minX = Math.min(...boundsList.map((b) => b.x));
+  const minY = Math.min(...boundsList.map((b) => b.y));
+  const maxX = Math.max(...boundsList.map((b) => b.x + b.width));
+  const maxY = Math.max(...boundsList.map((b) => b.y + b.height));
 
   const width = maxX - minX;
   const height = maxY - minY;
@@ -727,7 +951,337 @@ function MultiSelectionBoundingBox({
       </div>
     </div>
   );
+});
+
+interface ElementNodeProps {
+  el: EditorElement;
+  allElementsFlat: EditorElement[];
+  effectiveSelectedIds: string[];
+  ancestorLocked: boolean;
+  interaction: Interaction | null;
+  isPanning: boolean;
+  spaceHeld: boolean;
+  previewing: boolean;
+  activeTool: string;
+  onElementMouseDown: (e: React.MouseEvent, elId: string) => void;
+  onResizeMouseDown: (e: React.MouseEvent, elId: string, handle: string) => void;
+  onRotateMouseDown: (e: React.MouseEvent, el: EditorElement, corner?: "nw" | "ne" | "se" | "sw") => void;
+  onRadiusMouseDown: (e: React.MouseEvent, el: EditorElement, corner: "nw" | "ne" | "se" | "sw") => void;
+  onLineEndpointMouseDown: (e: React.MouseEvent, el: EditorElement, endpoint: "start" | "end") => void;
+  onAnchorMouseDown: (e: React.MouseEvent, el: EditorElement, port: AnchorPort) => void;
+  onSelect: (id: string | null) => void;
 }
+
+const ElementNode = memo(function ElementNode({
+  el,
+  allElementsFlat,
+  effectiveSelectedIds,
+  ancestorLocked,
+  interaction,
+  isPanning,
+  spaceHeld,
+  previewing,
+  activeTool,
+  onElementMouseDown,
+  onResizeMouseDown,
+  onRotateMouseDown,
+  onRadiusMouseDown,
+  onLineEndpointMouseDown,
+  onAnchorMouseDown,
+  onSelect,
+}: ElementNodeProps) {
+  const [isHovered, setIsHovered] = useState(false);
+  const isSelected = effectiveSelectedIds.includes(el.id);
+  const isSingleSelected = effectiveSelectedIds.length === 1 && isSelected;
+  if (!el.visible) return null;
+  const locked = el.locked || ancestorLocked;
+  const isLineLike = el.type === "line" || el.type === "arrow";
+  const hasCornerRadius =
+    el.type === "rectangle" ||
+    el.type === "card" ||
+    el.type === "mobile-frame" ||
+    el.type === "browser-frame" ||
+    el.type === "placeholder" ||
+    el.type === "modal-dialog" ||
+    el.type === "image";
+
+  const isConnecting = interaction?.type === "create-connector" || interaction?.type === "connector-endpoint";
+  const isConnectorMode = activeTool === "connector" || isConnecting;
+
+  const isConnectedToSelectedConnector = useMemo(() => {
+    if (effectiveSelectedIds.length === 0) return false;
+    return allElementsFlat.some(
+      (item) =>
+        item.type === "connector" &&
+        effectiveSelectedIds.includes(item.id) &&
+        (item.props.startElementId === el.id || item.props.endElementId === el.id)
+    );
+  }, [el.id, effectiveSelectedIds, allElementsFlat]);
+
+  const showAnchors =
+    !previewing &&
+    !locked &&
+    el.type !== "connector" &&
+    (isConnectorMode
+      ? (isConnecting
+          ? (interaction?.type === "create-connector" && interaction.startElementId === el.id) ||
+            (interaction?.type === "connector-endpoint" && interaction.fixedElementId === el.id) ||
+            interaction?.targetElementId === el.id ||
+            isHovered
+          : isHovered || isSelected)
+      : false);
+
+  return (
+    <div
+      key={el.id}
+      data-element
+      data-element-id={el.id}
+      className={cn(
+        "absolute select-none",
+        (isHovered || isSelected || isConnecting) ? "z-30" : "z-10",
+        previewing && "pointer-events-none",
+        locked && "cursor-default opacity-60",
+        !locked &&
+          (!interaction || ("id" in interaction && interaction.id !== el.id)) &&
+          (activeTool === "select"
+            ? "cursor-move"
+            : activeTool === "connector"
+            ? "cursor-crosshair"
+            : "cursor-default"),
+      )}
+      style={{
+        left: el.x,
+        top: el.y,
+        width: el.width,
+        height: el.height,
+        opacity: el.opacity,
+        transform: `rotate(${el.rotation}deg)`,
+        transformOrigin: isLineLike ? "0 50%" : "center center",
+      }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+      onMouseDown={(e) => onElementMouseDown(e, el.id)}
+      onDoubleClick={(e) => {
+        e.stopPropagation();
+        onSelect(el.id);
+        setTimeout(() => {
+          const input =
+            document.querySelector<HTMLInputElement | HTMLTextAreaElement>("[data-slot='element-text-input']") ||
+            document.querySelector<HTMLInputElement | HTMLTextAreaElement>(
+              "aside textarea, aside input:not([type='color']):not([type='checkbox'])"
+            );
+          if (input) {
+            input.focus();
+            input.select?.();
+          }
+        }, 60);
+      }}
+    >
+      <ElementRenderer element={el}>
+        {el.children &&
+          el.children.length > 0 &&
+          el.children.map((child) => (
+            <ElementNode
+              key={child.id}
+              el={child}
+              allElementsFlat={allElementsFlat}
+              effectiveSelectedIds={effectiveSelectedIds}
+              ancestorLocked={locked}
+              interaction={interaction}
+              isPanning={isPanning}
+              spaceHeld={spaceHeld}
+              previewing={previewing}
+              activeTool={activeTool}
+              onElementMouseDown={onElementMouseDown}
+              onResizeMouseDown={onResizeMouseDown}
+              onRotateMouseDown={onRotateMouseDown}
+              onRadiusMouseDown={onRadiusMouseDown}
+              onLineEndpointMouseDown={onLineEndpointMouseDown}
+              onAnchorMouseDown={onAnchorMouseDown}
+              onSelect={onSelect}
+            />
+          ))}
+      </ElementRenderer>
+
+      {/* Anchor Ports (Top, Right, Bottom, Left) for Connecting Elements */}
+      {showAnchors && (
+        <>
+          {ANCHOR_PORTS.map((port) => {
+            const posStyle =
+              port === "top"
+                ? { left: "50%", top: 0 }
+                : port === "right"
+                ? { left: "100%", top: "50%" }
+                : port === "bottom"
+                ? { left: "50%", top: "100%" }
+                : { left: 0, top: "50%" };
+
+            const isTargetPort =
+              isConnecting &&
+              interaction?.targetElementId === el.id &&
+              interaction?.targetPort === port;
+
+            const isStartPort =
+              isConnecting &&
+              interaction?.type === "create-connector" &&
+              interaction?.startElementId === el.id &&
+              interaction?.startPort === port;
+
+            return (
+              <div
+                key={port}
+                data-handle
+                data-anchor-port={port}
+                className="absolute z-[35] flex size-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center cursor-crosshair group/anchor"
+                style={posStyle}
+                title={`从此处连线 (${PORT_LABELS[port]})`}
+                onMouseDown={(e) => onAnchorMouseDown(e, el, port)}
+              >
+                <div
+                  className={cn(
+                    "size-3 rounded-full border-2 border-white bg-blue-600 shadow-md transition-all",
+                    "group-hover/anchor:scale-135 group-hover/anchor:bg-blue-500 group-hover/anchor:ring-4 group-hover/anchor:ring-blue-500/30",
+                    (isTargetPort || isStartPort) && "scale-140 bg-blue-600 ring-4 ring-blue-500/40 ring-offset-1",
+                  )}
+                />
+              </div>
+            );
+          })}
+        </>
+      )}
+
+      {isSelected && !locked && !previewing && (
+        <>
+          {isLineLike ? (
+            /* Line endpoint handles with stable hit target containers */
+            <>
+              <div
+                data-handle
+                className="absolute z-30 size-6 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center cursor-crosshair group/handle pointer-events-auto"
+                style={{ left: 0, top: "50%" }}
+                title="起点 / 方向 (Shift 15°吸附)"
+                onMouseDown={(e) => onLineEndpointMouseDown(e, el, "start")}
+              >
+                <div className="size-3 rounded-full border-2 border-blue-500 bg-white shadow-xs pointer-events-none group-hover/handle:scale-125 transition-transform" />
+              </div>
+              <div
+                data-handle
+                className="absolute z-30 size-6 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center cursor-crosshair group/handle pointer-events-auto"
+                style={{ left: "100%", top: "50%" }}
+                title="终点 / 方向 (Shift 15°吸附)"
+                onMouseDown={(e) => onLineEndpointMouseDown(e, el, "end")}
+              >
+                <div className="size-2.5 rounded-full border border-primary bg-background shadow-xs pointer-events-none group-hover/handle:scale-125 transition-transform" />
+              </div>
+            </>
+          ) : (
+            /* Standard 2D shape bounding box and handles */
+            <>
+              {/* 1px crisp selection border */}
+              <div
+                className="pointer-events-none absolute inset-0 border border-primary z-10"
+                data-handle
+              />
+
+              {/* Show rotation and resize handles on single selection */}
+              {isSingleSelected && (
+                <>
+                  {/* Live rotation angle badge during active rotation */}
+                  {interaction?.type === "rotate" && interaction.id === el.id && (
+                    <div
+                      className={cn(
+                        "pointer-events-none absolute z-50 rounded bg-blue-600 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-white shadow-md select-none whitespace-nowrap",
+                        interaction.corner === "se"
+                          ? "bottom-[-28px] right-0"
+                          : interaction.corner === "sw"
+                          ? "bottom-[-28px] left-0"
+                          : interaction.corner === "ne"
+                          ? "top-[-28px] right-0"
+                          : "top-[-28px] left-0"
+                      )}
+                    >
+                      {`${Number((interaction.currentRotation ?? el.rotation ?? 0).toFixed(2))}°`}
+                    </div>
+                  )}
+
+                  {/* 4 corner rotation outer trigger areas (compact hit area) */}
+                  {[
+                    { id: "nw" as const, style: { top: -15, left: -15 } },
+                    { id: "ne" as const, style: { top: -15, right: -15 } },
+                    { id: "se" as const, style: { bottom: -15, right: -15 } },
+                    { id: "sw" as const, style: { bottom: -15, left: -15 } },
+                  ].map((item) => (
+                    <div
+                      key={`rotate-${item.id}`}
+                      data-handle
+                      className="absolute z-20 size-3.5 flex items-center justify-center pointer-events-auto"
+                      style={{
+                        ...item.style,
+                        cursor: ROTATE_CURSORS[item.id],
+                      }}
+                      title="旋转 (按住 Shift 15°吸附)"
+                      onMouseDown={(e) => onRotateMouseDown(e, el, item.id)}
+                    />
+                  ))}
+
+                  {/* 4 corner radius inner dots with stable hit target container */}
+                  {hasCornerRadius &&
+                    !isConnectorMode &&
+                    (isHovered || (interaction?.type === "corner-radius" && interaction.id === el.id)) &&
+                    (() => {
+                      const curRadius = Number(el.props.radius ?? 4);
+                      const maxR = Math.min(el.width, el.height) / 2;
+                      const offset = Math.max(6, Math.min(curRadius + 4, maxR - 4));
+                      const radiusCorners = [
+                        { id: "nw" as const, style: { top: offset, left: offset } },
+                        { id: "ne" as const, style: { top: offset, right: offset } },
+                        { id: "sw" as const, style: { bottom: offset, left: offset } },
+                        { id: "se" as const, style: { bottom: offset, right: offset } },
+                      ];
+                      return (
+                        <>
+                          {radiusCorners.map((c) => (
+                            <div
+                              key={`radius-${c.id}`}
+                              data-handle
+                              className="absolute z-25 size-5 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center cursor-crosshair group/radius pointer-events-auto"
+                              style={c.style}
+                              title="调节圆角"
+                              onMouseDown={(e) => onRadiusMouseDown(e, el, c.id)}
+                            >
+                              <div className="size-2 rounded-full border border-primary bg-background shadow-xs pointer-events-none group-hover/radius:scale-125 transition-transform" />
+                            </div>
+                          ))}
+                        </>
+                      );
+                    })()}
+
+                  {/* 4 corner resize handle control points */}
+                  {[
+                    { id: "nw", style: { top: -10, left: -10, cursor: "nwse-resize" } },
+                    { id: "ne", style: { top: -10, right: -10, cursor: "nesw-resize" } },
+                    { id: "se", style: { bottom: -10, right: -10, cursor: "nwse-resize" } },
+                    { id: "sw", style: { bottom: -10, left: -10, cursor: "nesw-resize" } },
+                  ].map((handle) => (
+                    <div
+                      key={handle.id}
+                      data-handle
+                      className="absolute z-40 size-5 flex items-center justify-center pointer-events-auto group/handle"
+                      style={handle.style}
+                      onMouseDown={(e) => onResizeMouseDown(e, el.id, handle.id)}
+                    >
+                      <div className="size-2 border border-primary bg-background pointer-events-none group-hover/handle:scale-125 transition-transform" />
+                    </div>
+                  ))}
+                </>
+              )}
+            </>
+          )}
+        </>
+      )}
+    </div>
+  );
+});
 
 export function Canvas({
   elements,
@@ -748,6 +1302,7 @@ export function Canvas({
   onDelete,
   onCanvasClick,
   onDropAsset,
+  onDropFile,
 }: CanvasProps) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
@@ -962,7 +1517,10 @@ export function Canvas({
 
   // Global PointerMove & PointerUp listeners for smooth, glitch-free dragging & marquee
   useEffect(() => {
-    const handleWindowPointerMove = (e: PointerEvent) => {
+    let rafId: number | null = null;
+    let pendingEvent: { clientX: number; clientY: number; ctrlKey: boolean; metaKey: boolean; altKey: boolean; shiftKey: boolean } | null = null;
+
+    const processPointerMove = (e: { clientX: number; clientY: number; ctrlKey: boolean; metaKey: boolean; altKey: boolean; shiftKey: boolean }) => {
       if (isPanning) {
         setPan({ x: e.clientX - panStart.x, y: e.clientY - panStart.y });
         return;
@@ -991,12 +1549,7 @@ export function Canvas({
           .filter(
             (el) =>
               el.visible &&
-              rectsIntersect(marqueeBox, {
-                x: el.x,
-                y: el.y,
-                width: el.width,
-                height: el.height,
-              }),
+              rectsIntersect(marqueeBox, getElementDynamicBounds(el, allElementsFlat)),
           )
           .map((el) => el.id);
 
@@ -1043,6 +1596,26 @@ export function Canvas({
           setSnapIndicator(null);
         }
         setInteraction({ ...curInter });
+        return;
+      }
+
+      // Connector segment dragging (orthogonal path manipulation)
+      if (curInter.type === "connector-segment") {
+        const delta = curInter.isVertical ? pos.x - curInter.startX : pos.y - curInter.startY;
+        let rawCoord = curInter.startPos + delta;
+        if (!e.altKey) {
+          rawCoord = Math.round(rawCoord / 10) * 10;
+        }
+        const updatedPts = moveOrthogonalSegment(curInter.initialWaypoints, curInter.segmentIndex, rawCoord);
+        const conn = allElementsFlat.find((el) => el.id === curInter.id);
+        if (conn) {
+          onUpdateElement(curInter.id, {
+            props: {
+              ...conn.props,
+              customWaypoints: JSON.stringify(updatedPts),
+            },
+          });
+        }
         return;
       }
 
@@ -1100,6 +1673,8 @@ export function Canvas({
       const dx = pos.x - curInter.startX;
       const dy = pos.y - curInter.startY;
 
+      const disableSnap = e.ctrlKey || e.metaKey || e.altKey;
+
       // Multi-element synchronous move
       if (curInter.type === "multi-move") {
         const rawGroupX = curInter.combinedBounds.x + dx;
@@ -1113,6 +1688,8 @@ export function Canvas({
           curInter.combinedBounds.height,
           allElementsFlat.filter((item) => !curInter.initialPositions.some((p) => p.id === item.id)),
           zoom,
+          null,
+          disableSnap,
         );
 
         setActiveGuides(snapRes.guides);
@@ -1154,11 +1731,11 @@ export function Canvas({
             allElementsFlat,
             zoom,
           );
-          setActiveGuides(snapRes.guides);
-          setSnapIndicator(snapRes.indicator ?? null);
+          setActiveGuides(disableSnap ? [] : snapRes.guides);
+          setSnapIndicator(disableSnap ? null : (snapRes.indicator ?? null));
           onUpdateElement(curInter.id, {
-            x: snapRes.x,
-            y: snapRes.y,
+            x: disableSnap ? Math.round(rawX) : snapRes.x,
+            y: disableSnap ? Math.round(rawY) : snapRes.y,
           });
         } else {
           const rawX = curInter.elStartX + dx;
@@ -1172,6 +1749,8 @@ export function Canvas({
             curInter.elH,
             allElementsFlat,
             zoom,
+            null,
+            disableSnap,
           );
 
           setActiveGuides(snapRes.guides);
@@ -1248,12 +1827,24 @@ export function Canvas({
       } else if (curInter.type === "rotate") {
         const curAngle = (Math.atan2(pos.y - curInter.centerY, pos.x - curInter.centerX) * 180) / Math.PI;
         const deltaAngle = curAngle - curInter.startAngle;
-        let newRot = curInter.startRotation + deltaAngle;
+        let rawRot = curInter.startRotation + deltaAngle;
+        let finalRot = rawRot;
         if (e.shiftKey) {
-          newRot = Math.round(newRot / 15) * 15;
+          finalRot = Math.round(finalRot / 15) * 15;
         }
-        newRot = ((Math.round(newRot) % 360) + 360) % 360;
-        onUpdateElement(curInter.id, { rotation: newRot });
+        finalRot = ((Math.round(finalRot * 100) / 100) % 360 + 360) % 360;
+        if (finalRot >= 359.95 || finalRot <= 0.05) {
+          finalRot = 0;
+        }
+
+        const updatedInter: Interaction = {
+          ...curInter,
+          currentRotation: finalRot,
+        };
+        interactionRef.current = updatedInter;
+        setInteraction(updatedInter);
+
+        onUpdateElement(curInter.id, { rotation: finalRot });
       } else if (curInter.type === "resize" && curInter.handle) {
         const h = curInter.handle;
         let x = curInter.elStartX;
@@ -1261,37 +1852,49 @@ export function Canvas({
         let w = curInter.elW;
         let hh = curInter.elH;
         const isCorner = h.length === 2;
+        const targetEl = allElementsFlat.find((item) => item.id === curInter.id);
+        const isImage = targetEl?.type === "image";
+        const lockAspect = (e.shiftKey || isImage) && isCorner;
 
-        if (e.shiftKey && isCorner) {
-          const ratio = curInter.aspectRatio || 1;
+        if (lockAspect) {
+          const ratio = Math.max(0.01, curInter.aspectRatio || 1);
+          let effectiveDx = 0;
+          let effectiveDy = 0;
+
           if (h === "se") {
-            const propW = Math.max(10, curInter.elW + dx);
-            const propH = Math.max(10, curInter.elH + dy);
-            const scale = Math.max(propW / curInter.elW, propH / curInter.elH);
-            w = Math.max(10, Math.round(curInter.elW * scale));
-            hh = Math.max(10, Math.round(w / ratio));
+            effectiveDx = dx;
+            effectiveDy = dy;
           } else if (h === "nw") {
-            const propW = Math.max(10, curInter.elW - dx);
-            const propH = Math.max(10, curInter.elH - dy);
-            const scale = Math.max(propW / curInter.elW, propH / curInter.elH);
-            w = Math.max(10, Math.round(curInter.elW * scale));
-            hh = Math.max(10, Math.round(w / ratio));
-            x = curInter.elStartX + (curInter.elW - w);
-            y = curInter.elStartY + (curInter.elH - hh);
+            effectiveDx = -dx;
+            effectiveDy = -dy;
           } else if (h === "ne") {
-            const propW = Math.max(10, curInter.elW + dx);
-            const propH = Math.max(10, curInter.elH - dy);
-            const scale = Math.max(propW / curInter.elW, propH / curInter.elH);
-            w = Math.max(10, Math.round(curInter.elW * scale));
-            hh = Math.max(10, Math.round(w / ratio));
-            y = curInter.elStartY + (curInter.elH - hh);
+            effectiveDx = dx;
+            effectiveDy = -dy;
           } else if (h === "sw") {
-            const propW = Math.max(10, curInter.elW - dx);
-            const propH = Math.max(10, curInter.elH + dy);
-            const scale = Math.max(propW / curInter.elW, propH / curInter.elH);
-            w = Math.max(10, Math.round(curInter.elW * scale));
-            hh = Math.max(10, Math.round(w / ratio));
-            x = curInter.elStartX + (curInter.elW - w);
+            effectiveDx = -dx;
+            effectiveDy = dy;
+          }
+
+          // Symmetrical diagonal projection: eliminates aspect ratio distortion & shrink-stuck bugs
+          const projectedDelta = (effectiveDx * ratio + effectiveDy) / (ratio * ratio + 1);
+          const targetH = Math.max(10, Math.round(curInter.elH + projectedDelta));
+          const targetW = Math.max(10, Math.round(targetH * ratio));
+
+          w = targetW;
+          hh = targetH;
+
+          if (h === "se") {
+            x = curInter.elStartX;
+            y = curInter.elStartY;
+          } else if (h === "nw") {
+            x = curInter.elStartX + (curInter.elW - targetW);
+            y = curInter.elStartY + (curInter.elH - targetH);
+          } else if (h === "ne") {
+            x = curInter.elStartX;
+            y = curInter.elStartY + (curInter.elH - targetH);
+          } else if (h === "sw") {
+            x = curInter.elStartX + (curInter.elW - targetW);
+            y = curInter.elStartY;
           }
         } else {
           if (h.includes("e")) {
@@ -1327,6 +1930,8 @@ export function Canvas({
           { x, y, width: w, height: hh },
           allElementsFlat,
           zoom,
+          disableSnap,
+          (e.shiftKey && isCorner) ? (curInter.aspectRatio || 1) : undefined,
         );
 
         setActiveGuides(snapRes.guides);
@@ -1339,7 +1944,39 @@ export function Canvas({
       }
     };
 
+    const handleWindowPointerMove = (e: PointerEvent) => {
+      pendingEvent = {
+        clientX: e.clientX,
+        clientY: e.clientY,
+        ctrlKey: e.ctrlKey,
+        metaKey: e.metaKey,
+        altKey: e.altKey,
+        shiftKey: e.shiftKey,
+      };
+
+      if (rafId === null) {
+        rafId = requestAnimationFrame(() => {
+          rafId = null;
+          if (pendingEvent) {
+            const ev = pendingEvent;
+            pendingEvent = null;
+            processPointerMove(ev);
+          }
+        });
+      }
+    };
+
     const handleWindowPointerUp = () => {
+      if (rafId !== null) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      if (pendingEvent) {
+        const ev = pendingEvent;
+        pendingEvent = null;
+        processPointerMove(ev);
+      }
+
       setActiveGuides([]);
       setSnapIndicator(null);
       const curInter = interactionRef.current;
@@ -1458,9 +2095,6 @@ export function Canvas({
           );
           dragOccurred.current = true;
         }
-        if (activeTool === "connector") {
-          onSelectTool?.("select");
-        }
       } else if (curInter?.type === "connector-endpoint") {
         const targetConn = allElementsFlat.find((e) => e.id === curInter.id);
         if (targetConn) {
@@ -1493,6 +2127,10 @@ export function Canvas({
       window.addEventListener("pointermove", handleWindowPointerMove);
       window.addEventListener("pointerup", handleWindowPointerUp);
       return () => {
+        if (rafId !== null) {
+          cancelAnimationFrame(rafId);
+          rafId = null;
+        }
         window.removeEventListener("pointermove", handleWindowPointerMove);
         window.removeEventListener("pointerup", handleWindowPointerUp);
       };
@@ -1616,17 +2254,18 @@ export function Canvas({
 
   const selectedBounds = useMemo(() => {
     if (selectedElements.length <= 1) return null;
-    const minX = Math.min(...selectedElements.map((e) => e.x));
-    const minY = Math.min(...selectedElements.map((e) => e.y));
-    const maxX = Math.max(...selectedElements.map((e) => e.x + e.width));
-    const maxY = Math.max(...selectedElements.map((e) => e.y + e.height));
+    const boundsList = selectedElements.map((e) => getElementDynamicBounds(e, allElementsFlat));
+    const minX = Math.min(...boundsList.map((b) => b.x));
+    const minY = Math.min(...boundsList.map((b) => b.y));
+    const maxX = Math.max(...boundsList.map((b) => b.x + b.width));
+    const maxY = Math.max(...boundsList.map((b) => b.y + b.height));
     return {
       x: minX,
       y: minY,
       width: maxX - minX,
       height: maxY - minY,
     };
-  }, [selectedElements]);
+  }, [selectedElements, allElementsFlat]);
 
   const handleMultiSelectionMouseDown = useCallback(
     (e: React.MouseEvent) => {
@@ -1639,10 +2278,11 @@ export function Canvas({
       e.stopPropagation();
       const pos = screenToCanvas(e.clientX, e.clientY);
 
-      const minX = Math.min(...selectedElements.map((item) => item.x));
-      const minY = Math.min(...selectedElements.map((item) => item.y));
-      const maxX = Math.max(...selectedElements.map((item) => item.x + item.width));
-      const maxY = Math.max(...selectedElements.map((item) => item.y + item.height));
+      const boundsList = selectedElements.map((item) => getElementDynamicBounds(item, allElementsFlat));
+      const minX = Math.min(...boundsList.map((b) => b.x));
+      const minY = Math.min(...boundsList.map((b) => b.y));
+      const maxX = Math.max(...boundsList.map((b) => b.x + b.width));
+      const maxY = Math.max(...boundsList.map((b) => b.y + b.height));
 
       const inter: Interaction = {
         type: "multi-move",
@@ -1665,7 +2305,7 @@ export function Canvas({
       interactionRef.current = inter;
       setInteraction(inter);
     },
-    [previewing, activeTool, spaceHeld, selectedElements, screenToCanvas],
+    [previewing, activeTool, spaceHeld, selectedElements, allElementsFlat, screenToCanvas],
   );
 
   const handleResizeMouseDown = useCallback(
@@ -1697,7 +2337,7 @@ export function Canvas({
   );
 
   const handleRotateMouseDown = useCallback(
-    (e: React.MouseEvent, el: EditorElement) => {
+    (e: React.MouseEvent, el: EditorElement, corner?: "nw" | "ne" | "se" | "sw") => {
       if (previewing) return;
       e.stopPropagation();
       e.preventDefault();
@@ -1705,8 +2345,9 @@ export function Canvas({
       onSelect(el.id);
       onSelectIds?.([el.id]);
       const pos = screenToCanvas(e.clientX, e.clientY);
-      const centerX = el.x + el.width / 2;
-      const centerY = el.y + el.height / 2;
+      const bounds = getElementWorldBounds(el, allElementsFlat);
+      const centerX = bounds.x + bounds.width / 2;
+      const centerY = bounds.y + bounds.height / 2;
       const startAngle = (Math.atan2(pos.y - centerY, pos.x - centerX) * 180) / Math.PI;
       const inter: Interaction = {
         type: "rotate",
@@ -1715,13 +2356,15 @@ export function Canvas({
         startY: pos.y,
         centerX,
         centerY,
-        startRotation: el.rotation,
+        startRotation: el.rotation ?? 0,
         startAngle,
+        currentRotation: el.rotation ?? 0,
+        corner: corner ?? "nw",
       };
       interactionRef.current = inter;
       setInteraction(inter);
     },
-    [screenToCanvas, onSelect, onSelectIds, previewing],
+    [allElementsFlat, screenToCanvas, onSelect, onSelectIds, previewing],
   );
 
   const handleRadiusMouseDown = useCallback(
@@ -1823,7 +2466,22 @@ export function Canvas({
   const handleDrop = useCallback(
     (e: React.DragEvent) => {
       e.preventDefault();
-      if (previewing || !onDropAsset) return;
+      if (previewing) return;
+
+      // 1. Check for dropped image files from desktop
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0 && onDropFile) {
+        for (let i = 0; i < e.dataTransfer.files.length; i++) {
+          const file = e.dataTransfer.files[i];
+          if (file.type.startsWith("image/")) {
+            const pos = screenToCanvas(e.clientX, e.clientY);
+            onDropFile(file, snap(pos.x), snap(pos.y));
+            return;
+          }
+        }
+      }
+
+      // 2. Check for library asset drag & drop
+      if (!onDropAsset) return;
       try {
         const raw = e.dataTransfer.getData("application/json");
         if (!raw) return;
@@ -1836,7 +2494,7 @@ export function Canvas({
         // Ignore parsing errors
       }
     },
-    [previewing, onDropAsset, screenToCanvas, snap],
+    [previewing, onDropFile, onDropAsset, screenToCanvas, snap],
   );
 
   const handleAnchorMouseDown = useCallback(
@@ -1860,7 +2518,7 @@ export function Canvas({
       interactionRef.current = inter;
       setInteraction(inter);
     },
-    [previewing, allElementsFlat, activeTool, interaction],
+    [previewing, activeTool, interaction, allElementsFlat],
   );
 
   const handleConnectorEndpointMouseDown = useCallback(
@@ -1906,239 +2564,37 @@ export function Canvas({
     [allElementsFlat, onSelect, onSelectIds, previewing, screenToCanvas],
   );
 
-  const ElementNode = ({
-    el,
-    ancestorLocked,
-    interaction,
-    isPanning,
-    spaceHeld,
-    onElementMouseDown,
-    onResizeMouseDown,
-  }: {
-    el: EditorElement;
-    ancestorLocked: boolean;
-    interaction: Interaction | null;
-    isPanning: boolean;
-    spaceHeld: boolean;
-    onElementMouseDown: (e: React.MouseEvent, elId: string) => void;
-    onResizeMouseDown: (e: React.MouseEvent, elId: string, handle: string) => void;
-  }) => {
-    const [isHovered, setIsHovered] = useState(false);
-    const isSelected = effectiveSelectedIds.includes(el.id);
-    const isSingleSelected = effectiveSelectedIds.length === 1 && isSelected;
-    if (!el.visible) return null;
-    const locked = el.locked || ancestorLocked;
-    const isLineLike = el.type === "line" || el.type === "arrow";
-    const hasCornerRadius =
-      el.type === "rectangle" ||
-      el.type === "card" ||
-      el.type === "mobile-frame" ||
-      el.type === "browser-frame" ||
-      el.type === "placeholder" ||
-      el.type === "modal-dialog" ||
-      el.type === "image";
+  const handleConnectorSegmentMouseDown = useCallback(
+    (
+      e: React.MouseEvent,
+      connector: EditorElement,
+      segmentIndex: number,
+      isVertical: boolean,
+      currentWaypoints: Point[],
+      startPos: number,
+    ) => {
+      if (previewing || connector.locked) return;
+      e.stopPropagation();
+      e.preventDefault();
+      onSelect(connector.id);
+      onSelectIds?.([connector.id]);
 
-    const isConnecting = interaction?.type === "create-connector" || interaction?.type === "connector-endpoint";
-    const isConnectorMode = activeTool === "connector" || isConnecting;
-    const showAnchors = !previewing && !locked && el.type !== "connector" && isConnectorMode;
-
-    return (
-      <div
-        key={el.id}
-        data-element
-        data-element-id={el.id}
-        className={cn(
-          "absolute z-10 select-none",
-          previewing && "pointer-events-none",
-          locked && "cursor-default opacity-60",
-          !locked &&
-            (!interaction || ("id" in interaction && interaction.id !== el.id)) &&
-            (activeTool === "select"
-              ? "cursor-move"
-              : activeTool === "connector"
-              ? "cursor-crosshair"
-              : "cursor-default"),
-        )}
-        style={{
-          left: el.x,
-          top: el.y,
-          width: el.width,
-          height: el.height,
-          opacity: el.opacity,
-          transform: `rotate(${el.rotation}deg)`,
-          transformOrigin: isLineLike ? "0 50%" : "center center",
-        }}
-        onMouseEnter={() => setIsHovered(true)}
-        onMouseLeave={() => setIsHovered(false)}
-        onMouseDown={(e) => onElementMouseDown(e, el.id)}
-        onDoubleClick={(e) => {
-          e.stopPropagation();
-          onSelect(el.id);
-          setTimeout(() => {
-            const input = document.querySelector<HTMLInputElement | HTMLTextAreaElement>(
-              "aside input:not([type='color']):not([type='checkbox']), aside textarea"
-            );
-            if (input) {
-              input.focus();
-              input.select?.();
-            }
-          }, 60);
-        }}
-      >
-        <ElementRenderer element={el}>
-          {el.children &&
-            el.children.length > 0 &&
-            el.children.map((child) => (
-              <ElementNode
-                key={child.id}
-                el={child}
-                ancestorLocked={locked}
-                interaction={interaction}
-                isPanning={isPanning}
-                spaceHeld={spaceHeld}
-                onElementMouseDown={onElementMouseDown}
-                onResizeMouseDown={onResizeMouseDown}
-              />
-            ))}
-        </ElementRenderer>
-
-        {/* Anchor Ports (Top, Right, Bottom, Left) for Connecting Elements */}
-        {showAnchors && (
-          <>
-            {ANCHOR_PORTS.map((port) => {
-              const posStyle =
-                port === "top"
-                  ? { left: "50%", top: 0 }
-                  : port === "right"
-                  ? { left: "100%", top: "50%" }
-                  : port === "bottom"
-                  ? { left: "50%", top: "100%" }
-                  : { left: 0, top: "50%" };
-
-              return (
-                <div
-                  key={port}
-                  data-handle
-                  data-anchor-port={port}
-                  className="absolute z-[35] flex size-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center cursor-crosshair group/anchor"
-                  style={posStyle}
-                  title={`从此处连线 (${PORT_LABELS[port]})`}
-                  onMouseDown={(e) => handleAnchorMouseDown(e, el, port)}
-                >
-                  <div className="size-2.5 rounded-full border-1.5 border-blue-500 bg-white shadow-xs transition-all group-hover/anchor:bg-blue-600 group-hover/anchor:border-blue-600 group-hover/anchor:scale-125" />
-                </div>
-              );
-            })}
-          </>
-        )}
-
-        {isSelected && !locked && !previewing && (
-          <>
-            {isLineLike ? (
-              /* Line endpoint handles */
-              <>
-                <div
-                  data-handle
-                  className="absolute -left-1.5 top-1/2 -translate-y-1/2 z-30 size-3 rounded-full border-2 border-blue-500 bg-white shadow-xs cursor-crosshair hover:scale-125 transition-transform"
-                  title="起点 / 方向 (Shift 水平/垂直/45°)"
-                  onMouseDown={(e) => handleLineEndpointMouseDown(e, el, "start")}
-                />
-                <div
-                  data-handle
-                  className="absolute -right-1.5 top-1/2 -translate-y-1/2 z-30 size-3 rounded-full border-2 border-blue-500 bg-white shadow-xs cursor-crosshair hover:scale-125 transition-transform"
-                  title="终点 / 方向 (Shift 水平/垂直/45°)"
-                  onMouseDown={(e) => handleLineEndpointMouseDown(e, el, "end")}
-                />
-              </>
-            ) : (
-              /* Standard 2D shape bounding box and handles */
-              <>
-                {/* 1px crisp blue selection border */}
-                <div
-                  className="pointer-events-none absolute inset-0 border border-blue-500 z-10"
-                  data-handle
-                />
-
-                {/* Show rotation and resize handles on single selection */}
-                {isSingleSelected && (
-                  <>
-                    {/* Top center rotation handle */}
-                    <div className="pointer-events-none absolute -top-3 left-1/2 -translate-x-1/2 h-3 w-[1px] bg-blue-500 z-10" />
-                    <div
-                      data-handle
-                      className="absolute -top-5 left-1/2 -translate-x-1/2 z-20 size-2.5 rounded-full border border-blue-500 bg-white cursor-grab shadow-xs hover:scale-125 transition-transform"
-                      title="旋转 (Shift 15°吸附)"
-                      onMouseDown={(e) => handleRotateMouseDown(e, el)}
-                    />
-
-                    {/* 4 corner radius inner dots */}
-                    {hasCornerRadius &&
-                      (() => {
-                        const curRadius = Number(el.props.radius ?? 4);
-                        const maxR = Math.min(el.width, el.height) / 2;
-                        const offset = Math.max(6, Math.min(curRadius + 4, maxR - 4));
-                        return (
-                          <>
-                            <div
-                              data-handle
-                              className="absolute z-25 size-2 rounded-full border border-blue-500 bg-white cursor-crosshair shadow-xs hover:scale-125 transition-transform"
-                              style={{ top: offset, left: offset }}
-                              title="调节圆角"
-                              onMouseDown={(e) => handleRadiusMouseDown(e, el, "nw")}
-                            />
-                            <div
-                              data-handle
-                              className="absolute z-25 size-2 rounded-full border border-blue-500 bg-white cursor-crosshair shadow-xs hover:scale-125 transition-transform"
-                              style={{ top: offset, right: offset }}
-                              title="调节圆角"
-                              onMouseDown={(e) => handleRadiusMouseDown(e, el, "ne")}
-                            />
-                            <div
-                              data-handle
-                              className="absolute z-25 size-2 rounded-full border border-blue-500 bg-white cursor-crosshair shadow-xs hover:scale-125 transition-transform"
-                              style={{ bottom: offset, left: offset }}
-                              title="调节圆角"
-                              onMouseDown={(e) => handleRadiusMouseDown(e, el, "sw")}
-                            />
-                            <div
-                              data-handle
-                              className="absolute z-25 size-2 rounded-full border border-blue-500 bg-white cursor-crosshair shadow-xs hover:scale-125 transition-transform"
-                              style={{ bottom: offset, right: offset }}
-                              title="调节圆角"
-                              onMouseDown={(e) => handleRadiusMouseDown(e, el, "se")}
-                            />
-                          </>
-                        );
-                      })()}
-
-                    {/* 8 resize handle control points */}
-                    {[
-                      { id: "nw", style: { top: -3.5, left: -3.5, cursor: "nwse-resize" } },
-                      { id: "n", style: { top: -3.5, left: "50%", transform: "translateX(-50%)", cursor: "ns-resize" } },
-                      { id: "ne", style: { top: -3.5, right: -3.5, cursor: "nesw-resize" } },
-                      { id: "e", style: { top: "50%", right: -3.5, transform: "translateY(-50%)", cursor: "ew-resize" } },
-                      { id: "se", style: { bottom: -3.5, right: -3.5, cursor: "nwse-resize" } },
-                      { id: "s", style: { bottom: -3.5, left: "50%", transform: "translateX(-50%)", cursor: "ns-resize" } },
-                      { id: "sw", style: { bottom: -3.5, left: -3.5, cursor: "nesw-resize" } },
-                      { id: "w", style: { top: "50%", left: -3.5, transform: "translateY(-50%)", cursor: "ew-resize" } },
-                    ].map((handle) => (
-                      <div
-                        key={handle.id}
-                        data-handle
-                        className="absolute z-20 size-2 border border-blue-500 bg-white shadow-xs"
-                        style={handle.style}
-                        onMouseDown={(e) => onResizeMouseDown(e, el.id, handle.id)}
-                      />
-                    ))}
-                  </>
-                )}
-              </>
-            )}
-          </>
-        )}
-      </div>
-    );
-  };
+      const pos = screenToCanvas(e.clientX, e.clientY);
+      const inter: Interaction = {
+        type: "connector-segment",
+        id: connector.id,
+        segmentIndex,
+        isVertical,
+        initialWaypoints: currentWaypoints,
+        startX: pos.x,
+        startY: pos.y,
+        startPos,
+      };
+      interactionRef.current = inter;
+      setInteraction(inter);
+    },
+    [previewing, screenToCanvas, onSelect, onSelectIds],
+  );
 
   const isDrawingTool = activeTool !== "select" && activeTool !== "hand";
 
@@ -2146,12 +2602,18 @@ export function Canvas({
     <div
       ref={canvasRef}
       className={cn(
-        "relative flex-1 overflow-hidden bg-muted outline-none",
+        "relative flex-1 overflow-hidden bg-background outline-none select-none",
         (spaceHeld || activeTool === "hand") && "cursor-grab",
         isPanning && "cursor-grabbing",
         !spaceHeld && activeTool === "select" && "cursor-default",
         !spaceHeld && isDrawingTool && "cursor-crosshair",
       )}
+      style={{
+        cursor:
+          interaction?.type === "rotate"
+            ? ROTATE_CURSORS[interaction.corner ?? "nw"]
+            : undefined,
+      }}
       onMouseDown={handleMouseDown}
       onClick={handleClick}
       onDragOver={handleDragOver}
@@ -2159,7 +2621,7 @@ export function Canvas({
       tabIndex={0}
       data-canvas
     >
-      {/* Infinite Grid */}
+      {/* Infinite Dot Grid */}
       {showGrid && (
         <svg
           className="pointer-events-none absolute inset-0 size-full"
@@ -2174,11 +2636,11 @@ export function Canvas({
               x={((pan.x % (GRID_SIZE * zoom)) + (GRID_SIZE * zoom)) % (GRID_SIZE * zoom)}
               y={((pan.y % (GRID_SIZE * zoom)) + (GRID_SIZE * zoom)) % (GRID_SIZE * zoom)}
             >
-              <path
-                d={`M ${GRID_SIZE * zoom} 0 L 0 0 0 ${GRID_SIZE * zoom}`}
-                fill="none"
-                className="stroke-[var(--color-border)]"
-                strokeWidth="0.5"
+              <circle
+                cx={1}
+                cy={1}
+                r={Math.max(0.75, 0.75 * Math.min(1.25, zoom))}
+                className="fill-border-visible"
               />
             </pattern>
           </defs>
@@ -2199,7 +2661,7 @@ export function Canvas({
           }}
           data-canvas-area
         >
-          {/* Multi-Selection Interactive Background Hit Area (enables dragging from empty spaces inside bounding box) */}
+          {/* Multi-Selection Interactive Background Hit Area */}
           {selectedBounds && (
             <div
               data-multi-selection-box
@@ -2229,6 +2691,7 @@ export function Canvas({
             onSelect={onSelect}
             onSelectIds={onSelectIds}
             onStartEndpointDrag={handleConnectorEndpointMouseDown}
+            onStartSegmentDrag={handleConnectorSegmentMouseDown}
           />
 
           {elements
@@ -2237,19 +2700,28 @@ export function Canvas({
               <ElementNode
                 key={el.id}
                 el={el}
+                allElementsFlat={allElementsFlat}
+                effectiveSelectedIds={effectiveSelectedIds}
                 ancestorLocked={false}
                 interaction={interaction}
                 isPanning={isPanning}
                 spaceHeld={spaceHeld}
+                previewing={previewing}
+                activeTool={activeTool}
                 onElementMouseDown={handleElementMouseDown}
                 onResizeMouseDown={handleResizeMouseDown}
+                onRotateMouseDown={handleRotateMouseDown}
+                onRadiusMouseDown={handleRadiusMouseDown}
+                onLineEndpointMouseDown={handleLineEndpointMouseDown}
+                onAnchorMouseDown={handleAnchorMouseDown}
+                onSelect={onSelect}
               />
             ))}
 
-          {/* Unified Multi-Selection Bounding Box (Image 2 style) */}
-          <MultiSelectionBoundingBox selectedElements={selectedElements} />
+          {/* Unified Multi-Selection Bounding Box */}
+          <MultiSelectionBoundingBox selectedElements={selectedElements} allElementsFlat={allElementsFlat} />
 
-          {/* Live Marquee Box Selection Overlay (Image 1 style) */}
+          {/* Live Marquee Box Selection Overlay */}
           <MarqueeSelectionOverlay interaction={interaction} />
 
           {/* Live Drag-to-Create Drawing Ghost Preview */}
@@ -2264,9 +2736,14 @@ export function Canvas({
         </div>
       </div>
 
-      <div className="absolute bottom-4 right-4 rounded-lg border bg-background px-2.5 py-1 text-xs text-muted-foreground shadow-xs">
+      <button
+        type="button"
+        onClick={() => onZoomChange?.(1)}
+        title="点击重置缩放为 100%"
+        className="absolute bottom-4 right-4 rounded-md border border-border-visible bg-surface px-2.5 py-1 font-mono text-[11px] font-bold text-foreground hover:border-foreground transition-colors cursor-pointer select-none"
+      >
         {Math.round(zoom * 100)}%
-      </div>
+      </button>
     </div>
   );
 }

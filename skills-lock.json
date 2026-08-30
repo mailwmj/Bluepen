@@ -12,6 +12,11 @@
       "sourceType": "github",
       "skillPath": "apps/ui/skills/coss-particles/SKILL.md",
       "computedHash": "44c9d1c501a8f76c5332740795a2fa0f07dc814cd1a2c4a6103a971eb982db79"
+    },
+    "nothing-design": {
+      "source": "local",
+      "sourceType": "project",
+      "skillPath": ".agents/skills/nothing-design/SKILL.md"
     }
   }
 }

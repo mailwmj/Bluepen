@@ -70,6 +70,55 @@ export function getElementWorldBounds(
 }
 
 /**
+ * Resolves the dynamic bounding box of an element (including connectors with live linked anchors).
+ */
+export function getElementDynamicBounds(
+  element: EditorElement,
+  allElementsFlat?: EditorElement[],
+): { x: number; y: number; width: number; height: number } {
+  if (element.type === "connector") {
+    const startEl = element.props.startElementId && allElementsFlat
+      ? allElementsFlat.find((e) => e.id === element.props.startElementId)
+      : null;
+    const endEl = element.props.endElementId && allElementsFlat
+      ? allElementsFlat.find((e) => e.id === element.props.endElementId)
+      : null;
+
+    let sX = Number(element.props.startPointX ?? element.x);
+    let sY = Number(element.props.startPointY ?? element.y);
+    let eX = Number(element.props.endPointX ?? element.x + element.width);
+    let eY = Number(element.props.endPointY ?? element.y + element.height);
+
+    if (startEl && allElementsFlat) {
+      const anchor = getElementAnchor(startEl, (element.props.startPort as AnchorPort) || "right", allElementsFlat);
+      sX = anchor.point.x;
+      sY = anchor.point.y;
+    }
+    if (endEl && allElementsFlat) {
+      const anchor = getElementAnchor(endEl, (element.props.endPort as AnchorPort) || "left", allElementsFlat);
+      eX = anchor.point.x;
+      eY = anchor.point.y;
+    }
+
+    const minX = Math.min(sX, eX);
+    const minY = Math.min(sY, eY);
+    return {
+      x: minX,
+      y: minY,
+      width: Math.max(10, Math.abs(eX - sX)),
+      height: Math.max(10, Math.abs(eY - sY)),
+    };
+  }
+
+  return {
+    x: element.x,
+    y: element.y,
+    width: element.width,
+    height: element.height,
+  };
+}
+
+/**
  * Calculates absolute anchor position and direction vector for an element in world coordinates.
  */
 export function getElementAnchor(
@@ -300,15 +349,140 @@ export function buildRoundedSvgPath(points: Point[], radius = 8): string {
   return d;
 }
 
+export interface Rect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 /**
- * Calculates clean, robust orthogonal waypoints between start and end anchor positions.
- * Handles all 16 directional cases without overlapping, double-backs, or erratic jumping.
+ * Simplifies a sequence of orthogonal points by removing redundant collinear waypoints
+ * and zero-distance micro-steps.
+ */
+export function simplifyOrthogonalPoints(points: Point[]): Point[] {
+  if (points.length <= 2) return points;
+
+  // 1. Remove points that are virtually identical
+  const deduped: Point[] = [points[0]!];
+  for (let i = 1; i < points.length; i++) {
+    const prev = deduped[deduped.length - 1]!;
+    const curr = points[i]!;
+    if (Math.hypot(curr.x - prev.x, curr.y - prev.y) > 0.5) {
+      deduped.push(curr);
+    }
+  }
+
+  if (deduped.length <= 2) return deduped;
+
+  // 2. Remove collinear intermediate points
+  const result: Point[] = [deduped[0]!];
+  for (let i = 1; i < deduped.length - 1; i++) {
+    const pPrev = result[result.length - 1]!;
+    const pCurr = deduped[i]!;
+    const pNext = deduped[i + 1]!;
+
+    const isHoriz = Math.abs(pPrev.y - pCurr.y) < 0.5 && Math.abs(pCurr.y - pNext.y) < 0.5;
+    const isVert = Math.abs(pPrev.x - pCurr.x) < 0.5 && Math.abs(pCurr.x - pNext.x) < 0.5;
+
+    if (isHoriz || isVert) {
+      continue;
+    }
+    result.push(pCurr);
+  }
+  result.push(deduped[deduped.length - 1]!);
+
+  return result;
+}
+
+/**
+ * Checks whether an orthogonal segment (horizontal or vertical) strictly penetrates
+ * the interior of any bounding box obstacle.
+ */
+function isSegmentColliding(p1: Point, p2: Point, boxes: Rect[]): boolean {
+  const minX = Math.min(p1.x, p2.x);
+  const maxX = Math.max(p1.x, p2.x);
+  const minY = Math.min(p1.y, p2.y);
+  const maxY = Math.max(p1.y, p2.y);
+  const isHoriz = Math.abs(minY - maxY) < 0.01;
+  const isVert = Math.abs(minX - maxX) < 0.01;
+
+  for (const box of boxes) {
+    const bx1 = box.x;
+    const bx2 = box.x + box.width;
+    const by1 = box.y;
+    const by2 = box.y + box.height;
+    const eps = 1.0;
+
+    if (isHoriz) {
+      if (minY > by1 + eps && minY < by2 - eps) {
+        if (Math.max(minX, bx1) < Math.min(maxX, bx2) - eps) {
+          return true;
+        }
+      }
+    } else if (isVert) {
+      if (minX > bx1 + eps && minX < bx2 - eps) {
+        if (Math.max(minY, by1) < Math.min(maxY, by2) - eps) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
+}
+
+/**
+ * Calculates the midpoint along the polyline path length for label placement.
+ */
+export function calculatePolylineMidpoint(waypoints: Point[]): Point {
+  if (waypoints.length === 0) return { x: 0, y: 0 };
+  if (waypoints.length === 1) return waypoints[0]!;
+
+  let totalLength = 0;
+  const segLengths: number[] = [];
+
+  for (let i = 0; i < waypoints.length - 1; i++) {
+    const p1 = waypoints[i]!;
+    const p2 = waypoints[i + 1]!;
+    const len = Math.hypot(p2.x - p1.x, p2.y - p1.y);
+    segLengths.push(len);
+    totalLength += len;
+  }
+
+  if (totalLength <= 0) return waypoints[0]!;
+
+  const targetDist = totalLength / 2;
+  let accumulated = 0;
+
+  for (let i = 0; i < segLengths.length; i++) {
+    const segLen = segLengths[i]!;
+    if (accumulated + segLen >= targetDist) {
+      const remaining = targetDist - accumulated;
+      const ratio = segLen > 0 ? remaining / segLen : 0;
+      const p1 = waypoints[i]!;
+      const p2 = waypoints[i + 1]!;
+      return {
+        x: Math.round(p1.x + (p2.x - p1.x) * ratio),
+        y: Math.round(p1.y + (p2.y - p1.y) * ratio),
+      };
+    }
+    accumulated += segLen;
+  }
+
+  const last = waypoints[waypoints.length - 1]!;
+  return { x: Math.round(last.x), y: Math.round(last.y) };
+}
+
+/**
+ * Calculates clean, robust orthogonal waypoints between start and end anchor positions
+ * using an obstacle-aware Manhattan routing algorithm with port clearance stubs.
  */
 export function calculateOrthogonalPath(
-  start: { point: Point; dir?: Vector },
-  end: { point: Point; dir?: Vector },
+  start: { point: Point; dir?: Vector; box?: Rect },
+  end: { point: Point; dir?: Vector; box?: Rect },
   radius = 8,
   stub = 20,
+  options?: { startBox?: Rect; endBox?: Rect; obstacles?: Rect[]; padding?: number },
 ): { d: string; waypoints: Point[]; midpoint: Point } {
   const sx = start.point.x;
   const sy = start.point.y;
@@ -318,191 +492,269 @@ export function calculateOrthogonalPath(
   const sDir = start.dir || { x: 0, y: 0 };
   const eDir = end.dir || { x: 0, y: 0 };
 
+  const startBox = options?.startBox ?? start.box;
+  const endBox = options?.endBox ?? end.box;
+  const padding = options?.padding ?? 16;
+  const obstacles = options?.obstacles ?? [];
+
   const hasStartDir = Math.abs(sDir.x) > 0.1 || Math.abs(sDir.y) > 0.1;
   const hasEndDir = Math.abs(eDir.x) > 0.1 || Math.abs(eDir.y) > 0.1;
 
   const p0: Point = { x: sx, y: sy };
   const pN: Point = { x: ex, y: ey };
 
-  const pStartStub: Point = hasStartDir
-    ? {
-        x: sx + Math.sign(sDir.x) * (Math.abs(sDir.x) > 0.5 ? stub : 0),
-        y: sy + Math.sign(sDir.y) * (Math.abs(sDir.y) > 0.5 ? stub : 0),
-      }
-    : p0;
-
-  const pEndStub: Point = hasEndDir
-    ? {
-        x: ex + Math.sign(eDir.x) * (Math.abs(eDir.x) > 0.5 ? stub : 0),
-        y: ey + Math.sign(eDir.y) * (Math.abs(eDir.y) > 0.5 ? stub : 0),
-      }
-    : pN;
-
-  const waypoints: Point[] = [p0];
-  if (hasStartDir && (pStartStub.x !== p0.x || pStartStub.y !== p0.y)) {
-    waypoints.push(pStartStub);
-  }
-
-  const isStartHoriz = Math.abs(sDir.x) > 0.5;
-  const isStartVert = Math.abs(sDir.y) > 0.5;
-  const isEndHoriz = Math.abs(eDir.x) > 0.5;
-  const isEndVert = Math.abs(eDir.y) > 0.5;
-
-  if (hasStartDir && hasEndDir) {
-    if (isStartHoriz && isEndHoriz) {
-      const sXSign = Math.sign(sDir.x);
-      const eXSign = Math.sign(eDir.x);
-      const dx = pEndStub.x - pStartStub.x;
-
-      if (sXSign !== eXSign && sXSign * dx > 0) {
-        // Facing each other with space in between -> S-shape through midpoint
-        const midX = pStartStub.x + dx / 2;
-        waypoints.push({ x: midX, y: pStartStub.y });
-        waypoints.push({ x: midX, y: pEndStub.y });
+  // Calculate safe exit stub for start port (outside startBox)
+  let pStartStub: Point = p0;
+  if (hasStartDir) {
+    if (Math.abs(sDir.x) > Math.abs(sDir.y)) {
+      if (sDir.x > 0) {
+        const minOutX = startBox ? startBox.x + startBox.width + padding : sx + stub;
+        pStartStub = { x: Math.max(sx + stub, minOutX), y: sy };
       } else {
-        // Same direction or facing away -> route around
-        const midY = (pStartStub.y + pEndStub.y) / 2;
-        const clearanceX =
-          sXSign > 0
-            ? Math.max(pStartStub.x, pEndStub.x) + stub
-            : Math.min(pStartStub.x, pEndStub.x) - stub;
-        waypoints.push({ x: clearanceX, y: pStartStub.y });
-        waypoints.push({ x: clearanceX, y: midY });
-        waypoints.push({ x: pEndStub.x, y: midY });
-      }
-    } else if (isStartVert && isEndVert) {
-      const sYSign = Math.sign(sDir.y);
-      const eYSign = Math.sign(eDir.y);
-      const dy = pEndStub.y - pStartStub.y;
-
-      if (sYSign !== eYSign && sYSign * dy > 0) {
-        // Facing each other vertically -> S-shape through midY
-        const midY = pStartStub.y + dy / 2;
-        waypoints.push({ x: pStartStub.x, y: midY });
-        waypoints.push({ x: pEndStub.x, y: midY });
-      } else {
-        // Same direction or facing away -> route around
-        const midX = (pStartStub.x + pEndStub.x) / 2;
-        const clearanceY =
-          sYSign > 0
-            ? Math.max(pStartStub.y, pEndStub.y) + stub
-            : Math.min(pStartStub.y, pEndStub.y) - stub;
-        waypoints.push({ x: pStartStub.x, y: clearanceY });
-        waypoints.push({ x: midX, y: clearanceY });
-        waypoints.push({ x: midX, y: pEndStub.y });
-      }
-    } else if (isStartHoriz && isEndVert) {
-      const sXSign = Math.sign(sDir.x);
-      const eYSign = Math.sign(eDir.y);
-      const dx = pEndStub.x - pStartStub.x;
-      const dy = pEndStub.y - pStartStub.y;
-
-      if (sXSign * dx >= 0 && eYSign * (-dy) >= 0) {
-        // Direct natural 90° turn
-        waypoints.push({ x: pEndStub.x, y: pStartStub.y });
-      } else if (sXSign * dx < 0) {
-        // Target is behind start port -> extend start horizontally, then turn
-        const clearanceX = pStartStub.x + sXSign * stub;
-        waypoints.push({ x: clearanceX, y: pStartStub.y });
-        waypoints.push({ x: clearanceX, y: pEndStub.y });
-      } else {
-        waypoints.push({ x: pEndStub.x, y: pStartStub.y });
-      }
-    } else if (isStartVert && isEndHoriz) {
-      const sYSign = Math.sign(sDir.y);
-      const eXSign = Math.sign(eDir.x);
-      const dx = pEndStub.x - pStartStub.x;
-      const dy = pEndStub.y - pStartStub.y;
-
-      if (sYSign * dy >= 0 && eXSign * (-dx) >= 0) {
-        // Direct natural 90° turn
-        waypoints.push({ x: pStartStub.x, y: pEndStub.y });
-      } else if (sYSign * dy < 0) {
-        const clearanceY = pStartStub.y + sYSign * stub;
-        waypoints.push({ x: pStartStub.x, y: clearanceY });
-        waypoints.push({ x: pEndStub.x, y: clearanceY });
-      } else {
-        waypoints.push({ x: pStartStub.x, y: pEndStub.y });
+        const minOutX = startBox ? startBox.x - padding : sx - stub;
+        pStartStub = { x: Math.min(sx - stub, minOutX), y: sy };
       }
     } else {
-      const midX = pStartStub.x + (pEndStub.x - pStartStub.x) / 2;
-      waypoints.push({ x: midX, y: pStartStub.y });
-      waypoints.push({ x: midX, y: pEndStub.y });
+      if (sDir.y > 0) {
+        const minOutY = startBox ? startBox.y + startBox.height + padding : sy + stub;
+        pStartStub = { x: sx, y: Math.max(sy + stub, minOutY) };
+      } else {
+        const minOutY = startBox ? startBox.y - padding : sy - stub;
+        pStartStub = { x: sx, y: Math.min(sy - stub, minOutY) };
+      }
     }
-  } else if (hasStartDir && !hasEndDir) {
-    // Live dragging ghost or end is free floating point
-    if (isStartHoriz) {
-      const sXSign = Math.sign(sDir.x);
-      if (sXSign * (ex - pStartStub.x) > 0) {
-        // Moving ahead of start
-        const midX = pStartStub.x + (ex - pStartStub.x) / 2;
-        waypoints.push({ x: midX, y: pStartStub.y });
-        waypoints.push({ x: midX, y: ey });
-      } else {
-        // Target is behind start port -> clean L-turn
-        waypoints.push({ x: pStartStub.x, y: ey });
-      }
-    } else if (isStartVert) {
-      const sYSign = Math.sign(sDir.y);
-      if (sYSign * (ey - pStartStub.y) > 0) {
-        const midY = pStartStub.y + (ey - pStartStub.y) / 2;
-        waypoints.push({ x: pStartStub.x, y: midY });
-        waypoints.push({ x: ex, y: midY });
-      } else {
-        waypoints.push({ x: ex, y: pStartStub.y });
-      }
-    } else {
-      const midX = sx + (ex - sx) / 2;
-      waypoints.push({ x: midX, y: sy });
-      waypoints.push({ x: midX, y: ey });
-    }
-  } else if (!hasStartDir && hasEndDir) {
-    // Start is free point, End has anchor direction
-    if (isEndHoriz) {
-      const eXSign = Math.sign(eDir.x);
-      if (eXSign * (pEndStub.x - sx) > 0) {
-        const midX = sx + (pEndStub.x - sx) / 2;
-        waypoints.push({ x: midX, y: sy });
-        waypoints.push({ x: midX, y: pEndStub.y });
-      } else {
-        waypoints.push({ x: pEndStub.x, y: sy });
-      }
-    } else if (isEndVert) {
-      const eYSign = Math.sign(eDir.y);
-      if (eYSign * (pEndStub.y - sy) > 0) {
-        const midY = sy + (pEndStub.y - sy) / 2;
-        waypoints.push({ x: sx, y: midY });
-        waypoints.push({ x: pEndStub.x, y: midY });
-      } else {
-        waypoints.push({ x: sx, y: pEndStub.y });
-      }
-    } else {
-      const midX = sx + (ex - sx) / 2;
-      waypoints.push({ x: midX, y: sy });
-      waypoints.push({ x: midX, y: ey });
-    }
-  } else {
-    // Both endpoints are free floating points
-    const midX = sx + (ex - sx) / 2;
-    waypoints.push({ x: midX, y: sy });
-    waypoints.push({ x: midX, y: ey });
   }
 
-  if (hasEndDir && (pEndStub.x !== pN.x || pEndStub.y !== pN.y)) {
-    waypoints.push(pEndStub);
+  // Calculate safe approach stub for end port (outside endBox)
+  let pEndStub: Point = pN;
+  if (hasEndDir) {
+    if (Math.abs(eDir.x) > Math.abs(eDir.y)) {
+      if (eDir.x > 0) {
+        const minOutX = endBox ? endBox.x + endBox.width + padding : ex + stub;
+        pEndStub = { x: Math.max(ex + stub, minOutX), y: ey };
+      } else {
+        const minOutX = endBox ? endBox.x - padding : ex - stub;
+        pEndStub = { x: Math.min(ex - stub, minOutX), y: ey };
+      }
+    } else {
+      if (eDir.y > 0) {
+        const minOutY = endBox ? endBox.y + endBox.height + padding : ey + stub;
+        pEndStub = { x: ex, y: Math.max(ey + stub, minOutY) };
+      } else {
+        const minOutY = endBox ? endBox.y - padding : ey - stub;
+        pEndStub = { x: ex, y: Math.min(ey - stub, minOutY) };
+      }
+    }
   }
-  waypoints.push(pN);
 
-  const d = buildRoundedSvgPath(waypoints, radius);
+  // Collect obstacle bounding boxes
+  const obstacleBoxes: Rect[] = [];
+  if (startBox) obstacleBoxes.push(startBox);
+  if (endBox && (!startBox || endBox.x !== startBox.x || endBox.y !== startBox.y)) {
+    obstacleBoxes.push(endBox);
+  }
+  for (const obs of obstacles) {
+    if (obs && !obstacleBoxes.includes(obs)) {
+      obstacleBoxes.push(obs);
+    }
+  }
 
-  // Compute middle anchor point for label text
-  let midIdx = Math.floor(waypoints.length / 2);
-  const pA = waypoints[midIdx - 1] || waypoints[0]!;
-  const pB = waypoints[midIdx] || waypoints[waypoints.length - 1]!;
-  const midpoint: Point = {
-    x: Math.round((pA.x + pB.x) / 2),
-    y: Math.round((pA.y + pB.y) / 2),
+  // Generate feature orthogonal grid lines
+  const xSet = new Set<number>();
+  const ySet = new Set<number>();
+
+  xSet.add(sx);
+  xSet.add(ex);
+  xSet.add(pStartStub.x);
+  xSet.add(pEndStub.x);
+  xSet.add((pStartStub.x + pEndStub.x) / 2);
+
+  ySet.add(sy);
+  ySet.add(ey);
+  ySet.add(pStartStub.y);
+  ySet.add(pEndStub.y);
+  ySet.add((pStartStub.y + pEndStub.y) / 2);
+
+  for (const box of obstacleBoxes) {
+    const pad = padding;
+    xSet.add(box.x - pad);
+    xSet.add(box.x + box.width + pad);
+    ySet.add(box.y - pad);
+    ySet.add(box.y + box.height + pad);
+  }
+
+  if (obstacleBoxes.length > 0) {
+    const allX = Array.from(xSet);
+    const allY = Array.from(ySet);
+    const minAllX = Math.min(...allX);
+    const maxAllX = Math.max(...allX);
+    const minAllY = Math.min(...allY);
+    const maxAllY = Math.max(...allY);
+    xSet.add(minAllX - padding);
+    xSet.add(maxAllX + padding);
+    ySet.add(minAllY - padding);
+    ySet.add(maxAllY + padding);
+  }
+
+  // Deduplicate and sort coordinates
+  const sortedX = Array.from(xSet).sort((a, b) => a - b);
+  const cleanedX: number[] = [];
+  for (const x of sortedX) {
+    if (cleanedX.length === 0 || Math.abs(x - cleanedX[cleanedX.length - 1]!) > 1.0) {
+      cleanedX.push(x);
+    }
+  }
+
+  const sortedY = Array.from(ySet).sort((a, b) => a - b);
+  const cleanedY: number[] = [];
+  for (const y of sortedY) {
+    if (cleanedY.length === 0 || Math.abs(y - cleanedY[cleanedY.length - 1]!) > 1.0) {
+      cleanedY.push(y);
+    }
+  }
+
+  const getClosestIdx = (val: number, arr: number[]) => {
+    let best = 0;
+    let minD = Infinity;
+    for (let i = 0; i < arr.length; i++) {
+      const d = Math.abs(val - arr[i]!);
+      if (d < minD) {
+        minD = d;
+        best = i;
+      }
+    }
+    return best;
   };
+
+  const startIx = getClosestIdx(pStartStub.x, cleanedX);
+  const startIy = getClosestIdx(pStartStub.y, cleanedY);
+  const endIx = getClosestIdx(pEndStub.x, cleanedX);
+  const endIy = getClosestIdx(pEndStub.y, cleanedY);
+
+  // A* Search on the Manhattan Grid
+  interface GridState {
+    ix: number;
+    iy: number;
+    dir: number; // 0: None, 1: H, 2: V
+    g: number;
+    f: number;
+    key: string;
+  }
+
+  const openList: GridState[] = [];
+  const gScores = new Map<string, number>();
+  const cameFrom = new Map<string, { ix: number; iy: number; dir: number }>();
+
+  const startKey = `${startIx},${startIy},0`;
+  gScores.set(startKey, 0);
+  openList.push({
+    ix: startIx,
+    iy: startIy,
+    dir: 0,
+    g: 0,
+    f: Math.abs(cleanedX[startIx]! - cleanedX[endIx]!) + Math.abs(cleanedY[startIy]! - cleanedY[endIy]!),
+    key: startKey,
+  });
+
+  let reachedKey: string | null = null;
+  let loops = 0;
+  const maxLoops = 400;
+
+  while (openList.length > 0 && loops++ < maxLoops) {
+    // Find item with lowest fScore
+    let bestIdx = 0;
+    for (let i = 1; i < openList.length; i++) {
+      if (openList[i]!.f < openList[bestIdx]!.f) {
+        bestIdx = i;
+      }
+    }
+    const current = openList.splice(bestIdx, 1)[0]!;
+
+    if (current.ix === endIx && current.iy === endIy) {
+      reachedKey = current.key;
+      break;
+    }
+
+    const curX = cleanedX[current.ix]!;
+    const curY = cleanedY[current.iy]!;
+
+    // 4 Cardinal Neighbors
+    const neighbors: { nix: number; niy: number; newDir: number }[] = [
+      { nix: current.ix + 1, niy: current.iy, newDir: 1 },
+      { nix: current.ix - 1, niy: current.iy, newDir: 1 },
+      { nix: current.ix, niy: current.iy + 1, newDir: 2 },
+      { nix: current.ix, niy: current.iy - 1, newDir: 2 },
+    ];
+
+    for (const { nix, niy, newDir } of neighbors) {
+      if (nix < 0 || nix >= cleanedX.length || niy < 0 || niy >= cleanedY.length) {
+        continue;
+      }
+
+      const nextX = cleanedX[nix]!;
+      const nextY = cleanedY[niy]!;
+
+      // Check collision against obstacle boxes
+      if (isSegmentColliding({ x: curX, y: curY }, { x: nextX, y: nextY }, obstacleBoxes)) {
+        continue;
+      }
+
+      const stepDist = Math.abs(nextX - curX) + Math.abs(nextY - curY);
+      const bendPenalty = current.dir !== 0 && current.dir !== newDir ? 40 : 0;
+      const tentativeG = current.g + stepDist + bendPenalty;
+
+      const neighborKey = `${nix},${niy},${newDir}`;
+      const existingG = gScores.get(neighborKey);
+
+      if (existingG === undefined || tentativeG < existingG) {
+        gScores.set(neighborKey, tentativeG);
+        cameFrom.set(neighborKey, { ix: current.ix, iy: current.iy, dir: current.dir });
+
+        const h = Math.abs(nextX - cleanedX[endIx]!) + Math.abs(nextY - cleanedY[endIy]!);
+        openList.push({
+          ix: nix,
+          iy: niy,
+          dir: newDir,
+          g: tentativeG,
+          f: tentativeG + h,
+          key: neighborKey,
+        });
+      }
+    }
+  }
+
+  let rawWaypoints: Point[] = [];
+
+  if (reachedKey) {
+    const gridPoints: Point[] = [];
+    let currKey: string | null = reachedKey;
+    while (currKey) {
+      const parts = currKey.split(",").map(Number);
+      const cIx = parts[0]!;
+      const cIy = parts[1]!;
+      gridPoints.unshift({ x: cleanedX[cIx]!, y: cleanedY[cIy]! });
+      const prev = cameFrom.get(currKey);
+      if (!prev) break;
+      currKey = `${prev.ix},${prev.iy},${prev.dir}`;
+    }
+
+    rawWaypoints = [p0, pStartStub, ...gridPoints, pEndStub, pN];
+  } else {
+    // Fallback if no obstacle-free grid path exists (e.g. tightly overlapping elements)
+    const midX = pStartStub.x + (pEndStub.x - pStartStub.x) / 2;
+    rawWaypoints = [
+      p0,
+      pStartStub,
+      { x: midX, y: pStartStub.y },
+      { x: midX, y: pEndStub.y },
+      pEndStub,
+      pN,
+    ];
+  }
+
+  const waypoints = simplifyOrthogonalPoints(rawWaypoints);
+  const d = buildRoundedSvgPath(waypoints, radius);
+  const midpoint = calculatePolylineMidpoint(waypoints);
 
   return { d, waypoints, midpoint };
 }
@@ -654,4 +906,187 @@ export function getFlowchartSvgPath(type: string, width: number, height: number)
     default:
       return `M 0 0 H ${W} V ${H} H 0 Z`;
   }
+}
+
+export interface OrthogonalSegment {
+  index: number;
+  p1: Point;
+  p2: Point;
+  mid: Point;
+  isVertical: boolean;
+  length: number;
+}
+
+/**
+ * Extracts distinct orthogonal segments from a waypoints list.
+ */
+export function getOrthogonalSegments(waypoints: Point[]): OrthogonalSegment[] {
+  if (!waypoints || waypoints.length < 2) return [];
+
+  const segments: OrthogonalSegment[] = [];
+  for (let i = 0; i < waypoints.length - 1; i++) {
+    const p1 = waypoints[i]!;
+    const p2 = waypoints[i + 1]!;
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const len = Math.hypot(dx, dy);
+    const isVertical = Math.abs(dx) <= Math.abs(dy);
+
+    segments.push({
+      index: i,
+      p1,
+      p2,
+      mid: {
+        x: Math.round((p1.x + p2.x) / 2),
+        y: Math.round((p1.y + p2.y) / 2),
+      },
+      isVertical,
+      length: len,
+    });
+  }
+
+  return segments;
+}
+
+/**
+ * Adapts existing custom waypoints when the start or end terminal anchors move.
+ */
+export function adaptCustomWaypoints(waypoints: Point[], startPt: Point, endPt: Point): Point[] {
+  if (!waypoints || waypoints.length < 2) return [startPt, endPt];
+
+  const pts: Point[] = waypoints.map((p) => ({ ...p }));
+  const N = pts.length;
+
+  // 1. Update start point
+  pts[0] = { x: Math.round(startPt.x), y: Math.round(startPt.y) };
+  if (N > 2) {
+    const isFirstVert = Math.abs(pts[1]!.x - waypoints[0]!.x) < 2;
+    if (isFirstVert) {
+      pts[1] = { x: pts[0]!.x, y: pts[1]!.y };
+    } else {
+      pts[1] = { x: pts[1]!.x, y: pts[0]!.y };
+    }
+  }
+
+  // 2. Update end point
+  pts[N - 1] = { x: Math.round(endPt.x), y: Math.round(endPt.y) };
+  if (N > 2) {
+    const isLastVert = Math.abs(pts[N - 2]!.x - waypoints[waypoints.length - 1]!.x) < 2;
+    if (isLastVert) {
+      pts[N - 2] = { x: pts[N - 1]!.x, y: pts[N - 2]!.y };
+    } else {
+      pts[N - 2] = { x: pts[N - 2]!.x, y: pts[N - 1]!.y };
+    }
+  }
+
+  return simplifyOrthogonalPoints(pts);
+}
+
+/**
+ * Modifies an orthogonal segment's position (single-axis translation) and updates waypoints.
+ */
+export function moveOrthogonalSegment(
+  waypoints: Point[],
+  segmentIndex: number,
+  newCoord: number,
+): Point[] {
+  if (!waypoints || waypoints.length < 2 || segmentIndex < 0 || segmentIndex >= waypoints.length - 1) {
+    return waypoints;
+  }
+
+  const N = waypoints.length;
+  const pts: Point[] = waypoints.map((p) => ({ ...p }));
+  const p1 = pts[segmentIndex]!;
+  const p2 = pts[segmentIndex + 1]!;
+  const isVert = Math.abs(p1.x - p2.x) <= Math.abs(p1.y - p2.y);
+  const roundedCoord = Math.round(newCoord);
+
+  // Case 1: Pure 2-point straight line (splitting into a 3-segment Z/U step)
+  if (N === 2) {
+    if (isVert) {
+      const midY = Math.round((p1.y + p2.y) / 2);
+      return simplifyOrthogonalPoints([
+        p1,
+        { x: p1.x, y: midY },
+        { x: roundedCoord, y: midY },
+        { x: roundedCoord, y: p2.y },
+        p2,
+      ]);
+    } else {
+      const midX = Math.round((p1.x + p2.x) / 2);
+      return simplifyOrthogonalPoints([
+        p1,
+        { x: midX, y: p1.y },
+        { x: midX, y: roundedCoord },
+        { x: p2.x, y: roundedCoord },
+        p2,
+      ]);
+    }
+  }
+
+  // Case 2: Intermediate segment (0 < segmentIndex < N - 2)
+  if (segmentIndex > 0 && segmentIndex < N - 2) {
+    if (isVert) {
+      pts[segmentIndex] = { x: roundedCoord, y: pts[segmentIndex]!.y };
+      pts[segmentIndex + 1] = { x: roundedCoord, y: pts[segmentIndex + 1]!.y };
+    } else {
+      pts[segmentIndex] = { x: pts[segmentIndex]!.x, y: roundedCoord };
+      pts[segmentIndex + 1] = { x: pts[segmentIndex + 1]!.x, y: roundedCoord };
+    }
+    return simplifyOrthogonalPoints(pts);
+  }
+
+  // Case 3: First segment (segmentIndex === 0)
+  if (segmentIndex === 0) {
+    const fixedP0 = pts[0]!;
+    if (isVert) {
+      const stubY = fixedP0.y + (p2.y > fixedP0.y ? 1 : -1) * Math.min(20, Math.max(10, Math.abs(p2.y - fixedP0.y) / 2));
+      const newPts = [
+        fixedP0,
+        { x: fixedP0.x, y: Math.round(stubY) },
+        { x: roundedCoord, y: Math.round(stubY) },
+        { x: roundedCoord, y: p2.y },
+        ...pts.slice(2),
+      ];
+      return simplifyOrthogonalPoints(newPts);
+    } else {
+      const stubX = fixedP0.x + (p2.x > fixedP0.x ? 1 : -1) * Math.min(20, Math.max(10, Math.abs(p2.x - fixedP0.x) / 2));
+      const newPts = [
+        fixedP0,
+        { x: Math.round(stubX), y: fixedP0.y },
+        { x: Math.round(stubX), y: roundedCoord },
+        { x: p2.x, y: roundedCoord },
+        ...pts.slice(2),
+      ];
+      return simplifyOrthogonalPoints(newPts);
+    }
+  }
+
+  // Case 4: Last segment (segmentIndex === N - 2)
+  if (segmentIndex === N - 2) {
+    const fixedPN = pts[N - 1]!;
+    if (isVert) {
+      const stubY = fixedPN.y - (fixedPN.y > p1.y ? 1 : -1) * Math.min(20, Math.max(10, Math.abs(fixedPN.y - p1.y) / 2));
+      const newPts = [
+        ...pts.slice(0, N - 2),
+        { x: roundedCoord, y: p1.y },
+        { x: roundedCoord, y: Math.round(stubY) },
+        { x: fixedPN.x, y: Math.round(stubY) },
+        fixedPN,
+      ];
+      return simplifyOrthogonalPoints(newPts);
+    } else {
+      const stubX = fixedPN.x - (fixedPN.x > p1.x ? 1 : -1) * Math.min(20, Math.max(10, Math.abs(fixedPN.x - p1.x) / 2));
+      const newPts = [
+        ...pts.slice(0, N - 2),
+        { x: p1.x, y: roundedCoord },
+        { x: Math.round(stubX), y: roundedCoord },
+        { x: Math.round(stubX), y: fixedPN.y },
+        fixedPN,
+      ];
+      return simplifyOrthogonalPoints(newPts);
+    }
+  }
+
+  return simplifyOrthogonalPoints(pts);
 }

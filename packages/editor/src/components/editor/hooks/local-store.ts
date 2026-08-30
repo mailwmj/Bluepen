@@ -13,6 +13,7 @@ export interface StoredProject {
 export interface StoredSettings {
   zoom: number;
   showGrid: boolean;
+  theme?: "dark" | "light" | "system";
   lastFile?: string;
 }
 
@@ -21,6 +22,53 @@ const PROJECT_VERSION = 3;
 const LS_PROJECT_KEY = "bluepen:project";
 const LS_SETTINGS_KEY = "bluepen:settings";
 const PROJECTS_DIR = "Bluepen";
+
+const IDB_NAME = "bluepen_db";
+const IDB_VERSION = 1;
+const IDB_STORE = "bluepen_store";
+
+function openIndexedDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    if (typeof window === "undefined" || typeof indexedDB === "undefined") {
+      return reject(new Error("IndexedDB is not available"));
+    }
+    const request = indexedDB.open(IDB_NAME, IDB_VERSION);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(IDB_STORE)) {
+        db.createObjectStore(IDB_STORE);
+      }
+    };
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+async function idbGet<T>(key: string): Promise<T | null> {
+  try {
+    const db = await openIndexedDB();
+    return new Promise((resolve, reject) => {
+      const tx = db.transaction(IDB_STORE, "readonly");
+      const store = tx.objectStore(IDB_STORE);
+      const req = store.get(key);
+      req.onsuccess = () => resolve((req.result as T) ?? null);
+      req.onerror = () => reject(req.error);
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function idbSet(key: string, value: unknown): Promise<void> {
+  const db = await openIndexedDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(IDB_STORE, "readwrite");
+    const store = tx.objectStore(IDB_STORE);
+    const req = store.put(value, key);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+  });
+}
 
 let storePromise: Promise<{
   get: (k: string) => Promise<unknown>;
@@ -92,10 +140,25 @@ export async function loadProjectLocal(): Promise<StoredProject | null> {
         return raw as StoredProject;
       }
     } else {
-      const raw = localStorage.getItem(LS_PROJECT_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw) as StoredProject;
-        if (parsed.version === PROJECT_VERSION) return parsed;
+      // 1. Try IndexedDB (handles large projects with images seamlessly)
+      const idbProject = await idbGet<StoredProject>(LS_PROJECT_KEY);
+      if (idbProject && idbProject.version === PROJECT_VERSION) {
+        return idbProject;
+      }
+
+      // 2. Migration fallback from legacy localStorage
+      try {
+        const raw = localStorage.getItem(LS_PROJECT_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw) as StoredProject;
+          if (parsed.version === PROJECT_VERSION) {
+            await idbSet(LS_PROJECT_KEY, parsed).catch(() => {});
+            localStorage.removeItem(LS_PROJECT_KEY);
+            return parsed;
+          }
+        }
+      } catch {
+        // Ignore localStorage errors
       }
     }
   } catch (e) {
@@ -125,7 +188,17 @@ export async function saveProjectLocal(project: StoredProject): Promise<void> {
       });
       await store.save();
     } else {
-      localStorage.setItem(LS_PROJECT_KEY, JSON.stringify(project));
+      // Save to IndexedDB (virtually unlimited quota for canvas assets)
+      try {
+        await idbSet(LS_PROJECT_KEY, project);
+      } catch (err) {
+        console.warn("IndexedDB save failed, fallback to localStorage:", err);
+        try {
+          localStorage.setItem(LS_PROJECT_KEY, JSON.stringify(project));
+        } catch {
+          // Quota safe catch
+        }
+      }
     }
   } catch (e) {
     console.error("Failed to save project:", e);
@@ -137,6 +210,8 @@ export async function loadSettingsLocal(): Promise<StoredSettings | null> {
     if (isDesktop()) {
       return await getStoredSettings();
     } else {
+      const fromIdb = await idbGet<StoredSettings>(LS_SETTINGS_KEY);
+      if (fromIdb) return fromIdb;
       const raw = localStorage.getItem(LS_SETTINGS_KEY);
       if (raw) return JSON.parse(raw) as StoredSettings;
     }
@@ -154,7 +229,12 @@ export async function saveSettingsLocal(settings: StoredSettings): Promise<void>
       await store.set("settings", { ...(existing ?? {}), ...settings });
       await store.save();
     } else {
-      localStorage.setItem(LS_SETTINGS_KEY, JSON.stringify(settings));
+      await idbSet(LS_SETTINGS_KEY, settings).catch(() => {});
+      try {
+        localStorage.setItem(LS_SETTINGS_KEY, JSON.stringify(settings));
+      } catch {
+        // Quota safe catch
+      }
     }
   } catch (e) {
     console.error("Failed to save settings:", e);

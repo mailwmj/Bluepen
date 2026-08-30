@@ -25,6 +25,14 @@ function normalizeKey(k: string): string {
     .join("+");
 }
 
+const ALLOWED_EDITABLE_SHORTCUTS = new Set([
+  "ctrl+s",
+  "ctrl+shift+s",
+  "ctrl+o",
+  "ctrl+n",
+  "f11",
+]);
+
 export function useKeyboard(shortcuts: ShortcutMap) {
   const shortcutsRef = useRef(shortcuts);
   shortcutsRef.current = shortcuts;
@@ -33,11 +41,6 @@ export function useKeyboard(shortcuts: ShortcutMap) {
     const handler = (e: KeyboardEvent) => {
       const isEditable = isEditableTarget(e.target);
       const isCtrlOrCmd = e.ctrlKey || e.metaKey;
-
-      // When editing text inside input/textarea, only allow hotkeys with Ctrl/Cmd (e.g. Ctrl+Z, Ctrl+S)
-      if (isEditable && !isCtrlOrCmd && !e.altKey) {
-        return;
-      }
 
       const parts: string[] = [];
       if (isCtrlOrCmd) parts.push("ctrl");
@@ -48,11 +51,29 @@ export function useKeyboard(shortcuts: ShortcutMap) {
       parts.push(keyName);
 
       const eventKeyCombo = parts.join("+");
+      const normalizedEvent = normalizeKey(eventKeyCombo);
+
+      // When focused on an editable element (input, textarea, select), protect native editing behavior
+      if (isEditable) {
+        if (keyName === "escape") {
+          (e.target as HTMLElement)?.blur?.();
+          return;
+        }
+        if (!ALLOWED_EDITABLE_SHORTCUTS.has(normalizedEvent)) {
+          return;
+        }
+      }
 
       const map = shortcutsRef.current;
       for (const [keyPattern, callback] of Object.entries(map)) {
         const normalizedPattern = normalizeKey(keyPattern);
-        if (normalizedPattern === eventKeyCombo || normalizedPattern === keyName) {
+        if (
+          normalizedPattern === normalizedEvent ||
+          normalizedPattern === keyName ||
+          // Support Ctrl+Y as an alias for Redo when Ctrl+Shift+Z is registered
+          (normalizedPattern === "ctrl+shift+z" && normalizedEvent === "ctrl+y") ||
+          (normalizedPattern === "ctrl+y" && normalizedEvent === "ctrl+shift+z")
+        ) {
           e.preventDefault();
           callback();
           return;
