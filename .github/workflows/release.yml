@@ -31,7 +31,7 @@ jobs:
             path: |
               apps/app/src-tauri/target/release/bundle/deb/*.deb
               apps/app/src-tauri/target/release/bundle/rpm/*.rpm
-          - os: macos-latest
+          - os: macos-14
             bundles: dmg
             artifact: macos
             path: apps/app/src-tauri/target/release/bundle/dmg/*.dmg
