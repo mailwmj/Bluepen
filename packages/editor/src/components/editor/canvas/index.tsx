@@ -68,6 +68,14 @@ interface CanvasProps {
 
 const GRID_SIZE = 20;
 
+function isEditableTarget(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null;
+  if (!el) return false;
+  if (el.isContentEditable) return true;
+  const tag = el.tagName?.toLowerCase();
+  return tag === "input" || tag === "textarea" || tag === "select";
+}
+
 function createRotateCursorSvg(arcPath: string, arrow1Path: string, arrow2Path: string): string {
   const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none'><path d='${arcPath}' stroke='%23000000' stroke-width='3.5' stroke-linecap='round'/><path d='${arcPath}' stroke='%23FFFFFF' stroke-width='1.5' stroke-linecap='round'/><path d='${arrow1Path}' fill='%23000000' stroke='%23FFFFFF' stroke-width='1' stroke-linejoin='round'/><path d='${arrow2Path}' fill='%23000000' stroke='%23FFFFFF' stroke-width='1' stroke-linejoin='round'/></svg>`;
   return `url("data:image/svg+xml,${svg}") 12 12, crosshair`;
@@ -140,6 +148,7 @@ type Interaction =
       startRadius: number;
       elW: number;
       elH: number;
+      rotation?: number;
       props: Record<string, string | number | boolean>;
     }
   | {
@@ -963,6 +972,7 @@ interface ElementNodeProps {
   spaceHeld: boolean;
   previewing: boolean;
   activeTool: string;
+  zoom: number;
   onElementMouseDown: (e: React.MouseEvent, elId: string) => void;
   onResizeMouseDown: (e: React.MouseEvent, elId: string, handle: string) => void;
   onRotateMouseDown: (e: React.MouseEvent, el: EditorElement, corner?: "nw" | "ne" | "se" | "sw") => void;
@@ -970,6 +980,7 @@ interface ElementNodeProps {
   onLineEndpointMouseDown: (e: React.MouseEvent, el: EditorElement, endpoint: "start" | "end") => void;
   onAnchorMouseDown: (e: React.MouseEvent, el: EditorElement, port: AnchorPort) => void;
   onSelect: (id: string | null) => void;
+  onUpdateElement?: (id: string, patch: Partial<EditorElement>) => void;
 }
 
 const ElementNode = memo(function ElementNode({
@@ -982,6 +993,7 @@ const ElementNode = memo(function ElementNode({
   spaceHeld,
   previewing,
   activeTool,
+  zoom,
   onElementMouseDown,
   onResizeMouseDown,
   onRotateMouseDown,
@@ -989,6 +1001,7 @@ const ElementNode = memo(function ElementNode({
   onLineEndpointMouseDown,
   onAnchorMouseDown,
   onSelect,
+  onUpdateElement,
 }: ElementNodeProps) {
   const [isHovered, setIsHovered] = useState(false);
   const isSelected = effectiveSelectedIds.includes(el.id);
@@ -1037,8 +1050,7 @@ const ElementNode = memo(function ElementNode({
       data-element
       data-element-id={el.id}
       className={cn(
-        "absolute select-none",
-        (isHovered || isSelected || isConnecting) ? "z-30" : "z-10",
+        "absolute select-none z-10 pointer-events-auto",
         previewing && "pointer-events-none",
         locked && "cursor-default opacity-60",
         !locked &&
@@ -1077,7 +1089,19 @@ const ElementNode = memo(function ElementNode({
         }, 60);
       }}
     >
-      <ElementRenderer element={el}>
+      <ElementRenderer
+        element={el}
+        isSelected={isSelected}
+        previewing={previewing}
+        zoom={zoom}
+        onSelect={onSelect}
+        onUpdateProps={(patch) => {
+          onUpdateElement?.(el.id, {
+            props: { ...el.props, ...patch },
+          });
+        }}
+        onUpdateElement={onUpdateElement}
+      >
         {el.children &&
           el.children.length > 0 &&
           el.children.map((child) => (
@@ -1092,6 +1116,7 @@ const ElementNode = memo(function ElementNode({
               spaceHeld={spaceHeld}
               previewing={previewing}
               activeTool={activeTool}
+              zoom={zoom}
               onElementMouseDown={onElementMouseDown}
               onResizeMouseDown={onResizeMouseDown}
               onRotateMouseDown={onRotateMouseDown}
@@ -1099,6 +1124,7 @@ const ElementNode = memo(function ElementNode({
               onLineEndpointMouseDown={onLineEndpointMouseDown}
               onAnchorMouseDown={onAnchorMouseDown}
               onSelect={onSelect}
+              onUpdateElement={onUpdateElement}
             />
           ))}
       </ElementRenderer>
@@ -1179,9 +1205,19 @@ const ElementNode = memo(function ElementNode({
             <>
               {/* 1px crisp selection border */}
               <div
-                className="pointer-events-none absolute inset-0 border border-primary z-10"
+                className={cn(
+                  "pointer-events-none absolute inset-0 border border-primary z-10",
+                  el.type === "group" && "border-dashed border-primary/80",
+                )}
                 data-handle
               />
+
+              {/* Group Name Tag */}
+              {el.type === "group" && (
+                <div className="pointer-events-none absolute -top-5 left-0 z-30 flex items-center gap-1 rounded-xs bg-primary px-1.5 py-0.5 font-mono text-[9px] font-bold text-primary-foreground tracking-wider uppercase shadow-xs">
+                  <span>{el.name || "GROUP"}</span>
+                </div>
+              )}
 
               {/* Show rotation and resize handles on single selection */}
               {isSingleSelected && (
@@ -1224,19 +1260,61 @@ const ElementNode = memo(function ElementNode({
                     />
                   ))}
 
+                  {/* Live radius badge during active radius dragging */}
+                  {interaction?.type === "corner-radius" && interaction.id === el.id && (
+                    <div
+                      className={cn(
+                        "pointer-events-none absolute z-50 rounded bg-blue-600 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-white shadow-md select-none whitespace-nowrap",
+                        interaction.corner === "se"
+                          ? "bottom-[-28px] right-0"
+                          : interaction.corner === "sw"
+                          ? "bottom-[-28px] left-0"
+                          : interaction.corner === "ne"
+                          ? "top-[-28px] right-0"
+                          : "top-[-28px] left-0"
+                      )}
+                    >
+                      {`R: ${Number(
+                        (Boolean(el.props.radiusIndependent)
+                          ? (interaction.corner === "nw"
+                              ? el.props.radiusTopLeft
+                              : interaction.corner === "ne"
+                              ? el.props.radiusTopRight
+                              : interaction.corner === "se"
+                              ? el.props.radiusBottomRight
+                              : el.props.radiusBottomLeft)
+                          : el.props.radius) ?? 0
+                      )}px`}
+                    </div>
+                  )}
+
                   {/* 4 corner radius inner dots with stable hit target container */}
                   {hasCornerRadius &&
                     !isConnectorMode &&
                     (isHovered || (interaction?.type === "corner-radius" && interaction.id === el.id)) &&
                     (() => {
-                      const curRadius = Number(el.props.radius ?? 4);
+                      const isRadiusEnabled = el.props.radiusEnabled !== false && el.props.radiusEnabled !== "false";
+                      const isIndependent = Boolean(el.props.radiusIndependent);
+                      const baseRadius = isRadiusEnabled ? Number(el.props.radius ?? 4) : 0;
+                      const nwRadius = isRadiusEnabled ? Number((isIndependent ? el.props.radiusTopLeft : undefined) ?? baseRadius) : 0;
+                      const neRadius = isRadiusEnabled ? Number((isIndependent ? el.props.radiusTopRight : undefined) ?? baseRadius) : 0;
+                      const swRadius = isRadiusEnabled ? Number((isIndependent ? el.props.radiusBottomLeft : undefined) ?? baseRadius) : 0;
+                      const seRadius = isRadiusEnabled ? Number((isIndependent ? el.props.radiusBottomRight : undefined) ?? baseRadius) : 0;
+
                       const maxR = Math.min(el.width, el.height) / 2;
-                      const offset = Math.max(6, Math.min(curRadius + 4, maxR - 4));
+                      const minOffset = Math.min(16, maxR);
+                      const getOffset = (r: number) => Math.max(minOffset, Math.min(r, maxR));
+
+                      const nwOffset = getOffset(nwRadius);
+                      const neOffset = getOffset(neRadius);
+                      const swOffset = getOffset(swRadius);
+                      const seOffset = getOffset(seRadius);
+
                       const radiusCorners = [
-                        { id: "nw" as const, style: { top: offset, left: offset } },
-                        { id: "ne" as const, style: { top: offset, right: offset } },
-                        { id: "sw" as const, style: { bottom: offset, left: offset } },
-                        { id: "se" as const, style: { bottom: offset, right: offset } },
+                        { id: "nw" as const, x: nwOffset, y: nwOffset },
+                        { id: "ne" as const, x: el.width - neOffset, y: nwOffset },
+                        { id: "sw" as const, x: swOffset, y: el.height - swOffset },
+                        { id: "se" as const, x: el.width - seOffset, y: el.height - seOffset },
                       ];
                       return (
                         <>
@@ -1245,7 +1323,7 @@ const ElementNode = memo(function ElementNode({
                               key={`radius-${c.id}`}
                               data-handle
                               className="absolute z-25 size-5 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center cursor-crosshair group/radius pointer-events-auto"
-                              style={c.style}
+                              style={{ left: c.x, top: c.y }}
                               title="调节圆角"
                               onMouseDown={(e) => onRadiusMouseDown(e, el, c.id)}
                             >
@@ -1256,12 +1334,34 @@ const ElementNode = memo(function ElementNode({
                       );
                     })()}
 
-                  {/* 4 corner resize handle control points */}
+                  {/* 4 border edge drag hit areas */}
                   {[
+                    { id: "n", style: { top: -4, left: 4, right: 4, height: 8, cursor: "ns-resize" } },
+                    { id: "s", style: { bottom: -4, left: 4, right: 4, height: 8, cursor: "ns-resize" } },
+                    { id: "w", style: { left: -4, top: 4, bottom: 4, width: 8, cursor: "ew-resize" } },
+                    { id: "e", style: { right: -4, top: 4, bottom: 4, width: 8, cursor: "ew-resize" } },
+                  ].map((edge) => (
+                    <div
+                      key={`edge-${edge.id}`}
+                      data-handle
+                      className="absolute z-35 pointer-events-auto"
+                      style={edge.style}
+                      onMouseDown={(e) => onResizeMouseDown(e, el.id, edge.id)}
+                    />
+                  ))}
+
+                  {/* 8 resize handle control points (4 corners + 4 edge midpoints) */}
+                  {[
+                    // 4 corner handles
                     { id: "nw", style: { top: -10, left: -10, cursor: "nwse-resize" } },
                     { id: "ne", style: { top: -10, right: -10, cursor: "nesw-resize" } },
                     { id: "se", style: { bottom: -10, right: -10, cursor: "nwse-resize" } },
                     { id: "sw", style: { bottom: -10, left: -10, cursor: "nesw-resize" } },
+                    // 4 edge midpoint handles
+                    { id: "n", style: { top: -10, left: "50%", transform: "translateX(-50%)", cursor: "ns-resize" } },
+                    { id: "s", style: { bottom: -10, left: "50%", transform: "translateX(-50%)", cursor: "ns-resize" } },
+                    { id: "w", style: { top: "50%", left: -10, transform: "translateY(-50%)", cursor: "ew-resize" } },
+                    { id: "e", style: { top: "50%", right: -10, transform: "translateY(-50%)", cursor: "ew-resize" } },
                   ].map((handle) => (
                     <div
                       key={handle.id}
@@ -1348,6 +1448,7 @@ export function Canvas({
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (isEditableTarget(e.target)) return;
       if (e.code === "Space" && !e.repeat) {
         e.preventDefault();
         setSpaceHeld(true);
@@ -1371,14 +1472,14 @@ export function Canvas({
     };
   }, []);
 
-  // Native Non-Passive Wheel Event Listener for Ctrl + Wheel Canvas Zooming
+  // Native Non-Passive Wheel Event Listener for Trackpad/Wheel Canvas Panning and Ctrl + Wheel Zooming
   useEffect(() => {
     const canvasEl = canvasRef.current;
     if (!canvasEl) return;
 
     const handleNativeWheel = (e: WheelEvent) => {
+      e.preventDefault();
       if (e.ctrlKey || e.metaKey) {
-        e.preventDefault();
         const delta = -e.deltaY * 0.0015;
         const newZoom = Math.min(4, Math.max(0.1, zoom + delta));
         const rect = canvasEl.getBoundingClientRect();
@@ -1814,16 +1915,37 @@ export function Canvas({
         }
       } else if (curInter.type === "corner-radius") {
         const maxRadius = Math.floor(Math.min(curInter.elW, curInter.elH) / 2);
+        const rotRad = (-(curInter.rotation ?? 0) * Math.PI) / 180;
+        const cos = Math.cos(rotRad);
+        const sin = Math.sin(rotRad);
+        const localDx = dx * cos - dy * sin;
+        const localDy = dx * sin + dy * cos;
+
         let delta = 0;
-        if (curInter.corner === "nw") delta = (dx + dy) / 2;
-        else if (curInter.corner === "ne") delta = (-dx + dy) / 2;
-        else if (curInter.corner === "se") delta = (-dx - dy) / 2;
-        else if (curInter.corner === "sw") delta = (dx - dy) / 2;
+        if (curInter.corner === "nw") delta = (localDx + localDy) / 2;
+        else if (curInter.corner === "ne") delta = (-localDx + localDy) / 2;
+        else if (curInter.corner === "se") delta = (-localDx - localDy) / 2;
+        else if (curInter.corner === "sw") delta = (localDx - localDy) / 2;
 
         const nextRadius = Math.max(0, Math.min(maxRadius, Math.round(curInter.startRadius + delta)));
-        onUpdateElement(curInter.id, {
-          props: { ...curInter.props, radius: nextRadius },
-        });
+        const isIndependent = Boolean(curInter.props.radiusIndependent);
+        if (isIndependent) {
+          const cornerPropKey =
+            curInter.corner === "nw"
+              ? "radiusTopLeft"
+              : curInter.corner === "ne"
+              ? "radiusTopRight"
+              : curInter.corner === "se"
+              ? "radiusBottomRight"
+              : "radiusBottomLeft";
+          onUpdateElement(curInter.id, {
+            props: { ...curInter.props, [cornerPropKey]: nextRadius, radiusEnabled: true },
+          });
+        } else {
+          onUpdateElement(curInter.id, {
+            props: { ...curInter.props, radius: nextRadius, radiusEnabled: true },
+          });
+        }
       } else if (curInter.type === "rotate") {
         const curAngle = (Math.atan2(pos.y - curInter.centerY, pos.x - curInter.centerX) * 180) / Math.PI;
         const deltaAngle = curAngle - curInter.startAngle;
@@ -1847,14 +1969,23 @@ export function Canvas({
         onUpdateElement(curInter.id, { rotation: finalRot });
       } else if (curInter.type === "resize" && curInter.handle) {
         const h = curInter.handle;
+        const targetEl = allElementsFlat.find((item) => item.id === curInter.id);
+        const rot = targetEl?.rotation || 0;
+        const isRotated = Math.abs(rot % 360) > 0.01;
+        const rotRad = (-rot * Math.PI) / 180;
+        const cos = Math.cos(rotRad);
+        const sin = Math.sin(rotRad);
+        const lDx = isRotated ? dx * cos - dy * sin : dx;
+        const lDy = isRotated ? dx * sin + dy * cos : dy;
+
         let x = curInter.elStartX;
         let y = curInter.elStartY;
         let w = curInter.elW;
         let hh = curInter.elH;
         const isCorner = h.length === 2;
-        const targetEl = allElementsFlat.find((item) => item.id === curInter.id);
         const isImage = targetEl?.type === "image";
         const lockAspect = (e.shiftKey || isImage) && isCorner;
+        const isAlt = e.altKey;
 
         if (lockAspect) {
           const ratio = Math.max(0.01, curInter.aspectRatio || 1);
@@ -1862,77 +1993,145 @@ export function Canvas({
           let effectiveDy = 0;
 
           if (h === "se") {
-            effectiveDx = dx;
-            effectiveDy = dy;
+            effectiveDx = lDx;
+            effectiveDy = lDy;
           } else if (h === "nw") {
-            effectiveDx = -dx;
-            effectiveDy = -dy;
+            effectiveDx = -lDx;
+            effectiveDy = -lDy;
           } else if (h === "ne") {
-            effectiveDx = dx;
-            effectiveDy = -dy;
+            effectiveDx = lDx;
+            effectiveDy = -lDy;
           } else if (h === "sw") {
-            effectiveDx = -dx;
-            effectiveDy = dy;
+            effectiveDx = -lDx;
+            effectiveDy = lDy;
           }
 
-          // Symmetrical diagonal projection: eliminates aspect ratio distortion & shrink-stuck bugs
+          const multiplier = isAlt ? 2 : 1;
           const projectedDelta = (effectiveDx * ratio + effectiveDy) / (ratio * ratio + 1);
-          const targetH = Math.max(10, Math.round(curInter.elH + projectedDelta));
+          const targetH = Math.max(10, Math.round(curInter.elH + projectedDelta * multiplier));
           const targetW = Math.max(10, Math.round(targetH * ratio));
 
           w = targetW;
           hh = targetH;
 
-          if (h === "se") {
-            x = curInter.elStartX;
-            y = curInter.elStartY;
-          } else if (h === "nw") {
-            x = curInter.elStartX + (curInter.elW - targetW);
-            y = curInter.elStartY + (curInter.elH - targetH);
-          } else if (h === "ne") {
-            x = curInter.elStartX;
-            y = curInter.elStartY + (curInter.elH - targetH);
-          } else if (h === "sw") {
-            x = curInter.elStartX + (curInter.elW - targetW);
-            y = curInter.elStartY;
+          if (isAlt) {
+            // Symmetric resize from center
+            x = curInter.elStartX - (targetW - curInter.elW) / 2;
+            y = curInter.elStartY - (targetH - curInter.elH) / 2;
+          } else if (!isRotated) {
+            if (h === "se") {
+              x = curInter.elStartX;
+              y = curInter.elStartY;
+            } else if (h === "nw") {
+              x = curInter.elStartX + (curInter.elW - targetW);
+              y = curInter.elStartY + (curInter.elH - targetH);
+            } else if (h === "ne") {
+              x = curInter.elStartX;
+              y = curInter.elStartY + (curInter.elH - targetH);
+            } else if (h === "sw") {
+              x = curInter.elStartX + (curInter.elW - targetW);
+              y = curInter.elStartY;
+            }
+          } else {
+            // Rotated corner transform keeping opposite corner anchored
+            let localTL_dx = 0;
+            let localTL_dy = 0;
+            if (h === "nw") {
+              localTL_dx = curInter.elW - targetW;
+              localTL_dy = curInter.elH - targetH;
+            } else if (h === "ne") {
+              localTL_dy = curInter.elH - targetH;
+            } else if (h === "sw") {
+              localTL_dx = curInter.elW - targetW;
+            }
+            const localCenterDx = localTL_dx + (targetW - curInter.elW) / 2;
+            const localCenterDy = localTL_dy + (targetH - curInter.elH) / 2;
+            const worldRad = (rot * Math.PI) / 180;
+            const worldCenterDx = localCenterDx * Math.cos(worldRad) - localCenterDy * Math.sin(worldRad);
+            const worldCenterDy = localCenterDx * Math.sin(worldRad) + localCenterDy * Math.cos(worldRad);
+            const initCenterX = curInter.elStartX + curInter.elW / 2;
+            const initCenterY = curInter.elStartY + curInter.elH / 2;
+            const newCenterX = initCenterX + worldCenterDx;
+            const newCenterY = initCenterY + worldCenterDy;
+            x = Math.round(newCenterX - targetW / 2);
+            y = Math.round(newCenterY - targetH / 2);
           }
         } else {
-          if (h.includes("e")) {
-            w = Math.max(10, Math.round(curInter.elW + dx));
-          } else if (h.includes("w")) {
-            const proposedW = Math.round(curInter.elW - dx);
-            if (proposedW >= 10) {
-              w = proposedW;
-              x = curInter.elStartX + (curInter.elW - proposedW);
-            } else {
-              w = 10;
-              x = curInter.elStartX + (curInter.elW - 10);
-            }
-          }
+          let localTL_dx = 0;
+          let localTL_dy = 0;
 
-          if (h.includes("s")) {
-            hh = Math.max(10, Math.round(curInter.elH + dy));
-          } else if (h.includes("n")) {
-            const proposedH = Math.round(curInter.elH - dy);
-            if (proposedH >= 10) {
-              hh = proposedH;
-              y = curInter.elStartY + (curInter.elH - proposedH);
+          if (isAlt) {
+            // Symmetric resize around center
+            if (h.includes("e")) {
+              w = Math.max(10, Math.round(curInter.elW + lDx * 2));
+            } else if (h.includes("w")) {
+              w = Math.max(10, Math.round(curInter.elW - lDx * 2));
+            }
+            if (h.includes("s")) {
+              hh = Math.max(10, Math.round(curInter.elH + lDy * 2));
+            } else if (h.includes("n")) {
+              hh = Math.max(10, Math.round(curInter.elH - lDy * 2));
+            }
+            x = Math.round(curInter.elStartX - (w - curInter.elW) / 2);
+            y = Math.round(curInter.elStartY - (hh - curInter.elH) / 2);
+          } else {
+            if (h.includes("e")) {
+              w = Math.max(10, Math.round(curInter.elW + lDx));
+            } else if (h.includes("w")) {
+              const proposedW = Math.round(curInter.elW - lDx);
+              if (proposedW >= 10) {
+                w = proposedW;
+                localTL_dx = curInter.elW - proposedW;
+              } else {
+                w = 10;
+                localTL_dx = curInter.elW - 10;
+              }
+            }
+
+            if (h.includes("s")) {
+              hh = Math.max(10, Math.round(curInter.elH + lDy));
+            } else if (h.includes("n")) {
+              const proposedH = Math.round(curInter.elH - lDy);
+              if (proposedH >= 10) {
+                hh = proposedH;
+                localTL_dy = curInter.elH - proposedH;
+              } else {
+                hh = 10;
+                localTL_dy = curInter.elH - 10;
+              }
+            }
+
+            if (!isRotated) {
+              x = curInter.elStartX + localTL_dx;
+              y = curInter.elStartY + localTL_dy;
             } else {
-              hh = 10;
-              y = curInter.elStartY + (curInter.elH - 10);
+              // Rotated local translation to world coordinates
+              const localCenterDx = localTL_dx + (w - curInter.elW) / 2;
+              const localCenterDy = localTL_dy + (hh - curInter.elH) / 2;
+              const worldRad = (rot * Math.PI) / 180;
+              const worldCenterDx = localCenterDx * Math.cos(worldRad) - localCenterDy * Math.sin(worldRad);
+              const worldCenterDy = localCenterDx * Math.sin(worldRad) + localCenterDy * Math.cos(worldRad);
+              const initCenterX = curInter.elStartX + curInter.elW / 2;
+              const initCenterY = curInter.elStartY + curInter.elH / 2;
+              const newCenterX = initCenterX + worldCenterDx;
+              const newCenterY = initCenterY + worldCenterDy;
+              x = Math.round(newCenterX - w / 2);
+              y = Math.round(newCenterY - hh / 2);
             }
           }
         }
 
-        const snapRes = calculateResizeSnapping(
-          curInter.id,
-          curInter.handle,
-          { x, y, width: w, height: hh },
-          allElementsFlat,
-          zoom,
-          disableSnap,
-          (e.shiftKey && isCorner) ? (curInter.aspectRatio || 1) : undefined,
-        );
+        const snapRes = isRotated
+          ? { x, y, width: w, height: hh, guides: [], distances: [] }
+          : calculateResizeSnapping(
+              curInter.id,
+              curInter.handle,
+              { x, y, width: w, height: hh },
+              allElementsFlat,
+              zoom,
+              disableSnap,
+              (e.shiftKey && isCorner) ? (curInter.aspectRatio || 1) : undefined,
+            );
 
         setActiveGuides(snapRes.guides);
         onUpdateElement(curInter.id, {
@@ -2188,13 +2387,36 @@ export function Canvas({
       if (!el || el.locked) return;
       e.stopPropagation();
 
+      // Check if clicked element is inside a Group
+      let targetSelectId = elId;
+      if (el.parentId && !e.metaKey && !e.ctrlKey) {
+        let curr = el;
+        let groupAncestor: EditorElement | null = null;
+        while (curr.parentId) {
+          const parent = allElementsFlat.find((p) => p.id === curr.parentId);
+          if (!parent) break;
+          if (parent.type === "group") {
+            groupAncestor = parent;
+          }
+          curr = parent;
+        }
+
+        // If the child itself is not directly selected, resolve target to the group ancestor
+        if (groupAncestor && !effectiveSelectedIds.includes(elId)) {
+          targetSelectId = groupAncestor.id;
+        }
+      }
+
+      const targetEl = allElementsFlat.find((item) => item.id === targetSelectId) || el;
+      if (targetEl.locked) return;
+
       const pos = screenToCanvas(e.clientX, e.clientY);
 
       // Shift click for multi-selection toggle
       if (e.shiftKey) {
-        const nextSelected = effectiveSelectedIds.includes(elId)
-          ? effectiveSelectedIds.filter((id) => id !== elId)
-          : [...effectiveSelectedIds, elId];
+        const nextSelected = effectiveSelectedIds.includes(targetSelectId)
+          ? effectiveSelectedIds.filter((id) => id !== targetSelectId)
+          : [...effectiveSelectedIds, targetSelectId];
         if (onSelectIds) {
           onSelectIds(nextSelected);
         } else {
@@ -2204,7 +2426,7 @@ export function Canvas({
       }
 
       // If clicked element is already in multi-selection, start multi-move for all selected elements
-      if (effectiveSelectedIds.includes(elId) && effectiveSelectedIds.length > 1) {
+      if (effectiveSelectedIds.includes(targetSelectId) && effectiveSelectedIds.length > 1) {
         const minX = Math.min(...selectedElements.map((item) => item.x));
         const minY = Math.min(...selectedElements.map((item) => item.y));
         const maxX = Math.max(...selectedElements.map((item) => item.x + item.width));
@@ -2234,17 +2456,17 @@ export function Canvas({
       }
 
       // Single select & move
-      onSelect(elId);
-      onSelectIds?.([elId]);
+      onSelect(targetSelectId);
+      onSelectIds?.([targetSelectId]);
       const inter: Interaction = {
         type: "move",
-        id: elId,
+        id: targetSelectId,
         startX: pos.x,
         startY: pos.y,
-        elStartX: el.x,
-        elStartY: el.y,
-        elW: el.width,
-        elH: el.height,
+        elStartX: targetEl.x,
+        elStartY: targetEl.y,
+        elW: targetEl.width,
+        elH: targetEl.height,
       };
       interactionRef.current = inter;
       setInteraction(inter);
@@ -2376,15 +2598,31 @@ export function Canvas({
       onSelect(el.id);
       onSelectIds?.([el.id]);
       const pos = screenToCanvas(e.clientX, e.clientY);
+      const isIndependent = Boolean(el.props.radiusIndependent);
+      const isRadiusEnabled = el.props.radiusEnabled !== false && el.props.radiusEnabled !== "false";
+      const baseRadius = isRadiusEnabled ? Number(el.props.radius ?? 4) : 0;
+      const currentCornerRadius = isIndependent
+        ? Number(
+            (corner === "nw"
+              ? el.props.radiusTopLeft
+              : corner === "ne"
+              ? el.props.radiusTopRight
+              : corner === "se"
+              ? el.props.radiusBottomRight
+              : el.props.radiusBottomLeft) ?? baseRadius
+          )
+        : baseRadius;
+
       const inter: Interaction = {
         type: "corner-radius",
         id: el.id,
         corner,
         startX: pos.x,
         startY: pos.y,
-        startRadius: Number(el.props.radius ?? 4),
+        startRadius: currentCornerRadius,
         elW: el.width,
         elH: el.height,
+        rotation: el.rotation ?? 0,
         props: { ...el.props },
       };
       interactionRef.current = inter;
@@ -2468,11 +2706,12 @@ export function Canvas({
       e.preventDefault();
       if (previewing) return;
 
-      // 1. Check for dropped image files from desktop
+      // 1. Check for dropped files (images or .bluepen / .json project files)
       if (e.dataTransfer.files && e.dataTransfer.files.length > 0 && onDropFile) {
         for (let i = 0; i < e.dataTransfer.files.length; i++) {
           const file = e.dataTransfer.files[i];
-          if (file.type.startsWith("image/")) {
+          const fileName = file.name.toLowerCase();
+          if (file.type.startsWith("image/") || fileName.endsWith(".bluepen") || fileName.endsWith(".json")) {
             const pos = screenToCanvas(e.clientX, e.clientY);
             onDropFile(file, snap(pos.x), snap(pos.y));
             return;
@@ -2602,7 +2841,7 @@ export function Canvas({
     <div
       ref={canvasRef}
       className={cn(
-        "relative flex-1 overflow-hidden bg-background outline-none select-none",
+        "relative flex-1 overflow-hidden bg-background outline-none select-none touch-none overscroll-none",
         (spaceHeld || activeTool === "hand") && "cursor-grab",
         isPanning && "cursor-grabbing",
         !spaceHeld && activeTool === "select" && "cursor-default",
@@ -2708,6 +2947,7 @@ export function Canvas({
                 spaceHeld={spaceHeld}
                 previewing={previewing}
                 activeTool={activeTool}
+                zoom={zoom}
                 onElementMouseDown={handleElementMouseDown}
                 onResizeMouseDown={handleResizeMouseDown}
                 onRotateMouseDown={handleRotateMouseDown}
@@ -2715,6 +2955,7 @@ export function Canvas({
                 onLineEndpointMouseDown={handleLineEndpointMouseDown}
                 onAnchorMouseDown={handleAnchorMouseDown}
                 onSelect={onSelect}
+                onUpdateElement={onUpdateElement}
               />
             ))}
 

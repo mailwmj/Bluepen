@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, memo } from "react";
+import { useState, useMemo, memo, useRef, useEffect } from "react";
 import { cn } from "@bluepen/editor/lib/utils";
 import { Button } from "@bluepen/editor/components/ui/button";
 import { Input } from "@bluepen/editor/components/ui/input";
@@ -31,6 +31,7 @@ import {
   Lock,
   Unlock,
   ChevronDown,
+  ChevronUp,
   ChevronRight,
   Trash2,
   Copy,
@@ -48,9 +49,12 @@ import {
   Layers,
   Plus,
   Minus,
+  Check,
   GripVertical,
   Upload,
   RotateCcw,
+  Boxes,
+  Ungroup,
 } from "lucide-react";
 import type { EditorElement, Page } from "./types";
 import { showToast } from "./hooks/use-toast";
@@ -76,17 +80,19 @@ interface RightPanelProps {
   onBringForward?: () => void;
   onSendBackward?: () => void;
   onDuplicate?: () => void;
+  onGroup?: () => void;
+  onUngroup?: () => void;
 }
 
 
 const FONT_FAMILIES = [
-  { label: "系统默认 (System)", value: "var(--font-sans)" },
-  { label: "微软雅黑 (Microsoft YaHei)", value: "'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif" },
-  { label: "苹方 (PingFang SC)", value: "'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', sans-serif" },
-  { label: "思源黑体 (Source Han Sans)", value: "'Source Han Sans SC', 'Noto Sans SC', sans-serif" },
+  { label: "系统默认", value: "var(--font-sans)" },
+  { label: "微软雅黑", value: "'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif" },
+  { label: "苹方", value: "'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', sans-serif" },
+  { label: "思源黑体", value: "'Source Han Sans SC', 'Noto Sans SC', sans-serif" },
   { label: "Inter", value: "Inter, 'Microsoft YaHei UI', 'PingFang SC', sans-serif" },
   { label: "Roboto", value: "Roboto, 'Microsoft YaHei UI', 'PingFang SC', sans-serif" },
-  { label: "等宽代码 (Monospace)", value: "var(--font-mono)" },
+  { label: "等宽代码", value: "var(--font-mono)" },
 ];
 
 const WEIGHT_OPTIONS = [
@@ -118,26 +124,83 @@ const SHAPE_TYPES_WITH_TEXT = new Set([
 
 const STROKE_SUPPORTED_TYPES = new Set([
   "rectangle", "circle", "line", "arrow", "connector",
-  "button", "button-primary", "icon-button",
-  "card", "mobile-frame", "browser-frame", "placeholder", "hotspot", "image", "scroll-panel", "modal-dialog",
+  "button", "button-primary", "icon-button", "web-button", "web-button-group",
+  "card", "mobile-frame", "browser-frame", "placeholder", "hotspot", "image", "scroll-panel", "modal-dialog", "modal",
   "badge", "chip", "avatar", "alert", "sticky-note", "code-block", "ai-component",
-  "input", "textarea", "select", "date-picker", "search",
+  "input", "textarea", "select", "date-picker", "search", "file-upload", "data-table",
+  // Web form & inputs
+  "web-input", "web-input-number", "web-textarea", "web-select", "web-cascader", "web-tree-select",
+  "web-auto-complete", "web-tag-input", "web-date-picker", "web-date-range-picker", "web-time-picker",
+  "web-color-picker", "web-upload", "web-transfer",
+  // Web containers & cards
+  "web-card", "web-statistic-card", "web-collapse", "web-filter-bar", "web-login-card",
+  "web-table", "web-descriptions", "web-kanban", "web-calendar", "web-chart", "web-tree",
+  // Web feedback & popups
+  "web-modal", "web-drawer", "web-alert", "web-popconfirm", "web-notification",
+  "web-tips", "web-message", "web-empty-state",
+  // Web navigation & tags
+  "web-tag", "web-badge", "web-dropdown", "web-menu", "web-tabs", "web-pagination",
+  // Agent templates & components
+  "agent-home-layout", "agent-chat-stream-layout", "agent-split-workspace-layout",
+  "agent-employee-workspace-layout", "agent-employee-market-layout",
+  "agent-nav-sidebar", "agent-project-tree", "agent-user-footer",
+  "agent-prompt-box", "agent-prompt-toolbar", "agent-prompt-suggestions",
+  "agent-stream-header", "agent-tool-step", "agent-thought-stream", "agent-file-attachments",
+  "agent-employee-card", "agent-template-card", "agent-artifact-tabs", "agent-console-table",
   ...FLOWCHART_TYPES,
 ]);
 
 const FILL_SUPPORTED_TYPES = new Set([
-  "rectangle", "circle", "button", "button-primary", "icon-button",
-  "card", "mobile-frame", "browser-frame", "placeholder", "hotspot", "image", "scroll-panel", "modal-dialog",
+  "rectangle", "circle", "button", "button-primary", "icon-button", "web-button", "web-button-group",
+  "card", "mobile-frame", "browser-frame", "placeholder", "hotspot", "image", "scroll-panel", "modal-dialog", "modal",
   "badge", "chip", "avatar", "alert", "sticky-note", "code-block", "ai-component",
-  "input", "textarea", "select", "date-picker", "search",
+  "input", "textarea", "select", "date-picker", "search", "file-upload", "data-table",
+  // Web form & inputs
+  "web-input", "web-input-number", "web-textarea", "web-select", "web-cascader", "web-tree-select",
+  "web-auto-complete", "web-tag-input", "web-date-picker", "web-date-range-picker", "web-time-picker",
+  "web-color-picker", "web-upload", "web-transfer",
+  // Web containers & cards
+  "web-card", "web-statistic-card", "web-collapse", "web-filter-bar", "web-login-card",
+  "web-table", "web-descriptions", "web-kanban", "web-calendar", "web-chart", "web-tree",
+  // Web feedback & popups
+  "web-modal", "web-drawer", "web-alert", "web-popconfirm", "web-notification",
+  "web-tips", "web-message", "web-empty-state",
+  // Web navigation & tags
+  "web-tag", "web-badge", "web-dropdown", "web-menu", "web-tabs", "web-pagination",
+  // Agent templates & components
+  "agent-home-layout", "agent-chat-stream-layout", "agent-split-workspace-layout",
+  "agent-employee-workspace-layout", "agent-employee-market-layout",
+  "agent-nav-sidebar", "agent-project-tree", "agent-user-footer",
+  "agent-prompt-box", "agent-prompt-toolbar", "agent-prompt-suggestions",
+  "agent-stream-header", "agent-tool-step", "agent-thought-stream", "agent-file-attachments",
+  "agent-employee-card", "agent-template-card", "agent-artifact-tabs", "agent-console-table",
   ...FLOWCHART_TYPES,
 ]);
 
 const RADIUS_SUPPORTED_TYPES = new Set([
-  "rectangle", "button", "button-primary", "icon-button",
-  "card", "mobile-frame", "browser-frame", "placeholder", "image", "scroll-panel", "modal-dialog",
+  "rectangle", "button", "button-primary", "icon-button", "web-button", "web-button-group",
+  "card", "mobile-frame", "browser-frame", "placeholder", "image", "scroll-panel", "modal-dialog", "modal",
   "code-block", "ai-component", "badge", "alert", "connector",
-  "input", "textarea", "select", "date-picker", "search",
+  "input", "textarea", "select", "date-picker", "search", "file-upload", "data-table",
+  // Web form & inputs
+  "web-input", "web-input-number", "web-textarea", "web-select", "web-cascader", "web-tree-select",
+  "web-auto-complete", "web-tag-input", "web-date-picker", "web-date-range-picker", "web-time-picker",
+  "web-color-picker", "web-upload", "web-transfer",
+  // Web containers & cards
+  "web-card", "web-statistic-card", "web-collapse", "web-filter-bar", "web-login-card",
+  "web-table", "web-descriptions", "web-kanban", "web-calendar", "web-chart", "web-tree",
+  // Web feedback & popups
+  "web-modal", "web-drawer", "web-alert", "web-popconfirm", "web-notification",
+  "web-tips", "web-message", "web-empty-state",
+  // Web navigation & tags
+  "web-tag", "web-badge", "web-dropdown", "web-menu", "web-tabs", "web-pagination",
+  // Agent templates & components
+  "agent-home-layout", "agent-chat-stream-layout", "agent-split-workspace-layout",
+  "agent-employee-workspace-layout", "agent-employee-market-layout",
+  "agent-nav-sidebar", "agent-project-tree", "agent-user-footer",
+  "agent-prompt-box", "agent-prompt-toolbar", "agent-prompt-suggestions",
+  "agent-stream-header", "agent-tool-step", "agent-thought-stream", "agent-file-attachments",
+  "agent-employee-card", "agent-template-card", "agent-artifact-tabs", "agent-console-table",
 ]);
 
 function Section({
@@ -176,11 +239,34 @@ function Section({
   );
 }
 
+function evaluateNumericExpression(input: string): number | null {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  const direct = Number(trimmed);
+  if (!Number.isNaN(direct)) return direct;
+  if (/^[\d\s+\-*/.()]+$/.test(trimmed)) {
+    try {
+      const fn = Function(`"use strict"; return (${trimmed})`);
+      const res = fn();
+      if (typeof res === "number" && Number.isFinite(res)) {
+        return res;
+      }
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function formatNumberPrecise(val: number): number {
+  return Math.round(val * 1000) / 1000;
+}
+
 function NumField({
   label,
   value,
   onChange,
-  min = 0,
+  min,
   max,
   step = 1,
   suffix,
@@ -195,25 +281,234 @@ function NumField({
   suffix?: string;
   className?: string;
 }) {
+  const [text, setText] = useState<string>(() =>
+    Number.isNaN(value) ? "" : String(formatNumberPrecise(value))
+  );
+  const [isFocused, setIsFocused] = useState(false);
+  const [isScrubbing, setIsScrubbing] = useState(false);
+  const scrubStartRef = useRef<{ startX: number; startVal: number }>({ startX: 0, startVal: 0 });
+  const autoRepeatTimer = useRef<{ timeout?: number; interval?: number }>({});
+
+  const clearAutoRepeat = () => {
+    if (autoRepeatTimer.current.timeout) {
+      window.clearTimeout(autoRepeatTimer.current.timeout);
+      autoRepeatTimer.current.timeout = undefined;
+    }
+    if (autoRepeatTimer.current.interval) {
+      window.clearInterval(autoRepeatTimer.current.interval);
+      autoRepeatTimer.current.interval = undefined;
+    }
+  };
+
+  useEffect(() => {
+    return () => clearAutoRepeat();
+  }, []);
+
+  // Sync external value changes (selection change, undo/redo) when not actively focused or scrubbing
+  useEffect(() => {
+    if (!isFocused && !isScrubbing) {
+      setText(Number.isNaN(value) ? "" : String(formatNumberPrecise(value)));
+    }
+  }, [value, isFocused, isScrubbing]);
+
+  const applyDelta = (delta: number, mult: number = 1) => {
+    const currentParsed =
+      evaluateNumericExpression(text.trim()) ?? (Number.isNaN(value) ? 0 : value);
+    let nextVal = currentParsed + delta * mult;
+    if (typeof min === "number" && nextVal < min) nextVal = min;
+    if (typeof max === "number" && nextVal > max) nextVal = max;
+    nextVal = formatNumberPrecise(nextVal);
+    setText(String(nextVal));
+    onChange(nextVal);
+  };
+
+  const commitValue = (raw: string) => {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      setText(Number.isNaN(value) ? "" : String(formatNumberPrecise(value)));
+      return;
+    }
+    const parsed = evaluateNumericExpression(trimmed);
+    if (parsed === null || Number.isNaN(parsed)) {
+      setText(Number.isNaN(value) ? "" : String(formatNumberPrecise(value)));
+      return;
+    }
+    let nextVal = parsed;
+    if (typeof min === "number" && nextVal < min) nextVal = min;
+    if (typeof max === "number" && nextVal > max) nextVal = max;
+    nextVal = formatNumberPrecise(nextVal);
+    setText(String(nextVal));
+    if (nextVal !== value) {
+      onChange(nextVal);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      commitValue(text);
+      (e.target as HTMLInputElement).blur();
+    } else if (e.key === "Escape") {
+      setText(Number.isNaN(value) ? "" : String(formatNumberPrecise(value)));
+      (e.target as HTMLInputElement).blur();
+    } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+      e.preventDefault();
+      const mult = e.shiftKey ? 10 : e.altKey ? 0.1 : 1;
+      const delta = (e.key === "ArrowUp" ? 1 : -1) * step;
+      applyDelta(delta, mult);
+    }
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const nextText = e.target.value;
+    setText(nextText);
+
+    const trimmed = nextText.trim();
+    if (
+      trimmed !== "" &&
+      trimmed !== "-" &&
+      !trimmed.endsWith(".") &&
+      !trimmed.endsWith("+") &&
+      !trimmed.endsWith("-") &&
+      !trimmed.endsWith("*") &&
+      !trimmed.endsWith("/")
+    ) {
+      const parsed = evaluateNumericExpression(trimmed);
+      if (parsed !== null && !Number.isNaN(parsed)) {
+        if ((min === undefined || parsed >= min) && (max === undefined || parsed <= max)) {
+          onChange(formatNumberPrecise(parsed));
+        }
+      }
+    }
+  };
+
+  const startAutoRepeat = (direction: 1 | -1, e: React.PointerEvent) => {
+    clearAutoRepeat();
+    const mult = e.shiftKey ? 10 : e.altKey ? 0.1 : 1;
+    applyDelta(direction * step, mult);
+
+    const initialTimeout = window.setTimeout(() => {
+      const interval = window.setInterval(() => {
+        applyDelta(direction * step, mult);
+      }, 50);
+      autoRepeatTimer.current.interval = interval as unknown as number;
+    }, 300);
+
+    autoRepeatTimer.current.timeout = initialTimeout as unknown as number;
+
+    const stop = () => {
+      clearAutoRepeat();
+      window.removeEventListener("pointerup", stop);
+      window.removeEventListener("pointercancel", stop);
+    };
+    window.addEventListener("pointerup", stop);
+    window.addEventListener("pointercancel", stop);
+  };
+
+  const handleLabelPointerDown = (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    setIsScrubbing(true);
+    const cur = evaluateNumericExpression(text.trim()) ?? (Number.isNaN(value) ? 0 : value);
+    scrubStartRef.current = { startX: e.clientX, startVal: cur };
+  };
+
+  const handleLabelPointerMove = (e: React.PointerEvent) => {
+    if (!isScrubbing) return;
+    const dx = e.clientX - scrubStartRef.current.startX;
+    const mult = e.shiftKey ? 10 : e.altKey ? 0.1 : 1;
+    let nextVal = scrubStartRef.current.startVal + dx * step * mult;
+    if (typeof min === "number" && nextVal < min) nextVal = min;
+    if (typeof max === "number" && nextVal > max) nextVal = max;
+    nextVal = formatNumberPrecise(nextVal);
+    setText(String(nextVal));
+    onChange(nextVal);
+  };
+
+  const handleLabelPointerUp = (e: React.PointerEvent) => {
+    if (isScrubbing) {
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch {}
+      setIsScrubbing(false);
+    }
+  };
+
+  const handleWheel = (e: React.WheelEvent) => {
+    const mult = e.shiftKey ? 10 : e.altKey ? 0.1 : 1;
+    const delta = e.deltaY < 0 ? step : -step;
+    applyDelta(delta, mult);
+  };
+
   return (
-    <label className={cn("flex min-w-0 flex-1 items-center gap-1.5", className)}>
-      {label && <span className="shrink-0 text-[10px] font-medium text-muted-foreground select-none">{label}</span>}
-      <Input
-        size="sm"
-        type="number"
-        value={Number.isNaN(value) ? 0 : value}
-        min={min}
-        max={max}
-        step={step}
-        suffix={suffix}
-        onChange={(e) => {
-          const n = Number(e.target.value);
-          if (!Number.isNaN(n)) onChange(n);
-        }}
-        className="h-7 min-w-0 flex-1 font-mono text-xs"
-        inputClassName="text-center font-mono text-xs"
-      />
-    </label>
+    <div className={cn("flex min-w-0 flex-1 items-center gap-1.5", className)}>
+      {label && (
+        <span
+          onPointerDown={handleLabelPointerDown}
+          onPointerMove={handleLabelPointerMove}
+          onPointerUp={handleLabelPointerUp}
+          onPointerCancel={handleLabelPointerUp}
+          title="可按住左右拖拽调节数值 (Shift x10, Alt x0.1)"
+          className={cn(
+            "shrink-0 text-[10px] font-medium font-mono select-none transition-colors",
+            isScrubbing
+              ? "text-foreground font-bold cursor-ew-resize"
+              : "text-muted-foreground hover:text-foreground cursor-ew-resize",
+          )}
+        >
+          {label}
+        </span>
+      )}
+      <div
+        onWheel={handleWheel}
+        className={cn(
+          "relative inline-flex h-7 min-w-0 flex-1 items-center overflow-hidden rounded-md border border-border-visible bg-surface text-xs text-foreground transition-colors duration-150",
+          "hover:border-foreground/40 focus-within:border-foreground focus-within:ring-1 focus-within:ring-ring group/numfield",
+        )}
+      >
+        <input
+          type="text"
+          inputMode="decimal"
+          value={text}
+          onFocus={(e) => {
+            setIsFocused(true);
+            e.currentTarget.select();
+          }}
+          onBlur={() => {
+            setIsFocused(false);
+            commitValue(text);
+          }}
+          onChange={handleChange}
+          onKeyDown={handleKeyDown}
+          className="h-full min-w-0 flex-1 bg-transparent px-1 text-center font-mono text-xs leading-none outline-none placeholder:text-muted-foreground/50"
+        />
+        {suffix && (
+          <span className="pointer-events-none select-none pr-1 font-mono text-[9.5px] text-muted-foreground shrink-0">
+            {suffix}
+          </span>
+        )}
+        <div className="flex h-full w-3.5 flex-col border-l border-border-visible/80 divide-y divide-border-visible/80 shrink-0 select-none bg-surface/50">
+          <button
+            type="button"
+            tabIndex={-1}
+            onPointerDown={(e) => startAutoRepeat(1, e)}
+            title="增加数值 (按住连续调节, Shift x10, Alt x0.1)"
+            className="flex flex-1 items-center justify-center text-muted-foreground hover:text-foreground hover:bg-surface-raised active:bg-foreground/10 transition-colors cursor-pointer select-none"
+          >
+            <ChevronUp className="size-2.5" />
+          </button>
+          <button
+            type="button"
+            tabIndex={-1}
+            onPointerDown={(e) => startAutoRepeat(-1, e)}
+            title="减少数值 (按住连续调节, Shift x10, Alt x0.1)"
+            className="flex flex-1 items-center justify-center text-muted-foreground hover:text-foreground hover:bg-surface-raised active:bg-foreground/10 transition-colors cursor-pointer select-none"
+          >
+            <ChevronDown className="size-2.5" />
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -380,10 +675,20 @@ function OptionsListEditor({
                     }}
                     className="absolute right-1.5 flex size-4 items-center justify-center cursor-pointer select-none"
                   >
-                    {isSelected ? (
-                      <div className="size-2.5 rounded-full border-2 border-blue-500 bg-white shadow-2xs transition-transform hover:scale-110" />
+                    {mode === "multiple" ? (
+                      isSelected ? (
+                        <div className="flex size-3 items-center justify-center rounded-xs border border-foreground bg-foreground text-background transition-transform hover:scale-105">
+                          <Check className="size-2.5 stroke-[3]" />
+                        </div>
+                      ) : (
+                        <div className="size-3 rounded-xs border border-muted-foreground/40 opacity-0 group-hover:opacity-100 hover:border-foreground transition-all" />
+                      )
+                    ) : isSelected ? (
+                      <div className="flex size-3 items-center justify-center rounded-full border border-foreground transition-transform hover:scale-105">
+                        <div className="size-1.5 rounded-full bg-foreground" />
+                      </div>
                     ) : (
-                      <div className="size-2.5 rounded-full border-2 border-neutral-400 opacity-0 group-hover:opacity-100 hover:!border-blue-500 hover:!scale-125 transition-all" />
+                      <div className="size-3 rounded-full border border-muted-foreground/40 opacity-0 group-hover:opacity-100 hover:border-foreground transition-all" />
                     )}
                   </button>
                 )}
@@ -410,6 +715,273 @@ function OptionsListEditor({
   );
 }
 
+function TableInspectorSection({
+  element,
+  prop,
+  setProp,
+  setProps,
+}: {
+  element: EditorElement;
+  prop: (key: string, def?: any) => any;
+  setProp: (key: string, value: any) => void;
+  setProps: (patch: Record<string, any>) => void;
+}) {
+  const headersStr = String(prop("headers", "编号,用户名称,所属部门,状态"));
+  const rawHeaders = headersStr
+    ? headersStr
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : [];
+  const rows = Math.max(2, Number(prop("rows", 4)));
+  const cols = Math.max(1, Math.max(rawHeaders.length, Number(prop("cols", 4))));
+
+  const headers = Array.from({ length: cols }, (_, i) => rawHeaders[i] || `列头 ${i + 1}`);
+
+  const rawColWidthsStr = typeof element.props.colWidths === "string" ? element.props.colWidths : "";
+  const parsedColWidths: number[] = rawColWidthsStr
+    ? rawColWidthsStr
+        .split(",")
+        .map((n) => Math.max(36, Number(n.trim())))
+        .filter((n) => !isNaN(n))
+    : [];
+
+  const colWidths: number[] = Array.from({ length: cols }, (_, i) => {
+    if (parsedColWidths[i] && parsedColWidths[i] >= 30) return parsedColWidths[i];
+    if (i === 0) return 70;
+    if (i === cols - 1) return 80;
+    return 130;
+  });
+
+  const defaultPreset = [
+    ["01", "张三", "用户体验设计部", "正常"],
+    ["02", "李四", "技术架构中台", "正常"],
+    ["03", "王五", "数据智能平台", "离线"],
+    ["04", "赵六", "核心研发团队", "正常"],
+  ];
+
+  let parsedCells: string[][] | null = null;
+  if (typeof element.props.cells === "string" && element.props.cells.trim()) {
+    try {
+      const json = JSON.parse(element.props.cells);
+      if (Array.isArray(json)) {
+        parsedCells = json.map((r) => (Array.isArray(r) ? r.map(String) : []));
+      }
+    } catch {
+      parsedCells = element.props.cells.split("\n").map((l) => l.split(/[,，]/).map((c) => c.trim()));
+    }
+  }
+
+  const bodyRowCount = Math.max(1, rows - 1);
+  const hasCustomCells = parsedCells !== null;
+
+  const currentMatrix = useMemo(() => {
+    const custom = parsedCells;
+    return Array.from({ length: bodyRowCount }, (_, r) =>
+      Array.from({ length: cols }, (_, c) => {
+        if (custom !== null) {
+          return custom[r]?.[c] !== undefined ? custom[r][c] : "";
+        }
+        if (defaultPreset[r] && defaultPreset[r][c] !== undefined) {
+          return defaultPreset[r][c];
+        }
+        return c === 0 ? String(r + 1).padStart(2, "0") : c === cols - 1 ? (r % 3 === 2 ? "离线" : "正常") : `数据项 ${r + 1}-${c}`;
+      })
+    );
+  }, [bodyRowCount, cols, parsedCells]);
+
+  const defaultCsvText = useMemo(() => {
+    return currentMatrix.map((row) => row.join(", ")).join("\n");
+  }, [currentMatrix]);
+
+  const [csvText, setCsvText] = useState(defaultCsvText);
+  const isFocusedRef = useRef(false);
+
+  useEffect(() => {
+    if (!isFocusedRef.current) {
+      setCsvText(defaultCsvText);
+    }
+  }, [defaultCsvText, element.id]);
+
+  return (
+    <>
+      <OptionsListEditor
+        title="表头列名"
+        mode="none"
+        value={headersStr}
+        onChange={(v) => setProp("headers", v)}
+        placeholder="列名..."
+      />
+
+      {/* Row & Col Controls */}
+      <div className="grid grid-cols-2 gap-2 pt-0.5">
+        <NumField
+          label="行数"
+          value={rows}
+          min={2}
+          max={50}
+          onChange={(v) => {
+            const nextRows = Math.max(2, v);
+            if (nextRows > rows) {
+              const addedRowsCount = nextRows - rows;
+              const newRows = Array.from({ length: addedRowsCount }, (_, i) => {
+                const rowIdx = rows + i;
+                return Array.from({ length: cols }, (_, c) =>
+                  c === 0 ? String(rowIdx).padStart(2, "0") : c === cols - 1 ? (rowIdx % 3 === 2 ? "离线" : "正常") : `数据项 ${rowIdx}-${c}`
+                );
+              });
+              setProps({
+                rows: nextRows,
+                cells: JSON.stringify([...currentMatrix, ...newRows]),
+              });
+            } else if (nextRows < rows) {
+              const kept = currentMatrix.slice(0, nextRows - 1);
+              setProps({
+                rows: nextRows,
+                cells: JSON.stringify(kept),
+              });
+            } else {
+              setProp("rows", nextRows);
+            }
+          }}
+        />
+
+        <NumField
+          label="列数"
+          value={cols}
+          min={1}
+          max={20}
+          onChange={(v) => {
+            const nextCols = Math.max(1, v);
+            if (nextCols > cols) {
+              const newHeaders = [...headers];
+              while (newHeaders.length < nextCols) {
+                newHeaders.push(`列头 ${newHeaders.length + 1}`);
+              }
+              const nextMatrix = currentMatrix.map((r, rowIdx) => {
+                const row = [...r];
+                while (row.length < nextCols) {
+                  row.push(`数据项 ${rowIdx + 1}-${row.length}`);
+                }
+                return row;
+              });
+              const nextWidths = [...colWidths];
+              while (nextWidths.length < nextCols) {
+                nextWidths.push(110);
+              }
+              setProps({
+                cols: nextCols,
+                headers: newHeaders.join(","),
+                cells: JSON.stringify(nextMatrix),
+                colWidths: nextWidths.join(","),
+              });
+            } else if (nextCols < cols) {
+              const newHeaders = headers.slice(0, nextCols);
+              const nextMatrix = currentMatrix.map((r) => r.slice(0, nextCols));
+              const nextWidths = colWidths.slice(0, nextCols);
+              setProps({
+                cols: nextCols,
+                headers: newHeaders.join(","),
+                cells: JSON.stringify(nextMatrix),
+                colWidths: nextWidths.join(","),
+              });
+            } else {
+              setProp("cols", nextCols);
+            }
+          }}
+        />
+      </div>
+
+      {/* Individual Column Width Control */}
+      <div className="flex flex-col gap-1.5 pt-1">
+        <div className="flex items-center justify-between">
+          <span className="font-mono text-[10px] uppercase text-muted-foreground font-semibold">各列宽度 (px)</span>
+          <button
+            type="button"
+            onClick={() => {
+              const avg = 110;
+              setProp("colWidths", Array(cols).fill(avg).join(","));
+            }}
+            className="font-mono text-[9px] text-foreground/80 hover:text-foreground underline cursor-pointer"
+          >
+            均分宽度
+          </button>
+        </div>
+        <div className="grid grid-cols-2 gap-1.5">
+          {colWidths.map((w, idx) => (
+            <div key={idx} className="flex items-center gap-1">
+              <span className="w-10 shrink-0 truncate font-mono text-[9.5px] text-muted-foreground" title={headers[idx] || `列${idx + 1}`}>
+                {headers[idx] || `列${idx + 1}`}
+              </span>
+              <NumField
+                value={w}
+                min={36}
+                max={500}
+                onChange={(newW) => {
+                  const updated = [...colWidths];
+                  updated[idx] = Math.max(36, newW);
+                  setProp("colWidths", updated.join(","));
+                }}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Batch Table Data Editor */}
+      <div className="flex flex-col gap-1 pt-1">
+        <span className="font-mono text-[10px] uppercase text-muted-foreground font-semibold">批量编辑数据 (按行/逗号分隔)</span>
+        <textarea
+          rows={4}
+          value={csvText}
+          onFocus={() => {
+            isFocusedRef.current = true;
+          }}
+          onBlur={() => {
+            isFocusedRef.current = false;
+          }}
+          onChange={(e) => {
+            const val = e.target.value;
+            setCsvText(val);
+            const lines = val.split("\n");
+            const newMatrix = lines.map((line) => line.split(/[,，]/).map((cell) => cell.trim()));
+            setProps({
+              rows: Math.max(2, lines.length + 1),
+              cells: JSON.stringify(newMatrix),
+            });
+          }}
+          placeholder="例如：&#10;01, 张三, 设计部, 正常&#10;02, 李四, 架构部, 正常"
+          className="w-full resize-y rounded-md border border-input bg-background p-1.5 font-mono text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring leading-relaxed"
+        />
+      </div>
+
+      {/* Header Background */}
+      <div className="flex items-center gap-2 pt-0.5">
+        <span className="w-16 shrink-0 text-[10px] text-muted-foreground font-mono uppercase">表头背景</span>
+        <div className="flex flex-1 items-center gap-1.5 min-w-0">
+          <Input
+            size="sm"
+            value={String(prop("headerBg", ""))}
+            placeholder="默认自适应"
+            onChange={(e) => setProp("headerBg", e.target.value)}
+            className="h-7 flex-1 text-xs font-mono uppercase"
+          />
+          {Boolean(prop("headerBg", "")) && (
+            <button
+              type="button"
+              onClick={() => setProp("headerBg", "")}
+              title="重置为默认主题自适应"
+              className="shrink-0 rounded-xs border border-border-visible px-2 py-1 text-[10px] font-mono text-muted-foreground hover:bg-surface-raised hover:text-foreground cursor-pointer transition-colors"
+            >
+              重置
+            </button>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
 export const RightPanel = memo(function RightPanel({
   element: rawElement,
   selectedElements,
@@ -423,6 +995,8 @@ export const RightPanel = memo(function RightPanel({
   onBringForward,
   onSendBackward,
   onDuplicate,
+  onGroup,
+  onUngroup,
 }: RightPanelProps) {
   const [showIndependentRadius, setShowIndependentRadius] = useState(false);
   const [aspectLocked, setAspectLocked] = useState(false);
@@ -867,12 +1441,40 @@ export const RightPanel = memo(function RightPanel({
           <Button
             variant="ghost"
             size="icon-xs"
-            title="复制"
+            title="复制 (Ctrl+D)"
             onClick={onDuplicate}
             disabled={!onDuplicate}
           >
             <Copy className="size-3.5" />
           </Button>
+          {isMulti && onGroup && (
+            <>
+              <Separator orientation="vertical" className="mx-0.5 h-3.5" />
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                title="创建组合 (Ctrl+G)"
+                onClick={onGroup}
+                className="text-foreground hover:bg-surface-raised"
+              >
+                <Boxes className="size-3.5" />
+              </Button>
+            </>
+          )}
+          {(element.type === "group" || (element.children && element.children.length > 0)) && onUngroup && (
+            <>
+              <Separator orientation="vertical" className="mx-0.5 h-3.5" />
+              <Button
+                variant="ghost"
+                size="icon-xs"
+                title="打散组合 (Ctrl+Shift+G)"
+                onClick={onUngroup}
+                className="text-foreground hover:bg-surface-raised"
+              >
+                <Ungroup className="size-3.5" />
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
@@ -891,6 +1493,51 @@ export const RightPanel = memo(function RightPanel({
         </div>
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+          {/* Multi-Selection or Group Header Banner */}
+          {isMulti ? (
+            <div className="border-b border-border bg-surface-raised/40 px-3 py-2">
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-xs font-bold uppercase tracking-wider text-foreground">
+                  已选中 {effectiveSelectedElements.length} 项图层
+                </span>
+              </div>
+              {onGroup && (
+                <button
+                  type="button"
+                  onClick={onGroup}
+                  className="mt-2 flex h-6 w-full items-center justify-center gap-1.5 rounded-xs bg-foreground px-2 font-mono text-[10px] font-bold uppercase tracking-wider text-background hover:bg-neutral-200 transition-colors cursor-pointer"
+                >
+                  <Boxes className="size-3" />
+                  <span>组合为整体 (Ctrl+G)</span>
+                </button>
+              )}
+            </div>
+          ) : (element.type === "group" || (element.children && element.children.length > 0)) ? (
+            <div className="border-b border-border bg-surface-raised/40 px-3 py-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <Boxes className="size-3.5 text-foreground shrink-0" />
+                  <span className="font-mono text-xs font-bold uppercase tracking-wider text-foreground truncate">
+                    {element.name || "组合图层"}
+                  </span>
+                </div>
+                <span className="rounded-xs border border-border-visible bg-background px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground shrink-0">
+                  {element.children.length} 个子图层
+                </span>
+              </div>
+              {onUngroup && (
+                <button
+                  type="button"
+                  onClick={onUngroup}
+                  className="mt-2 flex h-6 w-full items-center justify-center gap-1.5 rounded-xs border border-border-visible bg-background px-2 font-mono text-[10px] font-medium uppercase tracking-wider text-foreground hover:bg-surface-raised transition-colors cursor-pointer"
+                >
+                  <Ungroup className="size-3" />
+                  <span>打散为独立组件 (Ctrl+Shift+G)</span>
+                </button>
+              )}
+            </div>
+          ) : null}
+
           {/* Alignment Tools (8 operations: 6 align + 2 distribute) */}
           <Section title="对齐与分布">
             <div className="flex items-center justify-between gap-0.5">
@@ -1030,13 +1677,13 @@ export const RightPanel = memo(function RightPanel({
                     <div className="flex items-center justify-between">
                       <span className="uppercase">起点节点:</span>
                       <span className="font-semibold text-foreground">
-                        {element.props.startElementId ? "已绑定 (BOUND)" : "自由端点 (FREE)"}
+                        {element.props.startElementId ? "已绑定" : "自由端点"}
                       </span>
                     </div>
                     <div className="flex items-center justify-between">
                       <span className="uppercase">终点节点:</span>
                       <span className="font-semibold text-foreground">
-                        {element.props.endElementId ? "已绑定 (BOUND)" : "自由端点 (FREE)"}
+                        {element.props.endElementId ? "已绑定" : "自由端点"}
                       </span>
                     </div>
                   </div>
@@ -1057,26 +1704,28 @@ export const RightPanel = memo(function RightPanel({
                     </div>
                     <div className="flex items-center gap-1.5">
                       <NumField label="↺" value={Math.round(element.rotation)} onChange={(v) => onUpdate(element.id, { rotation: v })} suffix="°" />
-                      <div className="flex items-center gap-0.5">
-                        <Button
-                          variant="ghost"
-                          size="icon-xs"
-                          title="水平翻转"
-                          className={cn("size-7", Boolean(prop("flipH", false)) && "bg-primary/10 text-primary")}
-                          onClick={() => setProp("flipH", !Boolean(prop("flipH", false)))}
-                        >
-                          <FlipHorizontal className="size-3.5" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon-xs"
-                          title="垂直翻转"
-                          className={cn("size-7", Boolean(prop("flipV", false)) && "bg-primary/10 text-primary")}
-                          onClick={() => setProp("flipV", !Boolean(prop("flipV", false)))}
-                        >
-                          <FlipVertical className="size-3.5" />
-                        </Button>
-                      </div>
+                      {!(element.type === "table" || element.type === "web-table" || element.type === "web-crud-table" || element.type === "web-pricing-table") && (
+                        <div className="flex items-center gap-0.5">
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            title="水平翻转"
+                            className={cn("size-7", Boolean(prop("flipH", false)) && "bg-primary/10 text-primary")}
+                            onClick={() => setProp("flipH", !Boolean(prop("flipH", false)))}
+                          >
+                            <FlipHorizontal className="size-3.5" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon-xs"
+                            title="垂直翻转"
+                            className={cn("size-7", Boolean(prop("flipV", false)) && "bg-primary/10 text-primary")}
+                            onClick={() => setProp("flipV", !Boolean(prop("flipV", false)))}
+                          >
+                            <FlipVertical className="size-3.5" />
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   </>
                 )}
@@ -1125,16 +1774,16 @@ export const RightPanel = memo(function RightPanel({
                       render={
                         <Button variant="outline" size="xs" className="h-7 flex-1 justify-between text-xs font-mono">
                           <span className="truncate">
-                            {element.props.startArrow === "arrow" ? "箭头 (Arrow)" : element.props.startArrow === "circle" ? "圆点 (Circle)" : "无端点 (None)"}
+                            {element.props.startArrow === "arrow" ? "箭头" : element.props.startArrow === "circle" ? "圆点" : "无端点"}
                           </span>
                           <ChevronDown className="size-3 opacity-60" />
                         </Button>
                       }
                     />
                     <MenuPopup align="start">
-                      <MenuItem onClick={() => setProp("startArrow", "none")}>无端点 (None)</MenuItem>
-                      <MenuItem onClick={() => setProp("startArrow", "arrow")}>箭头 (Arrow)</MenuItem>
-                      <MenuItem onClick={() => setProp("startArrow", "circle")}>圆点 (Circle)</MenuItem>
+                      <MenuItem onClick={() => setProp("startArrow", "none")}>无端点</MenuItem>
+                      <MenuItem onClick={() => setProp("startArrow", "arrow")}>箭头</MenuItem>
+                      <MenuItem onClick={() => setProp("startArrow", "circle")}>圆点</MenuItem>
                     </MenuPopup>
                   </Menu>
                 </div>
@@ -1147,16 +1796,16 @@ export const RightPanel = memo(function RightPanel({
                       render={
                         <Button variant="outline" size="xs" className="h-7 flex-1 justify-between text-xs font-mono">
                           <span className="truncate">
-                            {element.props.endArrow === "none" ? "无端点 (None)" : element.props.endArrow === "circle" ? "圆点 (Circle)" : "箭头 (Arrow)"}
+                            {element.props.endArrow === "none" ? "无端点" : element.props.endArrow === "circle" ? "圆点" : "箭头"}
                           </span>
                           <ChevronDown className="size-3 opacity-60" />
                         </Button>
                       }
                     />
                     <MenuPopup align="start">
-                      <MenuItem onClick={() => setProp("endArrow", "none")}>无端点 (None)</MenuItem>
-                      <MenuItem onClick={() => setProp("endArrow", "arrow")}>箭头 (Arrow)</MenuItem>
-                      <MenuItem onClick={() => setProp("endArrow", "circle")}>圆点 (Circle)</MenuItem>
+                      <MenuItem onClick={() => setProp("endArrow", "none")}>无端点</MenuItem>
+                      <MenuItem onClick={() => setProp("endArrow", "arrow")}>箭头</MenuItem>
+                      <MenuItem onClick={() => setProp("endArrow", "circle")}>圆点</MenuItem>
                     </MenuPopup>
                   </Menu>
                 </div>
@@ -1231,7 +1880,7 @@ export const RightPanel = memo(function RightPanel({
                           onCheckedChange={(c) => setProp("checked", Boolean(c))}
                         />
                         <span className="text-[11px] text-foreground/80">
-                          {prop("checked", true) !== false && prop("checked", true) !== "false" ? "默认开启 (ON)" : "默认关闭 (OFF)"}
+                          {prop("checked", true) !== false && prop("checked", true) !== "false" ? "默认开启" : "默认关闭"}
                         </span>
                       </label>
                     </div>
@@ -1664,19 +2313,12 @@ export const RightPanel = memo(function RightPanel({
 
                 {/* 20. Table */}
                 {element.type === "table" && (
-                  <>
-                    <OptionsListEditor
-                      title="表头列名"
-                      mode="none"
-                      value={String(prop("headers", "姓名,角色,部门,状态"))}
-                      onChange={(v) => setProp("headers", v)}
-                      placeholder="列名..."
-                    />
-                    <div className="flex gap-2 pt-0.5">
-                      <NumField label="行" value={Number(prop("rows", 4))} min={1} onChange={(v) => setProp("rows", Math.max(1, v))} />
-                      <NumField label="列" value={Number(prop("cols", 4))} min={1} onChange={(v) => setProp("cols", Math.max(1, v))} />
-                    </div>
-                  </>
+                  <TableInspectorSection
+                    element={element}
+                    prop={prop}
+                    setProp={setProp}
+                    setProps={setProps}
+                  />
                 )}
 
                 {/* 21. Sticky Note */}
@@ -1749,7 +2391,7 @@ export const RightPanel = memo(function RightPanel({
                     <span className="w-16 shrink-0 text-[10px] text-muted-foreground">说明文案</span>
                     <Input
                       size="sm"
-                      value={String(prop("label", element.type === "hotspot" ? "热区 / Hotspot" : "占位符"))}
+                      value={String(prop("label", element.type === "hotspot" ? "交互热区" : "占位符"))}
                       onChange={(e) => setProp("label", e.target.value)}
                       className="h-7 text-xs"
                     />
@@ -2220,7 +2862,7 @@ export const RightPanel = memo(function RightPanel({
                                 : "bg-transparent text-muted-foreground border-border"
                             )}
                           >
-                            {v === "line" ? "线条 (Line)" : "卡片 (Card)"}
+                            {v === "line" ? "线条" : "卡片"}
                           </button>
                         ))}
                       </div>
@@ -2243,10 +2885,12 @@ export const RightPanel = memo(function RightPanel({
 
                 {/* Web Pagination */}
                 {element.type === "web-pagination" && (
-                  <div className="grid grid-cols-3 gap-2">
-                    <NumField label="当前页" value={Number(prop("current", 1))} min={1} onChange={(v) => setProp("current", Math.max(1, v))} />
+                  <div className="flex flex-col gap-2">
+                    <div className="flex items-center gap-2">
+                      <NumField label="当前页" value={Number(prop("current", 1))} min={1} onChange={(v) => setProp("current", Math.max(1, v))} />
+                      <NumField label="每页条数" value={Number(prop("pageSize", 10))} min={1} onChange={(v) => setProp("pageSize", Math.max(1, v))} />
+                    </div>
                     <NumField label="总记录数" value={Number(prop("total", 128))} min={1} onChange={(v) => setProp("total", Math.max(1, v))} />
-                    <NumField label="每页条数" value={Number(prop("pageSize", 10))} min={1} onChange={(v) => setProp("pageSize", Math.max(1, v))} />
                   </div>
                 )}
 
@@ -2268,6 +2912,132 @@ export const RightPanel = memo(function RightPanel({
                         max={10}
                         onChange={(v) => setProp("current", Math.max(1, v))}
                       />
+                    </div>
+                  </>
+                )}
+
+                {/* Web Button */}
+                {element.type === "web-button" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">按钮文本</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("text", "主要操作"))}
+                        onChange={(e) => setProp("text", e.target.value)}
+                        className="h-7 text-xs font-medium"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] text-muted-foreground">变体风格</span>
+                      <div className="grid grid-cols-3 gap-1">
+                        {[
+                          { id: "primary", label: "主要" },
+                          { id: "secondary", label: "次要" },
+                          { id: "dashed", label: "虚线" },
+                          { id: "ghost", label: "幽灵" },
+                          { id: "danger", label: "危险" },
+                          { id: "link", label: "链接" },
+                        ].map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => setProp("variant", item.id)}
+                            className={cn(
+                              "h-6 rounded text-[10px] font-mono uppercase border transition-colors cursor-pointer",
+                              prop("variant", "primary") === item.id
+                                ? item.id === "danger"
+                                  ? "bg-[#D71921]/15 text-[#D71921] border-[#D71921] font-bold"
+                                  : "bg-foreground text-background border-foreground font-bold"
+                                : "bg-transparent text-muted-foreground border-border hover:border-border-visible"
+                            )}
+                          >
+                            {item.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">尺寸大小</span>
+                      <div className="grid grid-cols-3 gap-1 flex-1">
+                        {[
+                          { id: "sm", label: "紧凑" },
+                          { id: "md", label: "标准" },
+                          { id: "lg", label: "大号" },
+                        ].map((s) => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => setProp("size", s.id)}
+                            className={cn(
+                              "h-6 rounded text-[10px] font-mono border transition-colors cursor-pointer",
+                              prop("size", "md") === s.id
+                                ? "bg-foreground text-background border-foreground font-bold"
+                                : "bg-transparent text-muted-foreground border-border hover:border-border-visible"
+                            )}
+                          >
+                            {s.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">外形轮廓</span>
+                      <div className="grid grid-cols-4 gap-1 flex-1">
+                        {[
+                          { id: "pill", label: "胶囊" },
+                          { id: "rectangle", label: "微圆" },
+                          { id: "circle", label: "圆形" },
+                          { id: "square", label: "方形" },
+                        ].map((sh) => (
+                          <button
+                            key={sh.id}
+                            type="button"
+                            onClick={() => setProp("shape", sh.id)}
+                            className={cn(
+                              "h-6 rounded text-[10px] font-mono border transition-colors cursor-pointer",
+                              prop("shape", "pill") === sh.id
+                                ? "bg-foreground text-background border-foreground font-bold"
+                                : "bg-transparent text-muted-foreground border-border hover:border-border-visible"
+                            )}
+                          >
+                            {sh.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] text-muted-foreground">图标预设</span>
+                      <div className="grid grid-cols-4 gap-1">
+                        {[
+                          { id: "Plus", label: "新建+" },
+                          { id: "Download", label: "导出" },
+                          { id: "Upload", label: "导入" },
+                          { id: "Trash2", label: "删除" },
+                          { id: "Search", label: "搜索" },
+                          { id: "Filter", label: "筛选" },
+                          { id: "RefreshCw", label: "刷新" },
+                          { id: "Settings", label: "设置" },
+                          { id: "Check", label: "完成" },
+                          { id: "Edit", label: "编辑" },
+                          { id: "ExternalLink", label: "链接" },
+                          { id: "none", label: "无图标" },
+                        ].map((ic) => (
+                          <button
+                            key={ic.id}
+                            type="button"
+                            onClick={() => setProp("icon", ic.id)}
+                            className={cn(
+                              "h-6 rounded text-[10px] font-mono border transition-colors cursor-pointer",
+                              prop("icon", "Plus") === ic.id
+                                ? "bg-foreground text-background border-foreground font-bold"
+                                : "bg-transparent text-muted-foreground border-border hover:border-border-visible"
+                            )}
+                          >
+                            {ic.label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </>
                 )}
@@ -2330,28 +3100,71 @@ export const RightPanel = memo(function RightPanel({
                 {element.type === "web-input-number" && (
                   <>
                     <div className="flex items-center gap-2">
-                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">字段标签</span>
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground font-mono uppercase">字段标签</span>
                       <Input
                         size="sm"
                         value={String(prop("label", "购买配额"))}
                         onChange={(e) => setProp("label", e.target.value)}
-                        className="h-7 text-xs"
+                        className="h-7 text-xs flex-1"
                       />
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">默认数值</span>
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground font-mono uppercase">调节样式</span>
+                      <div className="grid grid-cols-3 gap-1 flex-1">
+                        {([
+                          { id: "right-vertical", label: "右侧步进" },
+                          { id: "both-sides", label: "两侧加减" },
+                          { id: "none", label: "无按钮" },
+                        ] as const).map((pos) => {
+                          const active = (element.props.controlsPosition || "right-vertical") === pos.id;
+                          return (
+                            <button
+                              key={pos.id}
+                              type="button"
+                              onClick={() => setProp("controlsPosition", pos.id)}
+                              className={cn(
+                                "h-6 rounded text-[9px] font-mono uppercase tracking-wider transition-colors border select-none cursor-pointer",
+                                active
+                                  ? "bg-foreground text-background border-foreground font-bold"
+                                  : "bg-transparent text-muted-foreground border-border hover:border-foreground/40 hover:text-foreground"
+                              )}
+                            >
+                              {pos.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground font-mono uppercase">默认数值</span>
                       <NumField
                         value={Number(prop("value", 5))}
+                        step={Number(prop("step", 1))}
+                        min={typeof element.props.min === "number" ? element.props.min : undefined}
+                        max={typeof element.props.max === "number" ? element.props.max : undefined}
                         onChange={(v) => setProp("value", v)}
                       />
                     </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <NumField
+                        label="步长"
+                        value={Number(prop("step", 1))}
+                        min={0.01}
+                        onChange={(v) => setProp("step", Math.max(0.01, v))}
+                      />
+                      <NumField
+                        label="最小"
+                        value={Number(prop("min", 1))}
+                        onChange={(v) => setProp("min", v)}
+                      />
+                    </div>
                     <div className="flex items-center gap-2">
-                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">单位后缀</span>
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground font-mono uppercase">单位后缀</span>
                       <Input
                         size="sm"
                         value={String(prop("unit", "台"))}
                         onChange={(e) => setProp("unit", e.target.value)}
-                        className="h-7 text-xs"
+                        className="h-7 text-xs flex-1"
                       />
                     </div>
                   </>
@@ -2655,7 +3468,7 @@ export const RightPanel = memo(function RightPanel({
                           onCheckedChange={(c) => setProp("checked", Boolean(c))}
                         />
                         <span className="text-[11px] text-foreground/80">
-                          {prop("checked", true) !== false && prop("checked", true) !== "false" ? "默认开启 (ON)" : "默认关闭 (OFF)"}
+                          {prop("checked", true) !== false && prop("checked", true) !== "false" ? "默认开启" : "默认关闭"}
                         </span>
                       </label>
                     </div>
@@ -3046,19 +3859,24 @@ export const RightPanel = memo(function RightPanel({
                     <div className="flex items-center gap-2">
                       <span className="w-16 shrink-0 text-[10px] text-muted-foreground">提示基调</span>
                       <div className="grid grid-cols-4 gap-1 flex-1">
-                        {["info", "success", "warning", "error"].map((t) => (
+                        {[
+                          { id: "info", label: "信息" },
+                          { id: "success", label: "成功" },
+                          { id: "warning", label: "警告" },
+                          { id: "error", label: "错误" },
+                        ].map((t) => (
                           <button
-                            key={t}
+                            key={t.id}
                             type="button"
-                            onClick={() => setProp("tone", t)}
+                            onClick={() => setProp("tone", t.id)}
                             className={cn(
-                              "h-6 rounded text-[9px] font-mono uppercase border",
-                              prop("tone", "warning") === t
+                              "h-6 rounded text-[10px] font-mono border select-none cursor-pointer transition-colors",
+                              prop("tone", "warning") === t.id
                                 ? "bg-foreground text-background border-foreground font-bold"
-                                : "bg-transparent text-muted-foreground border-border"
+                                : "bg-transparent text-muted-foreground border-border hover:border-border-visible"
                             )}
                           >
-                            {t}
+                            {t.label}
                           </button>
                         ))}
                       </div>
@@ -3158,19 +3976,25 @@ export const RightPanel = memo(function RightPanel({
                     <div className="flex items-center gap-2">
                       <span className="w-16 shrink-0 text-[10px] text-muted-foreground">状态基调</span>
                       <div className="grid grid-cols-5 gap-1 flex-1">
-                        {["info", "success", "warning", "error", "default"].map((t) => (
+                        {[
+                          { id: "info", label: "信息" },
+                          { id: "success", label: "成功" },
+                          { id: "warning", label: "警告" },
+                          { id: "error", label: "错误" },
+                          { id: "default", label: "默认" },
+                        ].map((t) => (
                           <button
-                            key={t}
+                            key={t.id}
                             type="button"
-                            onClick={() => setProp("tone", t)}
+                            onClick={() => setProp("tone", t.id)}
                             className={cn(
-                              "h-6 rounded text-[9px] font-mono uppercase border",
-                              prop("tone", "info") === t
+                              "h-6 rounded text-[9.5px] font-mono border select-none cursor-pointer transition-colors",
+                              prop("tone", "info") === t.id
                                 ? "bg-foreground text-background border-foreground font-bold"
-                                : "bg-transparent text-muted-foreground border-border"
+                                : "bg-transparent text-muted-foreground border-border hover:border-border-visible"
                             )}
                           >
-                            {t}
+                            {t.label}
                           </button>
                         ))}
                       </div>
@@ -3178,19 +4002,24 @@ export const RightPanel = memo(function RightPanel({
                     <div className="flex items-center gap-2">
                       <span className="w-16 shrink-0 text-[10px] text-muted-foreground">箭头方向</span>
                       <div className="grid grid-cols-4 gap-1 flex-1">
-                        {["top", "bottom", "left", "right"].map((p) => (
+                        {[
+                          { id: "top", label: "上" },
+                          { id: "bottom", label: "下" },
+                          { id: "left", label: "左" },
+                          { id: "right", label: "右" },
+                        ].map((p) => (
                           <button
-                            key={p}
+                            key={p.id}
                             type="button"
-                            onClick={() => setProp("placement", p)}
+                            onClick={() => setProp("placement", p.id)}
                             className={cn(
-                              "h-6 rounded text-[9px] font-mono uppercase border",
-                              prop("placement", "top") === p
+                              "h-6 rounded text-[10px] font-mono border select-none cursor-pointer transition-colors",
+                              prop("placement", "top") === p.id
                                 ? "bg-foreground text-background border-foreground font-bold"
-                                : "bg-transparent text-muted-foreground border-border"
+                                : "bg-transparent text-muted-foreground border-border hover:border-border-visible"
                             )}
                           >
-                            {p}
+                            {p.label}
                           </button>
                         ))}
                       </div>
@@ -3223,19 +4052,25 @@ export const RightPanel = memo(function RightPanel({
                     <div className="flex items-center gap-2">
                       <span className="w-16 shrink-0 text-[10px] text-muted-foreground">状态类型</span>
                       <div className="grid grid-cols-5 gap-1 flex-1">
-                        {["success", "warning", "error", "info", "loading"].map((t) => (
+                        {[
+                          { id: "success", label: "成功" },
+                          { id: "warning", label: "警告" },
+                          { id: "error", label: "错误" },
+                          { id: "info", label: "信息" },
+                          { id: "loading", label: "加载" },
+                        ].map((t) => (
                           <button
-                            key={t}
+                            key={t.id}
                             type="button"
-                            onClick={() => setProp("tone", t)}
+                            onClick={() => setProp("tone", t.id)}
                             className={cn(
-                              "h-6 rounded text-[9px] font-mono uppercase border",
-                              prop("tone", "success") === t
+                              "h-6 rounded text-[9.5px] font-mono border select-none cursor-pointer transition-colors",
+                              prop("tone", "success") === t.id
                                 ? "bg-foreground text-background border-foreground font-bold"
-                                : "bg-transparent text-muted-foreground border-border"
+                                : "bg-transparent text-muted-foreground border-border hover:border-border-visible"
                             )}
                           >
-                            {t}
+                            {t.label}
                           </button>
                         ))}
                       </div>
@@ -3401,6 +4236,255 @@ export const RightPanel = memo(function RightPanel({
                     </div>
                   </>
                 )}
+
+                {/* Agent Prompt Box */}
+                {element.type === "agent-prompt-box" && (
+                  <>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] text-muted-foreground">输入提示占位符</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("placeholder", "有什么问题请问我吧，输入 / 可调用技能"))}
+                        onChange={(e) => setProp("placeholder", e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">权限标签</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("permissionText", "默认权限"))}
+                        onChange={(e) => setProp("permissionText", e.target.value)}
+                        className="h-7 text-xs font-mono"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">模型名称</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("modelName", "高级模型"))}
+                        onChange={(e) => setProp("modelName", e.target.value)}
+                        className="h-7 text-xs font-mono"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">挂载工程</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("projectScope", "Project-D"))}
+                        onChange={(e) => setProp("projectScope", e.target.value)}
+                        className="h-7 text-xs font-mono"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Agent Prompt Toolbar */}
+                {element.type === "agent-prompt-toolbar" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">挂载工程</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("projectScope", "Project-D"))}
+                        onChange={(e) => setProp("projectScope", e.target.value)}
+                        className="h-7 text-xs font-mono"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">生成页数</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("pageCount", "4-6 页"))}
+                        onChange={(e) => setProp("pageCount", e.target.value)}
+                        className="h-7 text-xs font-mono"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">比例尺寸</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("ratio", "16:9"))}
+                        onChange={(e) => setProp("ratio", e.target.value)}
+                        className="h-7 text-xs font-mono"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">输出语言</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("language", "中文"))}
+                        onChange={(e) => setProp("language", e.target.value)}
+                        className="h-7 text-xs font-mono"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Agent Stream Header */}
+                {element.type === "agent-stream-header" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">智能体名</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("agentName", "ClawHive 总管"))}
+                        onChange={(e) => setProp("agentName", e.target.value)}
+                        className="h-7 text-xs font-bold"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">消耗积分</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("consumedPoints", "21"))}
+                        onChange={(e) => setProp("consumedPoints", e.target.value)}
+                        className="h-7 text-xs font-mono"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">已耗时长</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("elapsedTime", "2m 39s"))}
+                        onChange={(e) => setProp("elapsedTime", e.target.value)}
+                        className="h-7 text-xs font-mono"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Agent Tool Step */}
+                {element.type === "agent-tool-step" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">工具动作</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("toolLabel", "读取输入文件"))}
+                        onChange={(e) => setProp("toolLabel", e.target.value)}
+                        className="h-7 text-xs font-medium font-mono"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">执行状态</span>
+                      <div className="grid grid-cols-3 gap-1 flex-1">
+                        {[
+                          { id: "done", label: "完成" },
+                          { id: "running", label: "执行中" },
+                          { id: "pending", label: "等待" },
+                        ].map((s) => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => setProp("status", s.id)}
+                            className={cn(
+                              "h-6 rounded text-[10px] font-mono border select-none cursor-pointer transition-colors",
+                              prop("status", "done") === s.id
+                                ? "bg-foreground text-background border-foreground font-bold"
+                                : "bg-transparent text-muted-foreground border-border hover:border-border-visible"
+                            )}
+                          >
+                            {s.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] text-muted-foreground">详情/返回说明</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("detail", "已解析 openclaw-report.docx (1.2MB)"))}
+                        onChange={(e) => setProp("detail", e.target.value)}
+                        className="h-7 text-xs font-mono"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Agent Employee Card */}
+                {element.type === "agent-employee-card" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">角色名称</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("name", "流程画师"))}
+                        onChange={(e) => setProp("name", e.target.value)}
+                        className="h-7 text-xs font-bold"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">技能标签</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("tags", "结构绘制,数据分析,机器学习"))}
+                        onChange={(e) => setProp("tags", e.target.value)}
+                        placeholder="逗号分隔标签..."
+                        className="h-7 text-xs font-mono"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] text-muted-foreground">职责定位说明</span>
+                      <textarea
+                        value={String(prop("description", "将复杂想法与业务逻辑转化为高保真清晰流程图"))}
+                        onChange={(e) => setProp("description", e.target.value)}
+                        rows={2}
+                        className="w-full resize-y rounded-md border border-input bg-background p-1.5 text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Agent Layout Templates & Pages */}
+                {(element.type === "agent-home-layout" ||
+                  element.type === "agent-chat-stream-layout" ||
+                  element.type === "agent-split-workspace-layout" ||
+                  element.type === "agent-employee-workspace-layout" ||
+                  element.type === "agent-employee-market-layout") && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">主标题/会话</span>
+                      <Input
+                        size="sm"
+                        value={String(
+                          prop(
+                            "sessionTitle",
+                            prop("welcomeTitle", prop("marketTitle", prop("employeeName", "营销活动月度复盘分析报告")))
+                          )
+                        )}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (element.type === "agent-home-layout") setProp("welcomeTitle", val);
+                          else if (element.type === "agent-employee-market-layout") setProp("marketTitle", val);
+                          else if (element.type === "agent-employee-workspace-layout") setProp("employeeName", val);
+                          else setProp("sessionTitle", val);
+                        }}
+                        className="h-7 text-xs font-bold"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">副标/智能体</span>
+                      <Input
+                        size="sm"
+                        value={String(
+                          prop(
+                            "agentName",
+                            prop("employeeDesc", prop("marketSubtitle", prop("modelName", "ClawHive 总管")))
+                          )
+                        )}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          if (element.type === "agent-home-layout") setProp("modelName", val);
+                          else if (element.type === "agent-employee-market-layout") setProp("marketSubtitle", val);
+                          else if (element.type === "agent-employee-workspace-layout") setProp("employeeDesc", val);
+                          else setProp("agentName", val);
+                        }}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                  </>
+                )}
               </div>
             </Section>
           )}
@@ -3453,7 +4537,7 @@ export const RightPanel = memo(function RightPanel({
                   {radiusEnabled && (
                     <>
                       {!radiusIndependent ? (
-                        <div className="pl-6">
+                        <div className="pl-4">
                           <NumField
                             label=""
                             value={radius}
@@ -3463,7 +4547,7 @@ export const RightPanel = memo(function RightPanel({
                           />
                         </div>
                       ) : (
-                        <div className="grid grid-cols-2 gap-1.5 pl-6">
+                        <div className="grid grid-cols-2 gap-1.5 pl-4">
                           <NumField label="TL" value={radiusTopLeft} min={0} onChange={(v) => setProp("radiusTopLeft", Math.max(0, v))} />
                           <NumField label="TR" value={radiusTopRight} min={0} onChange={(v) => setProp("radiusTopRight", Math.max(0, v))} />
                           <NumField label="BL" value={radiusBottomLeft} min={0} onChange={(v) => setProp("radiusBottomLeft", Math.max(0, v))} />
@@ -3516,7 +4600,7 @@ export const RightPanel = memo(function RightPanel({
                   </div>
 
                   {fillEnabled && (
-                    <div className="flex flex-col gap-1.5 pl-6">
+                    <div className="flex flex-col gap-1.5 pl-4">
                       {!gradientEnabled ? (
                         <ColorPickerRow
                           title="填充颜色"
@@ -3608,7 +4692,7 @@ export const RightPanel = memo(function RightPanel({
                   </div>
 
                   {strokeEnabled && (
-                    <div className="flex flex-col gap-1.5 pl-6">
+                    <div className="flex flex-col gap-1.5 pl-4">
                       <ColorPickerRow
                         title={isLineLike ? "线条颜色" : "描边颜色"}
                         color={stroke}
@@ -3632,18 +4716,18 @@ export const RightPanel = memo(function RightPanel({
                         <Menu>
                           <MenuTrigger
                             render={
-                              <Button variant="outline" size="xs" className="h-7 flex-1 justify-between text-xs">
-                                <span>
+                              <Button variant="outline" size="xs" className="h-7 min-w-0 flex-1 justify-between px-2 text-xs">
+                                <span className="truncate">
                                   {strokeStyle === "dashed" ? "虚线" : strokeStyle === "dotted" ? "点线" : "实线"}
                                 </span>
-                                <ChevronDown className="size-3 opacity-60" />
+                                <ChevronDown className="size-3 shrink-0 opacity-60" />
                               </Button>
                             }
                           />
                           <MenuPopup align="end">
-                            <MenuItem onClick={() => setProp("strokeStyle", "solid")}>实线 (Solid)</MenuItem>
-                            <MenuItem onClick={() => setProp("strokeStyle", "dashed")}>虚线 (Dashed)</MenuItem>
-                            <MenuItem onClick={() => setProp("strokeStyle", "dotted")}>点线 (Dotted)</MenuItem>
+                            <MenuItem onClick={() => setProp("strokeStyle", "solid")}>实线</MenuItem>
+                            <MenuItem onClick={() => setProp("strokeStyle", "dashed")}>虚线</MenuItem>
+                            <MenuItem onClick={() => setProp("strokeStyle", "dotted")}>点线</MenuItem>
                           </MenuPopup>
                         </Menu>
                       </div>
@@ -3654,25 +4738,25 @@ export const RightPanel = memo(function RightPanel({
                           <Menu>
                             <MenuTrigger
                               render={
-                                <Button variant="outline" size="xs" className="h-7 flex-1 justify-between text-xs">
+                                <Button variant="outline" size="xs" className="h-7 min-w-0 flex-1 justify-between px-2 text-xs">
                                   <span className="truncate">
                                     {strokePosition === "outside" ? "外描边" : strokePosition === "center" ? "居中描边" : "内描边"}
                                   </span>
-                                  <ChevronDown className="size-3 opacity-60" />
+                                  <ChevronDown className="size-3 shrink-0 opacity-60" />
                                 </Button>
                               }
                             />
                             <MenuPopup align="start">
-                              <MenuItem onClick={() => setProp("strokePosition", "inside")}>内描边 (Inside)</MenuItem>
-                              <MenuItem onClick={() => setProp("strokePosition", "center")}>居中描边 (Center)</MenuItem>
-                              <MenuItem onClick={() => setProp("strokePosition", "outside")}>外描边 (Outside)</MenuItem>
+                              <MenuItem onClick={() => setProp("strokePosition", "inside")}>内描边</MenuItem>
+                              <MenuItem onClick={() => setProp("strokePosition", "center")}>居中描边</MenuItem>
+                              <MenuItem onClick={() => setProp("strokePosition", "outside")}>外描边</MenuItem>
                             </MenuPopup>
                           </Menu>
 
                           <Menu>
                             <MenuTrigger
                               render={
-                                <Button variant="outline" size="xs" className="h-7 flex-1 justify-between text-xs">
+                                <Button variant="outline" size="xs" className="h-7 min-w-0 flex-1 justify-between px-2 text-xs">
                                   <span className="truncate">
                                     {strokeSides === "top"
                                       ? "仅上边框"
@@ -3684,16 +4768,16 @@ export const RightPanel = memo(function RightPanel({
                                       ? "仅右边框"
                                       : "全部边框"}
                                   </span>
-                                  <ChevronDown className="size-3 opacity-60" />
+                                  <ChevronDown className="size-3 shrink-0 opacity-60" />
                                 </Button>
                               }
                             />
                             <MenuPopup align="end">
-                              <MenuItem onClick={() => setProp("strokeSides", "all")}>全部边框 (All)</MenuItem>
-                              <MenuItem onClick={() => setProp("strokeSides", "top")}>仅上边框 (Top)</MenuItem>
-                              <MenuItem onClick={() => setProp("strokeSides", "bottom")}>仅下边框 (Bottom)</MenuItem>
-                              <MenuItem onClick={() => setProp("strokeSides", "left")}>仅左边框 (Left)</MenuItem>
-                              <MenuItem onClick={() => setProp("strokeSides", "right")}>仅右边框 (Right)</MenuItem>
+                              <MenuItem onClick={() => setProp("strokeSides", "all")}>全部边框</MenuItem>
+                              <MenuItem onClick={() => setProp("strokeSides", "top")}>仅上边框</MenuItem>
+                              <MenuItem onClick={() => setProp("strokeSides", "bottom")}>仅下边框</MenuItem>
+                              <MenuItem onClick={() => setProp("strokeSides", "left")}>仅左边框</MenuItem>
+                              <MenuItem onClick={() => setProp("strokeSides", "right")}>仅右边框</MenuItem>
                             </MenuPopup>
                           </Menu>
                         </div>
@@ -3768,9 +4852,9 @@ export const RightPanel = memo(function RightPanel({
                   <Menu>
                     <MenuTrigger
                       render={
-                        <Button variant="outline" size="xs" className="h-7 min-w-0 flex-1 justify-between text-[11px]">
-                          <span>{WEIGHT_OPTIONS.find((w) => w.value === fontWeight)?.label ?? "Regular"}</span>
-                          <ChevronDown className="size-3 opacity-60" />
+                        <Button variant="outline" size="xs" className="h-7 min-w-0 flex-1 justify-between px-2 text-[11px]">
+                          <span className="truncate">{WEIGHT_OPTIONS.find((w) => w.value === fontWeight)?.label ?? "Regular"}</span>
+                          <ChevronDown className="size-3 shrink-0 opacity-60" />
                         </Button>
                       }
                     />

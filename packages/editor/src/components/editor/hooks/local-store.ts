@@ -8,6 +8,7 @@ export interface StoredProject {
   name: string;
   pages: Page[];
   savedAt: number;
+  filePath?: string;
 }
 
 export interface StoredSettings {
@@ -15,6 +16,7 @@ export interface StoredSettings {
   showGrid: boolean;
   theme?: "dark" | "light" | "system";
   lastFile?: string;
+  leftDrawerCollapsed?: boolean;
 }
 
 const STORE_FILE = "bluepen.json";
@@ -131,7 +133,7 @@ export async function loadProjectLocal(): Promise<StoredProject | null> {
         const content = await readTextFile(lastFile);
         const parsed = JSON.parse(content);
         if (parsed && Array.isArray(parsed.pages)) {
-          return { ...parsed, version: PROJECT_VERSION };
+          return { ...parsed, version: PROJECT_VERSION, filePath: lastFile };
         }
       }
       const store = await getTauriStore();
@@ -167,24 +169,31 @@ export async function loadProjectLocal(): Promise<StoredProject | null> {
   return null;
 }
 
-export async function saveProjectLocal(project: StoredProject): Promise<void> {
+export async function saveProjectLocal(project: StoredProject, explicitFilePath?: string | null): Promise<void> {
   try {
     if (isDesktop()) {
-      await ensureProjectsDir();
-      const { writeTextFile, remove, BaseDirectory } = await import("@tauri-apps/plugin-fs");
-      const fileName = projectFileName(project.name);
-      const fullPath = `${await getProjectsDir()}/${fileName}`;
-      await writeTextFile(`${PROJECTS_DIR}/${fileName}`, JSON.stringify(project, null, 2), {
-        baseDir: BaseDirectory.Document,
-      });
-      const settings = await getStoredSettings();
-      if (settings?.lastFile && settings.lastFile !== fullPath) {
-        await remove(settings.lastFile).catch(() => {});
+      const { writeTextFile, BaseDirectory } = await import("@tauri-apps/plugin-fs");
+      let savedFullPath: string;
+
+      if (explicitFilePath) {
+        // Save directly to the explicitly bound file path
+        await writeTextFile(explicitFilePath, JSON.stringify(project, null, 2));
+        savedFullPath = explicitFilePath;
+      } else {
+        // Save to default workspace cache file
+        await ensureProjectsDir();
+        const fileName = projectFileName(project.name);
+        savedFullPath = `${await getProjectsDir()}/${fileName}`;
+        await writeTextFile(`${PROJECTS_DIR}/${fileName}`, JSON.stringify(project, null, 2), {
+          baseDir: BaseDirectory.Document,
+        });
       }
+
+      const settings = await getStoredSettings();
       const store = await getTauriStore();
       await store.set("settings", {
         ...(settings ?? { zoom: 1, showGrid: true }),
-        lastFile: fullPath,
+        lastFile: savedFullPath,
       });
       await store.save();
     } else {

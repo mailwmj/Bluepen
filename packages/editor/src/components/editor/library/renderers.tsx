@@ -1,6 +1,18 @@
-import type { ComponentType } from "../types";
+import { useState, useRef, useEffect } from "react";
+import type { ComponentType, EditorElement } from "../types";
 import { cn } from "@bluepen/editor/lib/utils";
 import { renderWebLibraryComponent } from "./web-renderers";
+import { renderAgentLibraryComponent } from "./agent-renderers";
+
+export interface ComponentRenderContext {
+  elementId?: string;
+  zoom?: number;
+  onSelect?: (id: string | null) => void;
+  onUpdateProps?: (patch: Record<string, string | number | boolean>) => void;
+  onUpdateElement?: (id: string, patch: Partial<EditorElement>) => void;
+  previewing?: boolean;
+  isSelected?: boolean;
+}
 import {
   SkeletonText,
   SkeletonImage,
@@ -97,13 +109,23 @@ export function renderLibraryComponent(
   type: ComponentType,
   props: Props,
   children?: React.ReactNode,
+  context?: ComponentRenderContext,
 ) {
   if (type.startsWith("web-")) {
-    const webRes = renderWebLibraryComponent(type, props, children);
+    const webRes = renderWebLibraryComponent(type, props, children, context);
     if (webRes) return webRes;
   }
 
+  if (type.startsWith("agent-")) {
+    const agentRes = renderAgentLibraryComponent(type, props, children, context);
+    if (agentRes) return agentRes;
+  }
+
   switch (type) {
+    // Group container
+    case "group":
+      return <div className="relative size-full overflow-visible pointer-events-none">{children}</div>;
+
     // Basic Wireframe
     case "text": return <TextPreview props={props} />;
     case "rectangle": return <RectanglePreview props={props} />;
@@ -115,7 +137,7 @@ export function renderLibraryComponent(
     case "button": return <ButtonPreview props={props} />;
     case "button-primary": return <ButtonPrimaryPreview props={props} />;
     case "placeholder": return <PlaceholderPreview props={props} />;
-    case "table": return <TablePreview props={props} />;
+    case "table": return <TablePreview props={props} context={context} />;
     case "sticky-note": return <StickyNotePreview props={props} />;
     case "pin-note": return <PinNotePreview props={props} />;
     case "scroll-panel": return <ScrollPanelPreview props={props} />;
@@ -252,15 +274,15 @@ function NavbarPreview({ props }: { props?: Props }) {
   const signupText = String(val(p, "signupText", "免费注册"));
 
   return (
-    <div className="flex h-full w-full items-center justify-between border-b border-neutral-200 bg-white px-5">
+    <div className="flex h-full w-full items-center justify-between border-b border-border bg-surface px-5 font-sans select-none">
       <div className="flex min-w-0 items-center gap-6">
         <div className="flex shrink-0 items-center gap-2">
           <Logo />
-          <span className="text-[11px] font-bold tracking-tight text-neutral-900">{logoText}</span>
+          <span className="text-[11px] font-bold tracking-tight text-foreground">{logoText}</span>
         </div>
         <div className="flex min-w-0 items-center gap-4">
           {links.map((l) => (
-            <span key={l} className="shrink-0 text-[9px] font-medium text-neutral-600 hover:text-neutral-900 cursor-default">{l}</span>
+            <span key={l} className="shrink-0 text-[9px] font-medium text-muted-foreground hover:text-foreground cursor-default">{l}</span>
           ))}
         </div>
       </div>
@@ -281,25 +303,25 @@ function SidebarPreview() {
     { icon: Settings, label: "Settings" },
   ];
   return (
-    <div className="flex h-full w-full flex-col border-r border-neutral-200 bg-white">
-      <div className="flex items-center gap-2 border-b border-neutral-200 px-4 py-3.5">
+    <div className="flex h-full w-full flex-col border-r border-border bg-surface font-sans select-none">
+      <div className="flex items-center gap-2 border-b border-border px-4 py-3.5">
         <Logo />
-        <span className="text-[11px] font-bold tracking-tight text-neutral-900">Acme Inc</span>
+        <span className="text-[11px] font-bold tracking-tight text-foreground">Acme Inc</span>
       </div>
       <div className="flex min-h-0 flex-1 flex-col gap-0.5 p-2.5">
         {items.map(({ icon, label, active }) => (
-          <div key={label} className={`flex items-center gap-2.5 rounded-md px-2.5 py-2 ${active ? "bg-neutral-100" : ""}`}>
-            <SkeletonIcon icon={icon} className={active ? "text-neutral-900" : "text-neutral-400"} />
-            <span className={`text-[9px] font-medium ${active ? "font-semibold text-neutral-900" : "text-neutral-500"}`}>{label}</span>
-            {active && <span className="ml-auto size-1.5 rounded-full bg-neutral-900" />}
+          <div key={label} className={`flex items-center gap-2.5 rounded-md px-2.5 py-2 ${active ? "bg-surface-raised border border-border-visible font-bold text-foreground" : "text-muted-foreground"}`}>
+            <SkeletonIcon icon={icon} className={active ? "text-foreground" : "text-muted-foreground"} />
+            <span className="text-[9px] font-medium truncate">{label}</span>
+            {active && <span className="ml-auto size-1.5 rounded-full bg-foreground" />}
           </div>
         ))}
       </div>
-      <div className="flex items-center gap-2 border-t border-neutral-200 px-4 py-3">
+      <div className="flex items-center gap-2 border-t border-border px-4 py-3">
         <SkeletonAvatar initials="JD" size="sm" />
         <div className="min-w-0 flex-1">
-          <div className="truncate text-[9px] font-semibold text-neutral-800">Jane Doe</div>
-          <div className="truncate text-[8px] text-neutral-400">jane@acme.com</div>
+          <div className="truncate text-[9px] font-semibold text-foreground">Jane Doe</div>
+          <div className="truncate text-[8px] text-muted-foreground">jane@acme.com</div>
         </div>
         <SkeletonIcon icon={MoreHorizontal} />
       </div>
@@ -309,18 +331,18 @@ function SidebarPreview() {
 
 function HeaderPreview() {
   return (
-    <div className="flex h-full w-full items-center justify-between border-b border-neutral-200 bg-white px-5">
+    <div className="flex h-full w-full items-center justify-between border-b border-border bg-surface px-5 font-sans select-none">
       <div className="flex min-w-0 items-baseline gap-1.5">
-        <span className="text-[9px] text-neutral-400">Projects</span>
-        <SkeletonIcon icon={ChevronRight} className="size-2.5 text-neutral-300" />
-        <span className="truncate text-[11px] font-semibold text-neutral-900">Annual Report</span>
+        <span className="text-[9px] text-muted-foreground">Projects</span>
+        <SkeletonIcon icon={ChevronRight} className="size-2.5 text-muted-foreground" />
+        <span className="truncate text-[11px] font-semibold text-foreground">Annual Report</span>
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
-        <div className="flex size-7 items-center justify-center rounded-md border border-neutral-200 bg-white">
-          <Search aria-hidden="true" className="size-3 text-neutral-400" />
+        <div className="flex size-7 items-center justify-center rounded-md border border-border-visible bg-surface-raised">
+          <Search aria-hidden="true" className="size-3 text-muted-foreground" />
         </div>
-        <div className="flex size-7 items-center justify-center rounded-md border border-neutral-200 bg-white">
-          <Bell aria-hidden="true" className="size-3 text-neutral-400" />
+        <div className="flex size-7 items-center justify-center rounded-md border border-border-visible bg-surface-raised">
+          <Bell aria-hidden="true" className="size-3 text-muted-foreground" />
         </div>
         <SkeletonAvatar initials="JD" size="sm" />
       </div>
@@ -330,7 +352,7 @@ function HeaderPreview() {
 
 function FooterPreview() {
   return (
-    <div className="flex h-full w-full flex-col bg-neutral-50">
+    <div className="flex h-full w-full flex-col bg-surface border-t border-border font-sans select-none">
       <div className="grid min-h-0 flex-1 grid-cols-4 gap-6 px-10 py-6">
         {[
           { title: "Product", links: ["Features", "Pricing", "Changelog"] },
@@ -475,16 +497,16 @@ function FeaturesPreview() {
     { icon: Palette, title: "Beautiful design", w: "56%" },
   ];
   return (
-    <div className="flex h-full w-full flex-col items-center gap-4 overflow-y-auto bg-white px-10 py-6">
+    <div className="flex h-full w-full flex-col items-center gap-4 overflow-y-auto bg-surface px-10 py-6 font-sans select-none">
       <SkeletonText variant="title" width="38%" className="h-4" />
       <SkeletonText variant="body" width="52%" />
       <div className="grid min-h-0 flex-1 grid-cols-3 gap-3">
         {feats.map((f) => (
-          <div key={f.title} className="flex flex-col items-center gap-2 rounded-xl border border-neutral-200 p-4 text-center">
-            <div className="flex size-9 items-center justify-center rounded-lg bg-neutral-100">
-              <f.icon aria-hidden="true" className="size-4 text-neutral-600" />
+          <div key={f.title} className="flex flex-col items-center gap-2 rounded-xl border border-border-visible bg-background p-4 text-center">
+            <div className="flex size-9 items-center justify-center rounded-lg bg-surface-raised border border-border-visible">
+              <f.icon aria-hidden="true" className="size-4 text-foreground" />
             </div>
-            <span className="text-[10px] font-semibold text-neutral-800">{f.title}</span>
+            <span className="text-[10px] font-semibold text-foreground">{f.title}</span>
             <SkeletonText variant="caption" width="80%" />
             <SkeletonText variant="caption" width="60%" />
           </div>
@@ -496,11 +518,11 @@ function FeaturesPreview() {
 
 function TestimonialsPreview() {
   return (
-    <div className="flex h-full w-full flex-col items-center gap-3 overflow-y-auto bg-neutral-50 px-10 py-5">
+    <div className="flex h-full w-full flex-col items-center gap-3 overflow-y-auto bg-background px-10 py-5 font-sans select-none">
       <SkeletonText variant="heading" width="32%" />
       <div className="grid min-h-0 flex-1 grid-cols-3 gap-3">
         {["AC", "LM", "RS"].map((ini) => (
-          <div key={ini} className="flex flex-col gap-2 rounded-xl border border-neutral-200 bg-white p-4">
+          <div key={ini} className="flex flex-col gap-2 rounded-xl border border-border-visible bg-surface p-4">
             <div className="flex gap-0.5">
               {[0, 1, 2, 3, 4].map((s) => (
                 <Star key={s} aria-hidden="true" className="size-3 fill-amber-400 text-amber-400" />
@@ -511,7 +533,7 @@ function TestimonialsPreview() {
             <div className="mt-auto flex items-center gap-2 pt-2">
               <SkeletonAvatar initials={ini} size="sm" />
               <div className="flex flex-col gap-0.5">
-                <SkeletonText variant="caption" width="70%" className="bg-neutral-300" />
+                <SkeletonText variant="caption" width="70%" />
                 <SkeletonText variant="caption" width="50%" />
               </div>
             </div>
@@ -529,27 +551,27 @@ function PricingPreview() {
     { name: "Team", price: "$39", pop: false },
   ];
   return (
-    <div className="flex h-full w-full flex-col items-center gap-4 overflow-y-auto bg-white px-10 py-6">
+    <div className="flex h-full w-full flex-col items-center gap-4 overflow-y-auto bg-background px-10 py-6 font-sans select-none">
       <SkeletonText variant="title" width="30%" className="h-4" />
       <SkeletonText variant="body" width="45%" />
       <div className="grid min-h-0 flex-1 grid-cols-3 gap-3">
         {plans.map((pl) => (
-          <div key={pl.name} className={`flex flex-col gap-2 rounded-xl border p-4 ${pl.pop ? "border-neutral-900 bg-neutral-900 text-white shadow-lg" : "border-neutral-200"}`}>
+          <div key={pl.name} className={`flex flex-col gap-2 rounded-xl border p-4 ${pl.pop ? "border-foreground bg-surface text-foreground shadow-lg ring-1 ring-foreground" : "border-border-visible bg-surface"}`}>
             <div className="flex items-center justify-between">
-              <span className={`text-[9px] font-semibold ${pl.pop ? "text-white" : "text-neutral-700"}`}>{pl.name}</span>
+              <span className="text-[9px] font-semibold text-foreground">{pl.name}</span>
               {pl.pop && <SkeletonChip label="Popular" tone="success" />}
             </div>
             <div className="flex items-baseline gap-1">
-              <span className={`text-lg font-bold ${pl.pop ? "text-white" : "text-neutral-900"}`}>{pl.price}</span>
-              <span className={`text-[8px] ${pl.pop ? "text-neutral-300" : "text-neutral-400"}`}>/month</span>
+              <span className="text-lg font-bold text-foreground">{pl.price}</span>
+              <span className="text-[8px] text-muted-foreground">/month</span>
             </div>
             {[0, 1, 2].map((i) => (
               <div key={i} className="flex items-center gap-1.5">
-                <Check aria-hidden="true" className={`size-2.5 ${pl.pop ? "text-emerald-400" : "text-emerald-500"}`} />
-                <SkeletonText variant="caption" width={`${70 - i * 15}%`} className={pl.pop ? "bg-neutral-500" : ""} />
+                <Check aria-hidden="true" className="size-2.5 text-emerald-500" />
+                <SkeletonText variant="caption" width={`${70 - i * 15}%`} />
               </div>
             ))}
-            <div className={`mt-auto flex h-6 items-center justify-center rounded-md text-[9px] font-semibold ${pl.pop ? "bg-white text-neutral-900" : "bg-neutral-100 text-neutral-700"}`}>
+            <div className={`mt-auto flex h-6 items-center justify-center rounded-md text-[9px] font-semibold ${pl.pop ? "bg-foreground text-background" : "border border-border-visible text-foreground"}`}>
               Choose plan
             </div>
           </div>
@@ -567,14 +589,14 @@ function StatsPreview() {
     { v: "98.2%", l: "Uptime", d: "+0.4%" },
   ];
   return (
-    <div className="grid h-full w-full grid-cols-4 gap-3 bg-white px-8 py-4">
+    <div className="grid h-full w-full grid-cols-4 gap-3 bg-background px-8 py-4 font-sans select-none">
       {stats.map((s) => (
-        <div key={s.l} className="flex flex-col justify-center gap-1 rounded-xl border border-neutral-200 px-4">
+        <div key={s.l} className="flex flex-col justify-center gap-1 rounded-xl border border-border-visible bg-surface px-4">
           <div className="flex items-center gap-1.5">
-            <span className="text-[15px] font-bold tracking-tight text-neutral-900">{s.v}</span>
+            <span className="text-[15px] font-bold tracking-tight text-foreground">{s.v}</span>
             <SkeletonChip label={s.d} tone={s.d.startsWith("+") ? "success" : "danger"} />
           </div>
-          <span className="text-[8px] text-neutral-400">{s.l}</span>
+          <span className="text-[8px] text-muted-foreground">{s.l}</span>
         </div>
       ))}
     </div>
@@ -583,13 +605,13 @@ function StatsPreview() {
 
 function LogosPreview() {
   return (
-    <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-white px-8">
-      <span className="text-[8px] font-semibold uppercase tracking-widest text-neutral-400">Trusted by teams at</span>
+    <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-surface px-8 font-sans select-none">
+      <span className="text-[8px] font-semibold uppercase tracking-widest text-muted-foreground">Trusted by teams at</span>
       <div className="flex w-full items-center justify-between gap-4">
         {["Acme", "Globex", "Initech", "Umbrella", "Stark", "Wayne"].map((c) => (
           <div key={c} className="flex items-center gap-1.5 opacity-70">
-            <div className="size-4 rounded-[5px] bg-neutral-300" />
-            <span className="text-[10px] font-bold tracking-tight text-neutral-500">{c}</span>
+            <div className="size-4 rounded-[5px] bg-surface-raised border border-border-visible" />
+            <span className="text-[10px] font-bold tracking-tight text-muted-foreground">{c}</span>
           </div>
         ))}
       </div>
@@ -599,17 +621,17 @@ function LogosPreview() {
 
 function TeamPreview() {
   return (
-    <div className="flex h-full w-full flex-col items-center gap-3 overflow-y-auto bg-white px-10 py-5">
+    <div className="flex h-full w-full flex-col items-center gap-3 overflow-y-auto bg-background px-10 py-5 font-sans select-none">
       <SkeletonText variant="heading" width="28%" />
       <div className="grid min-h-0 flex-1 grid-cols-4 gap-3">
         {["AR", "GM", "AL", "KB"].map((ini) => (
-          <div key={ini} className="flex flex-col items-center gap-1.5 rounded-xl border border-neutral-200 p-3">
+          <div key={ini} className="flex flex-col items-center gap-1.5 rounded-xl border border-border-visible bg-surface p-3">
             <SkeletonAvatar initials={ini} size="lg" className="size-10" />
-            <SkeletonText variant="caption" width="70%" className="bg-neutral-300" />
-            <span className="text-[7px] text-neutral-400">Product Designer</span>
+            <SkeletonText variant="caption" width="70%" />
+            <span className="text-[7px] text-muted-foreground">Product Designer</span>
             <div className="flex gap-1 pt-0.5">
-              <div className="flex size-4 items-center justify-center rounded border border-neutral-200"><Globe aria-hidden="true" className="size-2 text-neutral-400" /></div>
-              <div className="flex size-4 items-center justify-center rounded border border-neutral-200"><Mail aria-hidden="true" className="size-2 text-neutral-400" /></div>
+              <div className="flex size-4 items-center justify-center rounded border border-border-visible"><Globe aria-hidden="true" className="size-2 text-muted-foreground" /></div>
+              <div className="flex size-4 items-center justify-center rounded border border-border-visible"><Mail aria-hidden="true" className="size-2 text-muted-foreground" /></div>
             </div>
           </div>
         ))}
@@ -620,7 +642,7 @@ function TeamPreview() {
 
 function ContactPreview() {
   return (
-    <div className="grid h-full w-full grid-cols-2 gap-6 overflow-y-auto bg-white px-10 py-6">
+    <div className="grid h-full w-full grid-cols-2 gap-6 overflow-y-auto bg-surface px-10 py-6 font-sans select-none">
       <div className="flex flex-col gap-4">
         <SkeletonText variant="title" width="50%" className="h-4" />
         <SkeletonText variant="body" width="85%" />
@@ -630,16 +652,16 @@ function ContactPreview() {
           { icon: MapPin, label: "San Francisco, CA" },
         ].map((r) => (
           <div key={r.label} className="flex items-center gap-2.5">
-            <div className="flex size-7 items-center justify-center rounded-md bg-neutral-100">
-              <r.icon aria-hidden="true" className="size-3 text-neutral-600" />
+            <div className="flex size-7 items-center justify-center rounded-md bg-surface-raised border border-border-visible">
+              <r.icon aria-hidden="true" className="size-3 text-foreground" />
             </div>
-            <span className="text-[9px] font-medium text-neutral-700">{r.label}</span>
+            <span className="text-[9px] font-medium text-foreground">{r.label}</span>
           </div>
         ))}
         <div className="flex gap-2">
           {[Globe, Send, MessageCircle].map((I, i) => (
-            <div key={i} className="flex size-7 items-center justify-center rounded-md border border-neutral-200">
-              <I aria-hidden="true" className="size-3 text-neutral-500" />
+            <div key={i} className="flex size-7 items-center justify-center rounded-md border border-border-visible bg-surface-raised">
+              <I aria-hidden="true" className="size-3 text-muted-foreground" />
             </div>
           ))}
         </div>
@@ -650,7 +672,7 @@ function ContactPreview() {
           <SkeletonInput placeholder="Last name" />
         </div>
         <SkeletonInput icon={<SkeletonIcon icon={Mail} className="size-3" />} placeholder="you@company.com" />
-        <div className="flex h-16 w-full rounded-md border border-neutral-200 bg-white px-2.5 py-2 text-[10px] text-neutral-400">Your message…</div>
+        <div className="flex h-16 w-full rounded-md border border-border-visible bg-background px-2.5 py-2 text-[10px] text-muted-foreground">Your message…</div>
         <SkeletonButton label="Send message" className="h-8" />
       </div>
     </div>
@@ -659,15 +681,15 @@ function ContactPreview() {
 
 function NewsletterPreview() {
   return (
-    <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-gradient-to-b from-neutral-900 to-neutral-800 px-8">
-      <SkeletonText variant="heading" width="40%" className="h-3.5 bg-neutral-400" />
-      <SkeletonText variant="caption" width="55%" className="bg-neutral-500" />
+    <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-surface border border-border-visible rounded-xl px-8 font-sans select-none">
+      <SkeletonText variant="heading" width="40%" className="h-3.5" />
+      <SkeletonText variant="caption" width="55%" />
       <div className="flex w-full max-w-70 gap-2">
-        <div className="flex h-8 flex-1 items-center gap-1.5 rounded-md border border-neutral-600 bg-neutral-800 px-2.5">
-          <Mail aria-hidden="true" className="size-3 text-neutral-400" />
-          <span className="text-[9px] text-neutral-500">you@company.com</span>
+        <div className="flex h-8 flex-1 items-center gap-1.5 rounded-md border border-border-visible bg-background px-2.5">
+          <Mail aria-hidden="true" className="size-3 text-muted-foreground" />
+          <span className="text-[9px] text-muted-foreground">you@company.com</span>
         </div>
-        <div className="flex h-8 items-center justify-center rounded-md bg-white px-4 text-[9px] font-semibold text-neutral-900">
+        <div className="flex h-8 items-center justify-center rounded-md bg-foreground px-4 text-[9px] font-semibold text-background">
           Subscribe <Send aria-hidden="true" className="ml-1 size-2.5" />
         </div>
       </div>
@@ -677,11 +699,11 @@ function NewsletterPreview() {
 
 function BlogPostPreview() {
   return (
-    <div className="flex h-full w-full flex-col gap-3 overflow-y-auto bg-white px-10 py-6">
+    <div className="flex h-full w-full flex-col gap-3 overflow-y-auto bg-surface px-10 py-6 font-sans select-none">
       <div className="flex items-center gap-2">
         <SkeletonChip label="Design" tone="neutral" />
         <SkeletonChip label="Tutorial" tone="success" />
-        <span className="text-[8px] text-neutral-400">· 8 min read</span>
+        <span className="text-[8px] text-muted-foreground">· 8 min read</span>
       </div>
       <SkeletonText variant="title" width="80%" className="h-4" />
       <SkeletonText variant="title" width="55%" className="h-4" />
@@ -690,11 +712,11 @@ function BlogPostPreview() {
       <SkeletonText variant="body" width="95%" />
       <SkeletonText variant="body" width="88%" />
       <SkeletonText variant="body" width="72%" />
-      <div className="flex items-center gap-2 border-t border-neutral-200 pt-3">
+      <div className="flex items-center gap-2 border-t border-border pt-3">
         <SkeletonAvatar initials="AR" size="sm" />
         <div className="flex flex-col gap-0.5">
-          <span className="text-[9px] font-semibold text-neutral-800">Ada Lovelace</span>
-          <span className="text-[8px] text-neutral-400">Staff Designer · Feb 2026</span>
+          <span className="text-[9px] font-semibold text-foreground">Ada Lovelace</span>
+          <span className="text-[8px] text-muted-foreground">Staff Designer · Feb 2026</span>
         </div>
       </div>
     </div>
@@ -703,13 +725,13 @@ function BlogPostPreview() {
 
 function QuotePreview() {
   return (
-    <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-neutral-50 px-10">
-      <QuoteIcon aria-hidden="true" className="size-6 text-neutral-300" />
+    <div className="flex h-full w-full flex-col items-center justify-center gap-3 bg-surface border border-border-visible rounded-xl px-10 font-sans select-none">
+      <QuoteIcon aria-hidden="true" className="size-6 text-muted-foreground" />
       <SkeletonText variant="heading" width="75%" className="h-3.5" />
       <SkeletonText variant="heading" width="50%" className="h-3.5" />
       <div className="flex items-center gap-2">
         <SkeletonAvatar initials="JD" size="sm" />
-        <SkeletonText variant="caption" width="70%" className="bg-neutral-300" />
+        <SkeletonText variant="caption" width="70%" />
       </div>
     </div>
   );
@@ -717,16 +739,16 @@ function QuotePreview() {
 
 function CtaPreview() {
   return (
-    <div className="flex h-full w-full items-center justify-between gap-4 rounded-xl bg-neutral-900 px-8">
+    <div className="flex h-full w-full items-center justify-between gap-4 rounded-xl border border-border-visible bg-surface px-8 font-sans select-none">
       <div className="flex min-w-0 flex-col gap-1.5">
-        <SkeletonText variant="heading" width="65%" className="h-3.5 bg-neutral-400" />
-        <SkeletonText variant="caption" width="45%" className="bg-neutral-500" />
+        <SkeletonText variant="heading" width="65%" className="h-3.5" />
+        <SkeletonText variant="caption" width="45%" />
       </div>
       <div className="flex shrink-0 gap-2">
-        <div className="flex h-7 items-center justify-center rounded-md bg-white px-4 text-[9px] font-semibold text-neutral-900">
+        <div className="flex h-7 items-center justify-center rounded-md bg-foreground px-4 text-[9px] font-semibold text-background">
           Get started <ArrowRight aria-hidden="true" className="ml-1 size-2.5" />
         </div>
-        <div className="flex h-7 items-center justify-center rounded-md border border-neutral-600 px-4 text-[9px] font-semibold text-neutral-200">
+        <div className="flex h-7 items-center justify-center rounded-md border border-border-visible px-4 text-[9px] font-semibold text-foreground">
           Contact sales
         </div>
       </div>
@@ -741,8 +763,8 @@ function CardPreview({ props }: { props: Props }) {
   const tag = String(val(props, "tag", "推荐"));
   const text = String(val(props, "text", "这里是卡片的详细说明文本或业务说明..."));
   const style = computeShapeStyle(props, {
-    fill: "#FFFFFF",
-    stroke: "#E2E8F0",
+    fill: "var(--surface)",
+    stroke: "var(--border-visible)",
     borderWidth: 1,
     radius: 8,
   });
@@ -751,13 +773,13 @@ function CardPreview({ props }: { props: Props }) {
       <SkeletonImage className="h-14 w-full rounded-md shrink-0" />
       <div className="flex items-center gap-1.5 min-w-0">
         {tag && <SkeletonChip label={tag} tone="success" />}
-        <span className="text-[10px] font-semibold text-neutral-800 truncate">{title}</span>
+        <span className="text-[10px] font-semibold text-foreground truncate">{title}</span>
       </div>
-      <p className="line-clamp-2 text-[9px] text-neutral-500 leading-relaxed">{text}</p>
-      <div className="mt-auto flex items-center gap-2 pt-1 border-t border-neutral-100 shrink-0">
+      <p className="line-clamp-2 text-[9px] text-muted-foreground leading-relaxed">{text}</p>
+      <div className="mt-auto flex items-center gap-2 pt-1 border-t border-border shrink-0">
         <SkeletonAvatar initials="PM" size="xs" />
         <SkeletonText variant="caption" width="30%" />
-        <span className="ml-auto text-[8px] text-neutral-400">刚刚</span>
+        <span className="ml-auto text-[8px] text-muted-foreground">刚刚</span>
       </div>
     </div>
   );
@@ -771,30 +793,30 @@ function DataTablePreview() {
     { name: "Umbrella Co", status: "Draft" as const, amount: "$1,240" },
   ];
   return (
-    <div className="flex h-full w-full flex-col rounded-lg border border-neutral-200 bg-white">
-      <div className="flex items-center justify-between border-b border-neutral-200 px-3.5 py-2.5">
-        <span className="text-[10px] font-semibold text-neutral-800">Customers</span>
+    <div className="flex h-full w-full flex-col rounded-lg border border-border-visible bg-surface font-sans select-none">
+      <div className="flex items-center justify-between border-b border-border px-3.5 py-2.5">
+        <span className="text-[10px] font-semibold text-foreground">Customers</span>
         <div className="flex items-center gap-2">
-          <div className="flex h-6 w-24 items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2">
-            <Search aria-hidden="true" className="size-2.5 text-neutral-400" />
-            <span className="text-[8px] text-neutral-400">Search…</span>
+          <div className="flex h-6 w-24 items-center gap-1.5 rounded-md border border-border-visible bg-surface-raised px-2">
+            <Search aria-hidden="true" className="size-2.5 text-muted-foreground" />
+            <span className="text-[8px] text-muted-foreground">Search…</span>
           </div>
           <SkeletonButton label="Add" className="h-6 px-2.5" />
         </div>
       </div>
-      <div className="grid grid-cols-3 gap-2 border-b border-neutral-200 bg-neutral-50 px-3.5 py-1.5">
+      <div className="grid grid-cols-3 gap-2 border-b border-border bg-surface-raised px-3.5 py-1.5">
         {["Company", "Status", "Amount"].map((h) => (
-          <span key={h} className="text-[8px] font-semibold uppercase tracking-wide text-neutral-400">{h}</span>
+          <span key={h} className="text-[8px] font-semibold uppercase tracking-wide text-muted-foreground">{h}</span>
         ))}
       </div>
       <div className="min-h-0 flex-1">
         {rows.map((r, i) => (
-          <div key={r.name} className={`grid grid-cols-3 items-center gap-2 px-3.5 py-2 ${i !== rows.length - 1 ? "border-b border-neutral-100" : ""}`}>
-            <span className="truncate text-[9px] font-medium text-neutral-800">{r.name}</span>
+          <div key={r.name} className={`grid grid-cols-3 items-center gap-2 px-3.5 py-2 ${i !== rows.length - 1 ? "border-b border-border" : ""}`}>
+            <span className="truncate text-[9px] font-medium text-foreground">{r.name}</span>
             <div>
               <SkeletonChip label={r.status} tone={r.status === "Active" ? "success" : r.status === "Pending" ? "warning" : "neutral"} />
             </div>
-            <span className="text-[9px] font-semibold text-neutral-700">{r.amount}</span>
+            <span className="text-[9px] font-semibold text-foreground">{r.amount}</span>
           </div>
         ))}
       </div>
@@ -810,23 +832,23 @@ function ListPreview() {
     { name: "Katherine Johnson", note: "Shared Export settings", time: "1d" },
   ];
   return (
-    <div className="flex h-full w-full flex-col rounded-lg border border-neutral-200 bg-white">
-      <div className="flex items-center justify-between border-b border-neutral-200 px-3.5 py-2.5">
-        <span className="text-[10px] font-semibold text-neutral-800">Activity</span>
-        <SkeletonIcon icon={MoreHorizontal} className="size-3" />
+    <div className="flex h-full w-full flex-col rounded-lg border border-border-visible bg-surface font-sans select-none">
+      <div className="flex items-center justify-between border-b border-border px-3.5 py-2.5">
+        <span className="text-[10px] font-semibold text-foreground">Activity</span>
+        <SkeletonIcon icon={MoreHorizontal} className="size-3 text-muted-foreground" />
       </div>
       <div className="min-h-0 flex-1 px-1.5 py-1">
         {items.map((it, i) => (
-          <div key={it.name} className={`flex items-center gap-2.5 px-2 py-2 ${i !== items.length - 1 ? "border-b border-neutral-100" : ""}`}>
+          <div key={it.name} className={`flex items-center gap-2.5 px-2 py-2 ${i !== items.length - 1 ? "border-b border-border" : ""}`}>
             <SkeletonAvatar initials={it.name.split(" ").map((w) => w[0]).join("")} size="sm" />
             <div className="min-w-0 flex-1">
               <div className="flex items-baseline gap-1.5">
-                <span className="truncate text-[9px] font-semibold text-neutral-800">{it.name}</span>
-                <span className="shrink-0 text-[8px] text-neutral-400">{it.time}</span>
+                <span className="truncate text-[9px] font-semibold text-foreground">{it.name}</span>
+                <span className="shrink-0 text-[8px] text-muted-foreground">{it.time}</span>
               </div>
-              <div className="truncate text-[8px] text-neutral-500">{it.note}</div>
+              <div className="truncate text-[8px] text-muted-foreground">{it.note}</div>
             </div>
-            <SkeletonIcon icon={ChevronRight} className="size-3 text-neutral-300" />
+            <SkeletonIcon icon={ChevronRight} className="size-3 text-muted-foreground" />
           </div>
         ))}
       </div>
@@ -836,11 +858,11 @@ function ListPreview() {
 
 function GridPreview() {
   return (
-    <div className="grid h-full w-full grid-cols-3 grid-rows-2 gap-2.5 p-3">
+    <div className="grid h-full w-full grid-cols-3 grid-rows-2 gap-2.5 p-3 font-sans select-none">
       {Array.from({ length: 6 }).map((_, i) => (
-        <div key={i} className="flex flex-col gap-1.5 rounded-lg border border-neutral-200 bg-white p-2">
+        <div key={i} className="flex flex-col gap-1.5 rounded-lg border border-border-visible bg-surface p-2">
           <SkeletonImage className="h-8 w-full rounded-md" />
-          <SkeletonText variant="caption" width="70%" className="bg-neutral-300" />
+          <SkeletonText variant="caption" width="70%" />
           <SkeletonText variant="caption" width="50%" />
         </div>
       ))}
@@ -856,16 +878,16 @@ function TimelinePreview() {
     { t: "Launch", d: "Fri, Mar 20", done: false },
   ];
   return (
-    <div className="flex h-full w-full flex-col gap-3 overflow-y-auto bg-white px-5 py-4">
-      <span className="text-[10px] font-semibold text-neutral-800">Milestones</span>
+    <div className="flex h-full w-full flex-col gap-3 overflow-y-auto bg-surface border border-border-visible rounded-lg px-5 py-4 font-sans select-none">
+      <span className="text-[10px] font-semibold text-foreground">Milestones</span>
       <div className="min-h-0 flex-1">
         {items.map((it, i) => (
           <div key={it.t} className="relative flex gap-3 pb-4 last:pb-0">
-            {i !== items.length - 1 && <span className="absolute left-[5px] top-4 h-full w-px bg-neutral-200" />}
-            <span className={`relative mt-1 size-[11px] shrink-0 rounded-full border-2 ${it.done ? "border-neutral-900 bg-neutral-900" : "border-neutral-300 bg-white"}`} />
+            {i !== items.length - 1 && <span className="absolute left-[5px] top-4 h-full w-px bg-border" />}
+            <span className={`relative mt-1 size-[11px] shrink-0 rounded-full border-2 ${it.done ? "border-foreground bg-foreground" : "border-border-visible bg-surface-raised"}`} />
             <div className="min-w-0">
-              <span className={`block text-[9px] font-semibold ${it.done ? "text-neutral-800" : "text-neutral-400"}`}>{it.t}</span>
-              <span className="text-[8px] text-neutral-400">{it.d}</span>
+              <span className={`block text-[9px] font-semibold ${it.done ? "text-foreground" : "text-muted-foreground"}`}>{it.t}</span>
+              <span className="text-[8px] text-muted-foreground">{it.d}</span>
             </div>
           </div>
         ))}
@@ -881,23 +903,23 @@ function KanbanPreview() {
     { name: "Done", cards: ["Login form", "Pricing grid"] },
   ];
   return (
-    <div className="flex h-full w-full gap-3 overflow-x-auto bg-neutral-100 p-3">
+    <div className="flex h-full w-full gap-3 overflow-x-auto bg-background p-3 font-sans select-none">
       {cols.map((c, ci) => (
-        <div key={c.name} className="flex w-1/3 min-w-32 flex-col gap-2 rounded-lg bg-neutral-100 p-2">
+        <div key={c.name} className="flex w-1/3 min-w-32 flex-col gap-2 rounded-lg bg-surface-raised border border-border-visible p-2">
           <div className="flex items-center justify-between px-1">
-            <span className="text-[8px] font-semibold uppercase tracking-wide text-neutral-500">{c.name}</span>
-            <span className="flex size-4 items-center justify-center rounded bg-neutral-200 text-[8px] font-semibold text-neutral-500">{c.cards.length}</span>
+            <span className="text-[8px] font-semibold uppercase tracking-wide text-muted-foreground">{c.name}</span>
+            <span className="flex size-4 items-center justify-center rounded bg-surface border border-border text-[8px] font-semibold text-muted-foreground">{c.cards.length}</span>
           </div>
           {c.cards.map((card) => (
-            <div key={card} className="rounded-md border border-neutral-200 bg-white p-2.5 shadow-xs">
-              <div className="text-[9px] font-medium text-neutral-800">{card}</div>
+            <div key={card} className="rounded-md border border-border bg-surface p-2.5 shadow-xs">
+              <div className="text-[9px] font-medium text-foreground">{card}</div>
               <div className="mt-2 flex items-center gap-1">
                 <SkeletonChip label={`${ci + 1} pts`} tone={ci === 0 ? "neutral" : ci === 1 ? "warning" : "success"} />
                 <SkeletonAvatar initials="AR" size="xs" className="ml-auto" />
               </div>
             </div>
           ))}
-          <div className="flex items-center gap-1 px-1 text-[8px] text-neutral-400">
+          <div className="flex items-center gap-1 px-1 text-[8px] text-muted-foreground">
             <Plus aria-hidden="true" className="size-2.5" /> Add card
           </div>
         </div>
@@ -910,26 +932,26 @@ function CalendarPreview() {
   const days = Array.from({ length: 7 }).map((_, i) => ["S", "M", "T", "W", "T", "F", "S"][i]);
   const marks = [4, 9, 14, 17, 22];
   return (
-    <div className="flex h-full w-full flex-col rounded-lg border border-neutral-200 bg-white p-3">
+    <div className="flex h-full w-full flex-col rounded-lg border border-border-visible bg-surface p-3 font-sans select-none">
       <div className="mb-2 flex items-center justify-between">
         <div className="flex items-center gap-1.5">
-          <ChevronsRight aria-hidden="true" className="size-3 rotate-180 text-neutral-400" />
-          <span className="text-[10px] font-semibold text-neutral-800">March 2026</span>
-          <ChevronsRight aria-hidden="true" className="size-3 text-neutral-400" />
+          <ChevronsRight aria-hidden="true" className="size-3 rotate-180 text-muted-foreground" />
+          <span className="text-[10px] font-semibold text-foreground">March 2026</span>
+          <ChevronsRight aria-hidden="true" className="size-3 text-muted-foreground" />
         </div>
-        <div className="flex size-5 items-center justify-center rounded-md border border-neutral-200">
-          <Plus aria-hidden="true" className="size-2.5 text-neutral-500" />
+        <div className="flex size-5 items-center justify-center rounded-md border border-border-visible bg-surface-raised">
+          <Plus aria-hidden="true" className="size-2.5 text-muted-foreground" />
         </div>
       </div>
       <div className="grid grid-cols-7 gap-0.5 text-center">
         {days.map((d, i) => (
-          <span key={i} className="py-0.5 text-[7px] font-semibold text-neutral-400">{d}</span>
+          <span key={i} className="py-0.5 text-[7px] font-semibold text-muted-foreground">{d}</span>
         ))}
         {Array.from({ length: 35 }).map((_, i) => {
           const day = i - 2;
           const marked = marks.includes(day);
           return (
-            <div key={i} className={`flex aspect-square items-center justify-center rounded-md text-[8px] ${day < 1 || day > 31 ? "text-neutral-300" : day === 14 ? "bg-neutral-900 font-bold text-white" : "text-neutral-600"}`}>
+            <div key={i} className={`flex aspect-square items-center justify-center rounded-md text-[8px] ${day < 1 || day > 31 ? "text-muted-foreground/30" : day === 14 ? "bg-foreground font-bold text-background" : "text-muted-foreground"}`}>
               {day >= 1 && day <= 31 ? day : ""}
               {marked && <span className="absolute mb-6 size-1 rounded-full bg-emerald-500" />}
             </div>
@@ -945,13 +967,13 @@ function StatPreview({ props }: { props?: Props }) {
   const label = props ? String(val(props, "label", "今日成交金额")) : "今日成交金额";
   const change = props ? String(val(props, "change", "+15.2%")) : "+15.2%";
   return (
-    <div className="flex h-full w-full flex-col justify-center gap-1.5 rounded-xl border border-neutral-200 bg-white p-4">
+    <div className="flex h-full w-full flex-col justify-center gap-1.5 rounded-xl border border-border-visible bg-surface p-4 font-sans select-none">
       <div className="flex items-center justify-between">
-        <SkeletonIcon icon={CircleDollarSign} className="size-3.5 text-neutral-500" />
+        <SkeletonIcon icon={CircleDollarSign} className="size-3.5 text-muted-foreground" />
         <SkeletonChip label={change} tone={change.startsWith("+") ? "success" : "danger"} />
       </div>
-      <span className="text-base font-bold tracking-tight text-neutral-900">{value}</span>
-      <span className="text-[9px] text-neutral-400">{label}</span>
+      <span className="text-base font-bold tracking-tight text-foreground">{value}</span>
+      <span className="text-[9px] text-muted-foreground">{label}</span>
       <div className="mt-1 h-6">
         <SkeletonBars values={[30, 45, 38, 60, 52, 70, 64]} />
       </div>
@@ -961,35 +983,35 @@ function StatPreview({ props }: { props?: Props }) {
 
 function ChartPreview() {
   return (
-    <div className="flex h-full w-full flex-col gap-2 rounded-xl border border-neutral-200 bg-white p-4">
+    <div className="flex h-full w-full flex-col gap-2 rounded-xl border border-border-visible bg-surface p-4 font-sans select-none">
       <div className="flex shrink-0 items-center justify-between">
         <div>
-          <div className="text-[10px] font-semibold text-neutral-800">Monthly revenue</div>
-          <div className="text-[8px] text-neutral-400">Jan — Mar 2026</div>
+          <div className="text-[10px] font-semibold text-foreground">Monthly revenue</div>
+          <div className="text-[8px] text-muted-foreground">Jan — Mar 2026</div>
         </div>
         <div className="flex items-center gap-2">
-          <span className="flex items-center gap-1 text-[8px] text-neutral-500"><span className="size-1.5 rounded-full bg-neutral-900" /> This year</span>
-          <span className="flex items-center gap-1 text-[8px] text-neutral-400"><span className="size-1.5 rounded-full bg-neutral-200" /> Last year</span>
+          <span className="flex items-center gap-1 text-[8px] text-muted-foreground"><span className="size-1.5 rounded-full bg-foreground" /> This year</span>
+          <span className="flex items-center gap-1 text-[8px] text-muted-foreground/60"><span className="size-1.5 rounded-full bg-muted-foreground" /> Last year</span>
         </div>
       </div>
       <div className="relative min-h-0 flex-1">
         <div className="absolute inset-0 flex flex-col justify-between">
           {["$40k", "$30k", "$20k", "$10k", "$0"].map((l) => (
             <div key={l} className="flex items-center gap-2">
-              <span className="w-6 text-right text-[7px] text-neutral-400">{l}</span>
-              <SkeletonLine className="bg-neutral-100" />
+              <span className="w-6 text-right text-[7px] text-muted-foreground">{l}</span>
+              <SkeletonLine />
             </div>
           ))}
         </div>
         <div className="absolute inset-0 flex items-end gap-1 pl-10">
-          <div className="flex h-[72%] flex-1 flex-col justify-end rounded-t-sm bg-neutral-100"><div className="h-[60%] rounded-t-sm bg-neutral-300" /></div>
-          <div className="flex h-[72%] flex-1 flex-col justify-end rounded-t-sm bg-neutral-100"><div className="h-[75%] rounded-t-sm bg-neutral-300" /></div>
-          <div className="flex h-[72%] flex-1 flex-col justify-end rounded-t-sm bg-neutral-100"><div className="h-[48%] rounded-t-sm bg-neutral-900" /></div>
+          <div className="flex h-[72%] flex-1 flex-col justify-end rounded-t-xs bg-surface-raised"><div className="h-[60%] rounded-t-xs bg-muted-foreground/30" /></div>
+          <div className="flex h-[72%] flex-1 flex-col justify-end rounded-t-xs bg-surface-raised"><div className="h-[75%] rounded-t-xs bg-muted-foreground/30" /></div>
+          <div className="flex h-[72%] flex-1 flex-col justify-end rounded-t-xs bg-surface-raised"><div className="h-[48%] rounded-t-xs bg-foreground" /></div>
         </div>
       </div>
       <div className="flex justify-between px-2 pt-1">
         {["Jan", "Feb", "Mar"].map((m) => (
-          <span key={m} className="text-[7px] text-neutral-400">{m}</span>
+          <span key={m} className="text-[7px] text-muted-foreground">{m}</span>
         ))}
       </div>
     </div>
@@ -1001,12 +1023,12 @@ function EmptyStatePreview({ props }: { props?: Props }) {
   const text = String(val(props || {}, "text", "点击下方按钮创建第一条记录"));
   const buttonText = String(val(props || {}, "buttonText", "立即创建"));
   return (
-    <div className="flex h-full w-full flex-col items-center justify-center gap-2.5 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 px-8 text-center">
-      <div className="flex size-10 items-center justify-center rounded-xl border border-neutral-200 bg-white shadow-xs">
-        <PackageOpen aria-hidden="true" className="size-5 text-neutral-400" />
+    <div className="flex h-full w-full flex-col items-center justify-center gap-2.5 rounded-xl border border-dashed border-border-visible bg-surface px-8 text-center font-sans select-none">
+      <div className="flex size-10 items-center justify-center rounded-xl border border-border-visible bg-surface-raised shadow-xs">
+        <PackageOpen aria-hidden="true" className="size-5 text-muted-foreground" />
       </div>
-      <span className="text-[10px] font-semibold text-neutral-800">{title}</span>
-      <span className="text-[8.5px] text-neutral-400 max-w-50 line-clamp-2">{text}</span>
+      <span className="text-[10px] font-semibold text-foreground">{title}</span>
+      <span className="text-[8.5px] text-muted-foreground max-w-50 line-clamp-2">{text}</span>
       {buttonText && <SkeletonButton label={buttonText} className="mt-1" />}
     </div>
   );
@@ -1016,32 +1038,32 @@ function EmptyStatePreview({ props }: { props?: Props }) {
 
 function ModalPreview() {
   return (
-    <div className="relative flex h-full w-full items-center justify-center bg-neutral-900/30">
-      <div className="flex h-[78%] w-[82%] flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-3">
+    <div className="relative flex h-full w-full items-center justify-center bg-black/60 font-sans select-none">
+      <div className="flex h-[78%] w-[82%] flex-col overflow-hidden rounded-xl border border-border-visible bg-surface shadow-2xl">
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
           <div>
-            <div className="text-[10px] font-semibold text-neutral-800">Export project</div>
-            <div className="text-[8px] text-neutral-400">Choose a format and options</div>
+            <div className="text-[10px] font-semibold text-foreground">Export project</div>
+            <div className="text-[8px] text-muted-foreground">Choose a format and options</div>
           </div>
-          <div className="flex size-6 items-center justify-center rounded-md hover:bg-neutral-100">
-            <X aria-hidden="true" className="size-3.5 text-neutral-400" />
+          <div className="flex size-6 items-center justify-center rounded-md hover:bg-surface-raised cursor-default">
+            <X aria-hidden="true" className="size-3.5 text-muted-foreground" />
           </div>
         </div>
         <div className="flex min-h-0 flex-1 flex-col gap-2.5 overflow-y-auto p-4">
           {[0, 1, 2].map((i) => (
-            <div key={i} className="flex items-center justify-between rounded-lg border border-neutral-200 bg-neutral-50 px-3 py-2.5">
+            <div key={i} className="flex items-center justify-between rounded-lg border border-border-visible bg-surface-raised px-3 py-2.5">
               <div className="flex items-center gap-2.5">
-                <SkeletonIcon icon={i === 0 ? ImageIcon : i === 1 ? Package : BarChart3} className="size-3.5 text-neutral-500" />
+                <SkeletonIcon icon={i === 0 ? ImageIcon : i === 1 ? Package : BarChart3} className="size-3.5 text-muted-foreground" />
                 <div className="flex flex-col gap-1">
-                  <span className="text-[9px] font-semibold text-neutral-800">{["PNG — 2× export", "PDF — vector", "JSON — data"][i]}</span>
-                  <span className="text-[8px] text-neutral-400">{["Retina quality", "Print ready", "Raw project"][i]}</span>
+                  <span className="text-[9px] font-semibold text-foreground">{["PNG — 2× export", "PDF — vector", "JSON — data"][i]}</span>
+                  <span className="text-[8px] text-muted-foreground">{["Retina quality", "Print ready", "Raw project"][i]}</span>
                 </div>
               </div>
               <Check aria-hidden="true" className="size-3.5 text-emerald-500" />
             </div>
           ))}
         </div>
-        <div className="flex items-center justify-end gap-2 border-t border-neutral-200 px-4 py-3">
+        <div className="flex items-center justify-end gap-2 border-t border-border px-4 py-3">
           <SkeletonButton variant="secondary" label="Cancel" />
           <SkeletonButton label="Export" />
         </div>
@@ -1053,28 +1075,28 @@ function ModalPreview() {
 function AlertPreview({ props }: { props?: Props }) {
   const title = props ? String(val(props, "title", "提示信息")) : "提示信息";
   const text = props ? String(val(props, "text", "这里是系统操作的提示说明文本")) : "这里是系统操作的提示说明文本";
-  const fill = props ? String(val(props, "fill", "#FFFBEB")) : "#FFFBEB";
-  const stroke = props ? String(val(props, "stroke", "#FDE68A")) : "#FDE68A";
+  const fill = props ? String(val(props, "fill", "var(--surface)")) : "var(--surface)";
+  const stroke = props ? String(val(props, "stroke", "var(--border-visible)")) : "var(--border-visible)";
   const strokeEnabled = props ? (props.strokeEnabled !== false && props.strokeEnabled !== "false") : true;
   const borderWidth = props ? Number(val(props, "borderWidth", 1)) : 1;
   const radius = props ? Number(val(props, "radius", 8)) : 8;
   return (
     <div
-      className="flex h-full w-full items-center gap-3 px-4"
+      className="flex h-full w-full items-center gap-3 px-4 font-sans select-none"
       style={{
         backgroundColor: fill,
         border: strokeEnabled ? `${borderWidth}px solid ${stroke}` : "none",
         borderRadius: radius,
       }}
     >
-      <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-amber-100">
-        <AlertTriangle aria-hidden="true" className="size-3.5 text-amber-600" />
+      <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-amber-500/10 border border-amber-500/20">
+        <AlertTriangle aria-hidden="true" className="size-3.5 text-amber-500" />
       </div>
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-semibold text-amber-900">{title}</span>
+          <span className="text-[10px] font-semibold text-foreground">{title}</span>
         </div>
-        <div className="mt-0.5 truncate text-[8px] text-amber-700">
+        <div className="mt-0.5 truncate text-[8px] text-muted-foreground">
           {text}
         </div>
       </div>
@@ -1084,16 +1106,16 @@ function AlertPreview({ props }: { props?: Props }) {
 
 function ToastPreview() {
   return (
-    <div className="flex h-full w-full items-center gap-3 rounded-lg border border-neutral-200 bg-white px-4 shadow-lg">
-      <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-emerald-100">
-        <Check aria-hidden="true" className="size-3.5 text-emerald-600" />
+    <div className="flex h-full w-full items-center gap-3 rounded-lg border border-border-visible bg-surface px-4 shadow-lg font-sans select-none">
+      <div className="flex size-7 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 border border-emerald-500/20">
+        <Check aria-hidden="true" className="size-3.5 text-emerald-500" />
       </div>
       <div className="min-w-0 flex-1">
-        <div className="text-[10px] font-semibold text-neutral-900">Project exported</div>
-        <div className="mt-0.5 truncate text-[8px] text-neutral-500">landing-page.png · 1.2 MB</div>
+        <div className="text-[10px] font-semibold text-foreground">Project exported</div>
+        <div className="mt-0.5 truncate text-[8px] text-muted-foreground">landing-page.png · 1.2 MB</div>
       </div>
-      <div className="flex size-5 shrink-0 items-center justify-center rounded-full bg-neutral-100">
-        <X aria-hidden="true" className="size-2.5 text-neutral-400" />
+      <div className="flex size-5 shrink-0 items-center justify-center rounded-full bg-surface-raised">
+        <X aria-hidden="true" className="size-2.5 text-muted-foreground" />
       </div>
     </div>
   );
@@ -1101,24 +1123,24 @@ function ToastPreview() {
 
 function DrawerPreview() {
   return (
-    <div className="relative flex h-full w-full justify-end bg-neutral-900/30">
-      <div className="flex h-full w-[85%] flex-col border-l border-neutral-200 bg-white">
-        <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-3">
-          <span className="text-[10px] font-semibold text-neutral-800">Notifications</span>
-          <X aria-hidden="true" className="size-3.5 text-neutral-400" />
+    <div className="relative flex h-full w-full justify-end bg-black/60 font-sans select-none">
+      <div className="flex h-full w-[85%] flex-col border-l border-border-visible bg-surface">
+        <div className="flex items-center justify-between border-b border-border px-4 py-3">
+          <span className="text-[10px] font-semibold text-foreground">Notifications</span>
+          <X aria-hidden="true" className="size-3.5 text-muted-foreground" />
         </div>
         <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
           {["AR", "GM", "AL"].map((ini, i) => (
-            <div key={ini} className="flex items-start gap-2.5 rounded-lg border border-neutral-100 p-2.5">
+            <div key={ini} className="flex items-start gap-2.5 rounded-lg border border-border bg-surface-raised p-2.5">
               <SkeletonAvatar initials={ini} size="sm" />
               <div className="min-w-0 flex-1">
                 <div className="flex items-baseline gap-1.5">
-                  <span className="truncate text-[9px] font-semibold text-neutral-800">{["Ada commented", "Grace mentioned you", "Alan approved"][i]}</span>
-                  <span className="shrink-0 text-[7px] text-neutral-400">2m</span>
+                  <span className="truncate text-[9px] font-semibold text-foreground">{["Ada commented", "Grace mentioned you", "Alan approved"][i]}</span>
+                  <span className="shrink-0 text-[7px] text-muted-foreground">2m</span>
                 </div>
-                <div className="truncate text-[8px] text-neutral-500">{["on the hero section", "in #general", "your wireframe"][i]}</div>
+                <div className="truncate text-[8px] text-muted-foreground">{["on the hero section", "in #general", "your wireframe"][i]}</div>
               </div>
-              {i === 0 && <span className="mt-1 size-1.5 shrink-0 rounded-full bg-orange-400" />}
+              {i === 0 && <span className="mt-1 size-1.5 shrink-0 rounded-full bg-orange-500" />}
             </div>
           ))}
         </div>
@@ -1129,18 +1151,18 @@ function DrawerPreview() {
 
 function SheetPreview() {
   return (
-    <div className="relative flex h-full w-full items-end bg-neutral-900/30">
-      <div className="flex h-[80%] w-full flex-col rounded-t-xl border border-b-0 border-neutral-200 bg-white">
-        <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-neutral-200" />
+    <div className="relative flex h-full w-full items-end bg-black/60 font-sans select-none">
+      <div className="flex h-[80%] w-full flex-col rounded-t-xl border border-b-0 border-border-visible bg-surface">
+        <div className="mx-auto mt-2 h-1 w-10 rounded-full bg-border-visible" />
         <div className="flex items-center justify-between px-4 py-2">
-          <span className="text-[10px] font-semibold text-neutral-800">Share</span>
-          <X aria-hidden="true" className="size-3.5 text-neutral-400" />
+          <span className="text-[10px] font-semibold text-foreground">Share</span>
+          <X aria-hidden="true" className="size-3.5 text-muted-foreground" />
         </div>
         <div className="flex flex-1 gap-3 p-4">
           {[0, 1, 2].map((i) => (
-            <div key={i} className="flex flex-1 flex-col items-center justify-center gap-1.5 rounded-xl border border-neutral-200 bg-neutral-50">
-              <SkeletonIcon icon={i === 0 ? Mail : i === 1 ? LinkIcon : Send} className="size-4 text-neutral-600" />
-              <span className="text-[8px] font-semibold text-neutral-700">{["Email", "Copy link", "Slack"][i]}</span>
+            <div key={i} className="flex flex-1 flex-col items-center justify-center gap-1.5 rounded-xl border border-border-visible bg-surface-raised">
+              <SkeletonIcon icon={i === 0 ? Mail : i === 1 ? LinkIcon : Send} className="size-4 text-foreground" />
+              <span className="text-[8px] font-semibold text-foreground">{["Email", "Copy link", "Slack"][i]}</span>
             </div>
           ))}
         </div>
@@ -1151,23 +1173,23 @@ function SheetPreview() {
 
 function PopoverPreview() {
   return (
-    <div className="relative flex h-full w-full items-start justify-center pt-6">
-      <div className="flex w-[70%] flex-col rounded-xl border border-neutral-200 bg-white p-3 shadow-xl">
-        <div className="flex items-center justify-between border-b border-neutral-100 pb-2">
+    <div className="relative flex h-full w-full items-start justify-center pt-6 font-sans select-none">
+      <div className="flex w-[70%] flex-col rounded-xl border border-border-visible bg-surface p-3 shadow-xl">
+        <div className="flex items-center justify-between border-b border-border pb-2">
           <div className="flex items-center gap-2">
             <SkeletonAvatar initials="GM" size="sm" />
             <div>
-              <div className="text-[9px] font-semibold text-neutral-800">Grace Hopper</div>
-              <div className="text-[7px] text-neutral-400">Admin · online</div>
+              <div className="text-[9px] font-semibold text-foreground">Grace Hopper</div>
+              <div className="text-[7px] text-muted-foreground">Admin · online</div>
             </div>
           </div>
-          <X aria-hidden="true" className="size-3 text-neutral-300" />
+          <X aria-hidden="true" className="size-3 text-muted-foreground" />
         </div>
         <div className="flex flex-col gap-2 py-2.5">
           <SkeletonText variant="body" width="90%" />
           <SkeletonText variant="body" width="60%" />
         </div>
-        <div className="flex items-center gap-1.5 border-t border-neutral-100 pt-2.5">
+        <div className="flex items-center gap-1.5 border-t border-border pt-2.5">
           <SkeletonButton label="Message" className="h-6 px-2.5" />
           <SkeletonButton variant="secondary" label="Profile" className="h-6 px-2.5" />
         </div>
@@ -1178,14 +1200,14 @@ function PopoverPreview() {
 
 function TooltipPreview() {
   return (
-    <div className="relative flex h-full w-full items-start justify-center pt-4">
+    <div className="relative flex h-full w-full items-start justify-center pt-4 font-sans select-none">
       <div className="relative">
-        <div className="flex size-8 items-center justify-center rounded-md border border-neutral-200 bg-white">
-          <Home aria-hidden="true" className="size-3.5 text-neutral-500" />
+        <div className="flex size-8 items-center justify-center rounded-md border border-border-visible bg-surface">
+          <Home aria-hidden="true" className="size-3.5 text-muted-foreground" />
         </div>
-        <div className="absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-neutral-900 px-2.5 py-1 text-[8px] font-medium text-white">
+        <div className="absolute -top-8 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-md bg-foreground px-2.5 py-1 text-[8px] font-mono font-medium text-background uppercase tracking-wider">
           Go to home
-          <span className="absolute -bottom-1 left-1/2 size-2 -translate-x-1/2 rotate-45 bg-neutral-900" />
+          <span className="absolute -bottom-1 left-1/2 size-2 -translate-x-1/2 rotate-45 bg-foreground" />
         </div>
       </div>
     </div>
@@ -1200,10 +1222,10 @@ function DropdownPreview() {
     { icon: Trash, label: "Delete", danger: true },
   ];
   return (
-    <div className="relative flex h-full w-full justify-end pr-4 pt-4">
-      <div className="flex w-[70%] flex-col gap-0.5 rounded-xl border border-neutral-200 bg-white p-1.5 shadow-xl">
+    <div className="relative flex h-full w-full justify-end pr-4 pt-4 font-sans select-none">
+      <div className="flex w-[70%] flex-col gap-0.5 rounded-xl border border-border-visible bg-surface p-1.5 shadow-xl">
         {items.map((it) => (
-          <div key={it.label} className={`flex items-center gap-2 rounded-lg px-2.5 py-2 ${it.danger ? "text-rose-600" : "text-neutral-700"} hover:bg-neutral-100`}>
+          <div key={it.label} className={`flex items-center gap-2 rounded-lg px-2.5 py-2 ${it.danger ? "text-rose-500" : "text-foreground"} hover:bg-surface-raised`}>
             <it.icon aria-hidden="true" className="size-3" />
             <span className="text-[9px] font-medium">{it.label}</span>
             {it.danger && <Trash aria-hidden="true" className="ml-auto size-2.5" />}
@@ -1222,20 +1244,20 @@ function CommandPreview() {
     { icon: Settings, label: "Preferences", k: "P" },
   ];
   return (
-    <div className="flex h-full w-full items-start justify-center pt-5">
-      <div className="flex w-[86%] flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-2xl">
-        <div className="flex items-center gap-2 border-b border-neutral-200 px-3.5 py-2.5">
-          <Search aria-hidden="true" className="size-3.5 text-neutral-400" />
-          <span className="flex-1 text-[10px] text-neutral-500">Search or jump to…</span>
-          <div className="rounded border border-neutral-200 bg-neutral-50 px-1 py-0.5 text-[7px] font-semibold text-neutral-400">ESC</div>
+    <div className="flex h-full w-full items-start justify-center pt-5 font-sans select-none">
+      <div className="flex w-[86%] flex-col overflow-hidden rounded-xl border border-border-visible bg-surface shadow-2xl">
+        <div className="flex items-center gap-2 border-b border-border px-3.5 py-2.5">
+          <Search aria-hidden="true" className="size-3.5 text-muted-foreground" />
+          <span className="flex-1 text-[10px] text-muted-foreground">Search or jump to…</span>
+          <div className="rounded border border-border-visible bg-surface-raised px-1 py-0.5 text-[7px] font-mono font-semibold text-muted-foreground">ESC</div>
         </div>
         <div className="flex flex-col p-1.5">
-          <span className="px-2.5 py-1 text-[7px] font-semibold uppercase tracking-widest text-neutral-400">Suggestions</span>
+          <span className="px-2.5 py-1 text-[7px] font-mono font-semibold uppercase tracking-widest text-muted-foreground">Suggestions</span>
           {items.map((it) => (
-            <div key={it.label} className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 first-of-type:bg-neutral-100">
-              <it.icon aria-hidden="true" className="size-3 text-neutral-500" />
-              <span className="flex-1 text-[9px] font-medium text-neutral-700">{it.label}</span>
-              <div className="rounded border border-neutral-200 bg-white px-1 py-0.5 text-[7px] font-semibold text-neutral-400">{it.k}</div>
+            <div key={it.label} className="flex items-center gap-2.5 rounded-lg px-2.5 py-2 first-of-type:bg-surface-raised">
+              <it.icon aria-hidden="true" className="size-3 text-muted-foreground" />
+              <span className="flex-1 text-[9px] font-medium text-foreground">{it.label}</span>
+              <div className="rounded border border-border-visible bg-surface-raised px-1 py-0.5 text-[7px] font-mono font-semibold text-muted-foreground">{it.k}</div>
             </div>
           ))}
         </div>
@@ -1250,7 +1272,7 @@ function AuthShell({ fields, title }: { fields: number; title: string }) {
   const labels = ["Full name", "Email address", "Password"];
   const icons = [User, Mail, Lock];
   return (
-    <div className="flex h-full w-full flex-col items-center justify-center gap-4 overflow-y-auto bg-white px-10">
+    <div className="flex h-full w-full flex-col items-center justify-center gap-4 overflow-y-auto bg-surface border border-border-visible rounded-xl px-10 font-sans select-none">
       <div className="flex flex-col items-center gap-2">
         <Logo className="size-7 rounded-lg" />
         <SkeletonText variant="heading" width="70%" />
@@ -1258,7 +1280,7 @@ function AuthShell({ fields, title }: { fields: number; title: string }) {
       <div className="flex w-full max-w-55 flex-col gap-2.5">
         {Array.from({ length: fields }).map((_, i) => (
           <div key={i} className="flex flex-col gap-1">
-            <span className="text-[8px] font-semibold uppercase tracking-wide text-neutral-400">{labels[i]}</span>
+            <span className="text-[8px] font-mono font-semibold uppercase tracking-wide text-muted-foreground">{labels[i]}</span>
             <SkeletonInput
               icon={<SkeletonIcon icon={icons[i]} className="size-3" />}
               placeholder={i === 1 ? "you@company.com" : "••••••••"}
@@ -1268,19 +1290,19 @@ function AuthShell({ fields, title }: { fields: number; title: string }) {
         <SkeletonButton label={title} className="mt-1 h-8" />
         <div className="flex items-center gap-2 py-0.5">
           <SkeletonLine className="flex-1" />
-          <span className="text-[8px] text-neutral-400">or</span>
+          <span className="text-[8px] text-muted-foreground">or</span>
           <SkeletonLine className="flex-1" />
         </div>
         <div className="flex gap-2">
-          <div className="flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md border border-neutral-200 bg-white text-[9px] font-medium text-neutral-600">
-            <span className="size-2.5 rounded-full bg-neutral-300" /> Google
+          <div className="flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md border border-border-visible bg-surface-raised text-[9px] font-medium text-foreground">
+            <span className="size-2.5 rounded-full bg-muted-foreground" /> Google
           </div>
-          <div className="flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md border border-neutral-200 bg-white text-[9px] font-medium text-neutral-600">
-            <span className="size-2.5 rounded-full bg-neutral-900" /> GitHub
+          <div className="flex h-7 flex-1 items-center justify-center gap-1.5 rounded-md border border-border-visible bg-surface-raised text-[9px] font-medium text-foreground">
+            <span className="size-2.5 rounded-full bg-foreground" /> GitHub
           </div>
         </div>
       </div>
-      <span className="text-[8px] text-neutral-400">{title === "Sign in" ? "No account?" : "Have an account?"} <span className="font-semibold text-neutral-700">Click here</span></span>
+      <span className="text-[8px] text-muted-foreground">{title === "Sign in" ? "No account?" : "Have an account?"} <span className="font-semibold text-foreground">Click here</span></span>
     </div>
   );
 }
@@ -1295,37 +1317,37 @@ function RegisterPreview() {
 
 function FormPreview() {
   return (
-    <div className="flex h-full w-full flex-col gap-3 overflow-y-auto rounded-lg border border-neutral-200 bg-white p-4">
+    <div className="flex h-full w-full flex-col gap-3 overflow-y-auto rounded-lg border border-border-visible bg-surface p-4 font-sans select-none">
       <div>
         <SkeletonText variant="heading" width="45%" />
         <SkeletonText variant="caption" width="70%" className="mt-1.5" />
       </div>
       <div className="grid grid-cols-2 gap-2.5">
         <div className="flex flex-col gap-1">
-          <span className="text-[8px] font-semibold uppercase tracking-wide text-neutral-400">First name</span>
+          <span className="text-[8px] font-mono font-semibold uppercase tracking-wide text-muted-foreground">First name</span>
           <SkeletonInput placeholder="Ada" />
         </div>
         <div className="flex flex-col gap-1">
-          <span className="text-[8px] font-semibold uppercase tracking-wide text-neutral-400">Last name</span>
+          <span className="text-[8px] font-mono font-semibold uppercase tracking-wide text-muted-foreground">Last name</span>
           <SkeletonInput placeholder="Lovelace" />
         </div>
       </div>
       <div className="flex flex-col gap-1">
-        <span className="text-[8px] font-semibold uppercase tracking-wide text-neutral-400">Email</span>
+        <span className="text-[8px] font-mono font-semibold uppercase tracking-wide text-muted-foreground">Email</span>
         <SkeletonInput icon={<SkeletonIcon icon={Mail} className="size-3" />} placeholder="ada@company.com" />
       </div>
       <div className="flex flex-col gap-1">
-        <span className="text-[8px] font-semibold uppercase tracking-wide text-neutral-400">Project</span>
-        <div className="flex h-8 items-center justify-between rounded-md border border-neutral-200 bg-white px-2.5">
-          <span className="text-[10px] text-neutral-600">Wireframe kit</span>
+        <span className="text-[8px] font-mono font-semibold uppercase tracking-wide text-muted-foreground">Project</span>
+        <div className="flex h-8 items-center justify-between rounded-md border border-border-visible bg-background px-2.5">
+          <span className="text-[10px] text-foreground">Wireframe kit</span>
           <SkeletonIcon icon={ChevronDown} className="size-3" />
         </div>
       </div>
       <div className="flex items-center gap-1.5">
-        <div className="flex size-3.5 items-center justify-center rounded-[4px] border border-neutral-300 bg-white">
-          <Check aria-hidden="true" className="size-2 text-neutral-500" />
+        <div className="flex size-3.5 items-center justify-center rounded-[4px] border border-border-visible bg-background">
+          <Check aria-hidden="true" className="size-2 text-foreground" />
         </div>
-        <span className="text-[8px] text-neutral-500">Send me product updates</span>
+        <span className="text-[8px] text-muted-foreground">Send me product updates</span>
       </div>
       <SkeletonButton label="Submit" className="mt-auto h-8" />
     </div>
@@ -1783,216 +1805,12 @@ function FaqPreview() {
 }
 
 /* ---------------- UTILS & SHAPE STYLING (P0, P1, P2) ---------------- */
+export { hexToRgba, computeShapeStyle, ShapeTextRenderer } from "../utils/shape-styles";
+import { hexToRgba, computeShapeStyle, ShapeTextRenderer } from "../utils/shape-styles";
 
-export function hexToRgba(hexOrColor: string, opacityPercent = 100): string {
-  if (!hexOrColor || hexOrColor === "transparent" || hexOrColor === "none") return "transparent";
-  if (hexOrColor.startsWith("rgba") || hexOrColor.startsWith("hsla")) return hexOrColor;
-  if (hexOrColor.startsWith("rgb")) {
-    const alpha = Math.max(0, Math.min(1, opacityPercent / 100));
-    return hexOrColor.replace("rgb", "rgba").replace(")", `, ${alpha})`);
-  }
-  const cleanHex = hexOrColor.replace("#", "").trim();
-  if (cleanHex.length === 3) {
-    const r = parseInt(cleanHex[0] + cleanHex[0], 16);
-    const g = parseInt(cleanHex[1] + cleanHex[1], 16);
-    const b = parseInt(cleanHex[2] + cleanHex[2], 16);
-    const alpha = Math.max(0, Math.min(1, opacityPercent / 100));
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-  }
-  if (cleanHex.length === 6) {
-    const r = parseInt(cleanHex.substring(0, 2), 16);
-    const g = parseInt(cleanHex.substring(2, 4), 16);
-    const b = parseInt(cleanHex.substring(4, 6), 16);
-    const alpha = Math.max(0, Math.min(1, opacityPercent / 100));
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-  }
-  return hexOrColor;
-}
-
-export function computeShapeStyle(
-  props: Props,
-  defaults: {
-    fill?: string;
-    stroke?: string;
-    borderWidth?: number;
-    radius?: number;
-    isCircle?: boolean;
-  } = {},
-): React.CSSProperties {
-  const style: React.CSSProperties = {};
-
-  // 1. Fill / Background (P0 + P1)
-  const fillEnabled = props.fillEnabled !== false && props.fillEnabled !== "false";
-  if (!fillEnabled) {
-    style.background = "transparent";
-  } else if (Boolean(props.gradientEnabled)) {
-    const gradientType = String(props.gradientType || "linear");
-    const angle = Number(props.gradientAngle || 90);
-    const start = hexToRgba(String(props.gradientStart || "#3B82F6"), Number(props.fillOpacity ?? 100));
-    const end = hexToRgba(String(props.gradientEnd || "#9333EA"), Number(props.fillOpacity ?? 100));
-    if (gradientType === "radial") {
-      style.background = `radial-gradient(circle, ${start}, ${end})`;
-    } else {
-      style.background = `linear-gradient(${angle}deg, ${start}, ${end})`;
-    }
-  } else {
-    const rawFill = String(val(props, "fill", defaults.fill || "#FFFFFF"));
-    if (rawFill === "transparent" || rawFill === "none") {
-      style.background = "transparent";
-    } else {
-      const fillOpacity = Number(props.fillOpacity ?? 100);
-      style.background = hexToRgba(rawFill, fillOpacity);
-    }
-  }
-
-  // 2. Stroke / Border (P0 + P1)
-  const strokeEnabled = props.strokeEnabled !== false && props.strokeEnabled !== "false";
-  const strokeSides = String(props.strokeSides || "all");
-  const strokeStyle = String(props.strokeStyle || "solid");
-  const strokePosition = String(props.strokePosition || "inside"); // "inside" | "center" | "outside"
-  const borderWidth = Number(val(props, "borderWidth", defaults.borderWidth ?? 1));
-  const rawStroke = String(val(props, "stroke", defaults.stroke || "#D4D4D8"));
-  const strokeOpacity = Number(props.strokeOpacity ?? 100);
-  const strokeColor = hexToRgba(rawStroke, strokeOpacity);
-
-  const shadowParts: string[] = [];
-
-  if (strokeEnabled && borderWidth > 0 && rawStroke !== "transparent") {
-    if (strokePosition === "inside" && strokeSides === "all" && strokeStyle === "solid") {
-      shadowParts.push(`inset 0 0 0 ${borderWidth}px ${strokeColor}`);
-      style.border = "none";
-    } else {
-      const borderValue = `${borderWidth}px ${strokeStyle} ${strokeColor}`;
-      if (strokeSides === "top") {
-        style.borderTop = borderValue;
-        style.borderRight = "none";
-        style.borderBottom = "none";
-        style.borderLeft = "none";
-      } else if (strokeSides === "bottom") {
-        style.borderBottom = borderValue;
-        style.borderTop = "none";
-        style.borderRight = "none";
-        style.borderLeft = "none";
-      } else if (strokeSides === "left") {
-        style.borderLeft = borderValue;
-        style.borderTop = "none";
-        style.borderRight = "none";
-        style.borderBottom = "none";
-      } else if (strokeSides === "right") {
-        style.borderRight = borderValue;
-        style.borderTop = "none";
-        style.borderBottom = "none";
-        style.borderLeft = "none";
-      } else {
-        style.border = borderValue;
-      }
-    }
-  } else {
-    style.border = "none";
-  }
-
-  // 3. Radius (P0 + P1)
-  if (defaults.isCircle) {
-    style.borderRadius = "50%";
-  } else {
-    const radiusEnabled = props.radiusEnabled !== false && props.radiusEnabled !== "false";
-    if (!radiusEnabled) {
-      style.borderRadius = 0;
-    } else if (Boolean(props.radiusIndependent)) {
-      const tl = Number(props.radiusTopLeft || 0);
-      const tr = Number(props.radiusTopRight || 0);
-      const br = Number(props.radiusBottomRight || 0);
-      const bl = Number(props.radiusBottomLeft || 0);
-      style.borderRadius = `${tl}px ${tr}px ${br}px ${bl}px`;
-    } else {
-      style.borderRadius = Number(val(props, "radius", defaults.radius ?? 8));
-    }
-  }
-
-  // 4. Shadow (Drop Shadow & Inner Shadow - P1)
-  const shadowEnabled = Boolean(props.shadowEnabled);
-  if (shadowEnabled) {
-    const sx = Number(props.shadowX ?? 0);
-    const sy = Number(props.shadowY ?? 4);
-    const sblur = Number(props.shadowBlur ?? 12);
-    const sspread = Number(props.shadowSpread ?? 0);
-    const rawSColor = String(props.shadowColor || "#000000");
-    const sOpacity = Number(props.shadowOpacity ?? 25);
-    const sColor = hexToRgba(rawSColor, sOpacity);
-    const isInset = Boolean(props.shadowInset);
-    shadowParts.push(`${isInset ? "inset " : ""}${sx}px ${sy}px ${sblur}px ${sspread}px ${sColor}`);
-  }
-
-  if (shadowParts.length > 0) {
-    style.boxShadow = shadowParts.join(", ");
-  }
-
-  // 5. Blur (Backdrop Blur & Layer Blur - P2)
-  const blurEnabled = Boolean(props.blurEnabled);
-  if (blurEnabled) {
-    const backdropBlur = Number(props.backdropBlur || 0);
-    const layerBlur = Number(props.layerBlur || 0);
-    if (backdropBlur > 0) {
-      style.backdropFilter = `blur(${backdropBlur}px)`;
-      style.WebkitBackdropFilter = `blur(${backdropBlur}px)`;
-    }
-    if (layerBlur > 0) {
-      style.filter = `blur(${layerBlur}px)`;
-    }
-  }
-
-  return style;
-}
-
-export function ShapeTextRenderer({ props }: { props: Props }) {
-  const text = String(props.text || "");
-  if (!text) return null;
-
-  const textColor = String(props.textColor || "#18181B");
-  const textOpacity = Number(props.textOpacity ?? 100);
-  const color = hexToRgba(textColor, textOpacity);
-  const fontSize = Number(props.fontSize || 14);
-  const fontWeight = Number(props.fontWeight || 400);
-  const fontFamily = props.fontFamily ? String(props.fontFamily) : undefined;
-  const textAlign = String(props.textAlign || props.align || "center") as "left" | "center" | "right" | "justify";
-  const textVerticalAlign = String(props.textVerticalAlign || "middle");
-  const lineHeight = props.lineHeight ? `${props.lineHeight}px` : undefined;
-  const letterSpacing = props.letterSpacing ? `${props.letterSpacing}px` : undefined;
-  const fontStyle = props.italic ? "italic" : undefined;
-  const isUnderline = Boolean(props.underline);
-  const isStrikethrough = Boolean(props.strikethrough);
-  const textDecoration = isUnderline && isStrikethrough ? "underline line-through" : isUnderline ? "underline" : isStrikethrough ? "line-through" : undefined;
-
-  const justifyClass =
-    textAlign === "left" ? "justify-start" : textAlign === "right" ? "justify-end" : "justify-center";
-  const itemsClass =
-    textVerticalAlign === "top" ? "items-start" : textVerticalAlign === "bottom" ? "items-end" : "items-center";
-
-  return (
-    <div className={`pointer-events-none absolute inset-0 flex p-2 overflow-hidden ${justifyClass} ${itemsClass}`}>
-      <span
-        style={{
-          color,
-          fontSize,
-          fontWeight,
-          fontFamily,
-          textAlign,
-          lineHeight,
-          letterSpacing,
-          fontStyle,
-          textDecoration,
-          wordBreak: "break-word",
-        }}
-        className="max-h-full max-w-full overflow-hidden"
-      >
-        {text}
-      </span>
-    </div>
-  );
-}
 
 function RectanglePreview({ props }: { props: Props }) {
-  const style = computeShapeStyle(props, { fill: "#FFFFFF", stroke: "#D4D4D8", borderWidth: 1, radius: 8 });
+  const style = computeShapeStyle(props, { fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1, radius: 8 });
   return (
     <div className="relative h-full w-full overflow-hidden" style={style}>
       <ShapeTextRenderer props={props} />
@@ -2003,13 +1821,13 @@ function RectanglePreview({ props }: { props: Props }) {
 function TextPreview({ props }: { props: Props }) {
   const text = String(val(props, "text", ""));
   if (text) {
-    const color = String(val(props, "textColor", "#18181B"));
+    const color = String(val(props, "textColor", "var(--foreground)"));
     const fontSize = Number(val(props, "fontSize", 14));
     const fontWeight = Number(val(props, "fontWeight", 400));
     const align = String(val(props, "align", "left"));
     return (
       <div
-        className="flex h-full w-full items-center px-1"
+        className="flex h-full w-full items-center px-1 font-sans"
         style={{ color, fontSize, fontWeight, textAlign: align as "left" | "center" | "right", justifyContent: align === "center" ? "center" : align === "right" ? "flex-end" : "flex-start" }}
       >
         <span className="truncate">{text}</span>
@@ -2025,7 +1843,7 @@ function TextPreview({ props }: { props: Props }) {
 }
 
 function CirclePreview({ props }: { props: Props }) {
-  const style = computeShapeStyle(props, { fill: "#F4F4F5", stroke: "#A1A1AA", borderWidth: 1, isCircle: true });
+  const style = computeShapeStyle(props, { fill: "var(--surface-raised)", stroke: "var(--border-visible)", borderWidth: 1, isCircle: true });
   return (
     <div className="relative h-full w-full overflow-hidden" style={style}>
       <ShapeTextRenderer props={props} />
@@ -2036,7 +1854,7 @@ function CirclePreview({ props }: { props: Props }) {
 
 function LinePreview({ props }: { props: Props }) {
   const strokeEnabled = props.strokeEnabled !== false && props.strokeEnabled !== "false";
-  const stroke = strokeEnabled ? String(val(props, "stroke", "#71717A")) : "transparent";
+  const stroke = strokeEnabled ? String(val(props, "stroke", "var(--border-visible)")) : "transparent";
   const strokeStyle = String(val(props, "strokeStyle", "solid"));
   const borderWidth = Number(val(props, "borderWidth", 1.5));
   const strokeDash = strokeStyle === "dashed" ? "6 4" : strokeStyle === "dotted" ? "2 3" : undefined;
@@ -2060,7 +1878,7 @@ function LinePreview({ props }: { props: Props }) {
 
 function ArrowPreview({ props }: { props: Props }) {
   const strokeEnabled = props.strokeEnabled !== false && props.strokeEnabled !== "false";
-  const stroke = strokeEnabled ? String(val(props, "stroke", "#3B82F6")) : "transparent";
+  const stroke = strokeEnabled ? String(val(props, "stroke", "var(--foreground)")) : "transparent";
   const strokeStyle = String(val(props, "strokeStyle", "solid"));
   const borderWidth = Number(val(props, "borderWidth", 1.5));
   const strokeDash = strokeStyle === "dashed" ? "6 4" : strokeStyle === "dotted" ? "2 3" : undefined;
@@ -2098,11 +1916,11 @@ function ArrowPreview({ props }: { props: Props }) {
 
 
 function HotspotPreview({ props }: { props: Props }) {
-  const fill = String(val(props, "fill", "rgba(59, 130, 246, 0.12)"));
-  const stroke = String(val(props, "stroke", "#3B82F6"));
+  const fill = String(val(props, "fill", "var(--accent-subtle)"));
+  const stroke = String(val(props, "stroke", "var(--accent)"));
   const strokeEnabled = props.strokeEnabled !== false && props.strokeEnabled !== "false";
   const strokeStyle = String(val(props, "strokeStyle", "dashed"));
-  const borderWidth = Number(val(props, "borderWidth", 2));
+  const borderWidth = Number(val(props, "borderWidth", 1.5));
   const radius = Number(val(props, "radius", 4));
   const label = String(val(props, "label", "热区 / Hotspot"));
   return (
@@ -2122,68 +1940,68 @@ function HotspotPreview({ props }: { props: Props }) {
 }
 
 function ButtonPreview({ props }: { props: Props }) {
-  const text = String(val(props, "text", "主要按钮"));
-  const textColor = String(val(props, "textColor", "#2563EB"));
+  const text = String(val(props, "text", "次要操作"));
+  const textColor = String(val(props, "textColor", "var(--foreground)"));
   const textOpacity = Number(val(props, "textOpacity", 100));
   const style = computeShapeStyle(props, {
-    fill: "#FFFFFF",
-    stroke: "#3B82F6",
+    fill: "transparent",
+    stroke: "var(--border-visible)",
     borderWidth: 1,
-    radius: 6,
+    radius: 999,
   });
   return (
     <div
-      className="flex h-full w-full items-center justify-center px-3 font-medium shadow-xs select-none"
+      className="flex h-full w-full items-center justify-center px-4 font-mono select-none"
       style={{
         ...style,
         color: hexToRgba(textColor, textOpacity),
-        fontSize: `${Number(val(props, "fontSize", 13))}px`,
+        fontSize: `${Number(val(props, "fontSize", 12))}px`,
         fontWeight: Number(val(props, "fontWeight", 500)),
-        fontFamily: props.fontFamily ? String(props.fontFamily) : undefined,
+        letterSpacing: "0.06em",
       }}
     >
-      <span className="truncate">{text}</span>
+      <span className="truncate uppercase">{text}</span>
     </div>
   );
 }
 
 function ButtonPrimaryPreview({ props }: { props: Props }) {
-  const text = String(val(props, "text", "操作按钮"));
-  const textColor = String(val(props, "textColor", "#FFFFFF"));
+  const text = String(val(props, "text", "主要操作"));
+  const textColor = String(val(props, "textColor", "var(--primary-foreground)"));
   const textOpacity = Number(val(props, "textOpacity", 100));
   const style = computeShapeStyle(props, {
-    fill: "#2563EB",
-    stroke: "#2563EB",
+    fill: "var(--primary)",
+    stroke: "var(--primary)",
     borderWidth: 1,
-    radius: 6,
+    radius: 999,
   });
   return (
     <div
-      className="flex h-full w-full items-center justify-center px-3 font-medium shadow-sm select-none"
+      className="flex h-full w-full items-center justify-center px-4 font-mono select-none"
       style={{
         ...style,
         color: hexToRgba(textColor, textOpacity),
-        fontSize: `${Number(val(props, "fontSize", 13))}px`,
-        fontWeight: Number(val(props, "fontWeight", 500)),
-        fontFamily: props.fontFamily ? String(props.fontFamily) : undefined,
+        fontSize: `${Number(val(props, "fontSize", 12))}px`,
+        fontWeight: Number(val(props, "fontWeight", 600)),
+        letterSpacing: "0.06em",
       }}
     >
-      <span className="truncate">{text}</span>
+      <span className="truncate uppercase">{text}</span>
     </div>
   );
 }
 
 function PlaceholderPreview({ props }: { props: Props }) {
-  const label = String(val(props, "label", "占位符"));
-  const fill = String(val(props, "fill", "#F8FAFC"));
-  const stroke = String(val(props, "stroke", "#CBD5E1"));
+  const label = String(val(props, "label", "内容结构占位"));
+  const fill = String(val(props, "fill", "var(--surface-raised)"));
+  const stroke = String(val(props, "stroke", "var(--border-visible)"));
   const strokeEnabled = props.strokeEnabled !== false && props.strokeEnabled !== "false";
   const strokeStyle = String(val(props, "strokeStyle", "solid"));
   const borderWidth = Number(val(props, "borderWidth", 1));
   const radius = Number(val(props, "radius", 0));
   return (
     <div
-      className="relative flex h-full w-full items-center justify-center overflow-hidden"
+      className="relative flex h-full w-full items-center justify-center overflow-hidden font-mono select-none"
       style={{
         backgroundColor: fill,
         border: strokeEnabled ? `${borderWidth}px ${strokeStyle} ${stroke}` : "none",
@@ -2191,89 +2009,448 @@ function PlaceholderPreview({ props }: { props: Props }) {
       }}
     >
       <svg className="pointer-events-none absolute inset-0 h-full w-full" preserveAspectRatio="none">
-        <line x1="0" y1="0" x2="100%" y2="100%" stroke={strokeEnabled ? stroke : "#CBD5E1"} strokeWidth={strokeEnabled ? borderWidth : 1} />
-        <line x1="0" y1="100%" x2="100%" y2="0" stroke={strokeEnabled ? stroke : "#CBD5E1"} strokeWidth={strokeEnabled ? borderWidth : 1} />
+        <line x1="0" y1="0" x2="100%" y2="100%" stroke={strokeEnabled ? stroke : "#CCCCCC"} strokeWidth={strokeEnabled ? borderWidth : 1} />
+        <line x1="0" y1="100%" x2="100%" y2="0" stroke={strokeEnabled ? stroke : "#CCCCCC"} strokeWidth={strokeEnabled ? borderWidth : 1} />
       </svg>
-      <div className="relative rounded bg-white/90 px-2 py-0.5 text-[11px] font-medium text-slate-500 shadow-xs backdrop-blur-xs">
-        {label}
+      <div className="relative rounded-xs border border-border-visible bg-surface px-2.5 py-1 text-[10px] font-mono font-medium text-foreground tracking-wider uppercase">
+        [ {label} ]
       </div>
     </div>
   );
 }
 
-function TablePreview({ props }: { props: Props }) {
-  const headersStr = String(val(props, "headers", "姓名,角色,部门,状态"));
-  const headers = parseItems(headersStr, ["姓名", "角色", "部门", "状态"]);
-  const rows = Number(val(props, "rows", 4));
-  const cols = Math.max(headers.length, Number(val(props, "cols", 4)));
-  const headerBg = String(val(props, "headerBg", "#F1F5F9"));
+function TablePreview({ props, context }: { props: Props; context?: ComponentRenderContext }) {
+  const headersStr = String(val(props, "headers", "编号,用户名称,所属部门,状态"));
+  const rawHeaders = parseItems(headersStr, ["编号", "用户名称", "所属部门", "状态"]);
+  const rows = Math.max(2, Number(val(props, "rows", 4)));
+  const cols = Math.max(1, Math.max(rawHeaders.length, Number(val(props, "cols", 4))));
+  const headerBg = typeof props.headerBg === "string" && props.headerBg.trim() ? props.headerBg : "";
+
+  const headers = Array.from({ length: cols }, (_, i) => rawHeaders[i] || `列头 ${i + 1}`);
+  const bodyRowCount = Math.max(1, rows - 1);
+
+  // Parse colWidths
+  const rawColWidthsStr = typeof props.colWidths === "string" ? props.colWidths : "";
+  const parsedColWidths: number[] = rawColWidthsStr
+    ? rawColWidthsStr.split(",").map((n) => Math.max(36, Number(n.trim()))).filter((n) => !isNaN(n))
+    : [];
+
+  const colWidths: number[] = Array.from({ length: cols }, (_, i) => {
+    if (parsedColWidths[i] && parsedColWidths[i] >= 30) {
+      return parsedColWidths[i];
+    }
+    if (i === 0) return 60;
+    if (i === cols - 1) return 76;
+    return 120;
+  });
+
+  const [localColWidths, setLocalColWidths] = useState<number[]>(colWidths);
+  useEffect(() => {
+    setLocalColWidths(colWidths);
+  }, [rawColWidthsStr, cols]);
+
+  // Parse custom cell matrix
+  const defaultPreset = [
+    ["01", "张三", "用户体验设计部", "正常"],
+    ["02", "李四", "技术架构中台", "正常"],
+    ["03", "王五", "数据智能平台", "离线"],
+    ["04", "赵六", "核心研发团队", "正常"],
+  ];
+
+  let parsedCells: string[][] | null = null;
+  if (typeof props.cells === "string" && props.cells.trim()) {
+    try {
+      const json = JSON.parse(props.cells);
+      if (Array.isArray(json)) {
+        parsedCells = json.map((r) => (Array.isArray(r) ? r.map(String) : []));
+      }
+    } catch {
+      parsedCells = props.cells.split("\n").map((line) => line.split(/[,，]/).map((c) => c.trim()));
+    }
+  }
+
+  const custom = parsedCells;
+  const cellMatrix: string[][] = Array.from({ length: bodyRowCount }, (_, r) => {
+    return Array.from({ length: cols }, (_, c) => {
+      if (custom !== null) {
+        return custom[r]?.[c] !== undefined ? custom[r][c] : "";
+      }
+      if (defaultPreset[r] && defaultPreset[r][c] !== undefined) {
+        return defaultPreset[r][c];
+      }
+      return c === 0 ? String(r + 1).padStart(2, "0") : c === cols - 1 ? (r % 3 === 2 ? "离线" : "正常") : `数据项 ${r + 1}-${c}`;
+    });
+  });
+
+  const [selectedCell, setSelectedCell] = useState<{ type: "header" | "data"; row?: number; col: number } | null>(null);
+  const [editingCell, setEditingCell] = useState<{
+    type: "header" | "data";
+    row?: number;
+    col: number;
+  } | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editingCell && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editingCell]);
+
+  useEffect(() => {
+    if (!context?.isSelected) {
+      setSelectedCell(null);
+      if (editingCell) {
+        commitEdit();
+        setEditingCell(null);
+      }
+    }
+  }, [context?.isSelected]);
+
+  const commitEdit = (currentEditing = editingCell, valueToSave = editValue) => {
+    if (!currentEditing) return;
+    if (currentEditing.type === "header") {
+      const newHeaders = [...headers];
+      while (newHeaders.length < cols) {
+        newHeaders.push(`列头 ${newHeaders.length + 1}`);
+      }
+      newHeaders[currentEditing.col] = valueToSave;
+      context?.onUpdateProps?.({ headers: newHeaders.join(",") });
+    } else if (currentEditing.type === "data" && currentEditing.row !== undefined) {
+      const newMatrix = cellMatrix.map((r) => [...r]);
+      if (!newMatrix[currentEditing.row]) {
+        newMatrix[currentEditing.row] = [];
+      }
+      newMatrix[currentEditing.row][currentEditing.col] = valueToSave;
+      context?.onUpdateProps?.({ cells: JSON.stringify(newMatrix) });
+    }
+  };
+
+  const startEditing = (type: "header" | "data", col: number, row?: number, initialVal?: string) => {
+    setEditingCell({ type, col, row });
+    setEditValue(initialVal ?? "");
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    e.stopPropagation();
+    if (e.key === "Enter") {
+      e.preventDefault();
+      commitEdit();
+      if (editingCell?.type === "header") {
+        if (bodyRowCount > 0) {
+          setEditingCell({ type: "data", row: 0, col: editingCell.col });
+          setEditValue(cellMatrix[0]?.[editingCell.col] ?? "");
+        } else {
+          setEditingCell(null);
+        }
+      } else if (editingCell?.type === "data" && editingCell.row !== undefined) {
+        const nextRow = editingCell.row + 1;
+        if (nextRow < bodyRowCount) {
+          setEditingCell({ type: "data", row: nextRow, col: editingCell.col });
+          setEditValue(cellMatrix[nextRow]?.[editingCell.col] ?? "");
+        } else {
+          setEditingCell(null);
+        }
+      }
+    } else if (e.key === "Tab") {
+      e.preventDefault();
+      commitEdit();
+      if (!e.shiftKey) {
+        if (editingCell?.type === "header") {
+          const nextCol = editingCell.col + 1;
+          if (nextCol < cols) {
+            setEditingCell({ type: "header", col: nextCol });
+            setEditValue(headers[nextCol] ?? "");
+          } else if (bodyRowCount > 0) {
+            setEditingCell({ type: "data", row: 0, col: 0 });
+            setEditValue(cellMatrix[0]?.[0] ?? "");
+          } else {
+            setEditingCell(null);
+          }
+        } else if (editingCell?.type === "data" && editingCell.row !== undefined) {
+          let nextRow = editingCell.row;
+          let nextCol = editingCell.col + 1;
+          if (nextCol >= cols) {
+            nextRow += 1;
+            nextCol = 0;
+          }
+          if (nextRow < bodyRowCount) {
+            setEditingCell({ type: "data", row: nextRow, col: nextCol });
+            setEditValue(cellMatrix[nextRow]?.[nextCol] ?? "");
+          } else {
+            setEditingCell(null);
+          }
+        }
+      } else {
+        if (editingCell?.type === "header") {
+          const prevCol = editingCell.col - 1;
+          if (prevCol >= 0) {
+            setEditingCell({ type: "header", col: prevCol });
+            setEditValue(headers[prevCol] ?? "");
+          } else {
+            setEditingCell(null);
+          }
+        } else if (editingCell?.type === "data" && editingCell.row !== undefined) {
+          let prevRow = editingCell.row;
+          let prevCol = editingCell.col - 1;
+          if (prevCol < 0) {
+            prevRow -= 1;
+            prevCol = cols - 1;
+          }
+          if (prevRow >= 0) {
+            setEditingCell({ type: "data", row: prevRow, col: prevCol });
+            setEditValue(cellMatrix[prevRow]?.[prevCol] ?? "");
+          } else {
+            setEditingCell({ type: "header", col: cols - 1 });
+            setEditValue(headers[cols - 1] ?? "");
+          }
+        }
+      }
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setEditingCell(null);
+    }
+  };
+
+  // Column Resizing Logic
+  const handleStartColResize = (e: React.MouseEvent, colIndex: number) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const startX = e.clientX;
+    const startWidths = [...localColWidths];
+    const zoom = context?.zoom ?? 1;
+
+    const handlePointerMove = (moveEv: PointerEvent) => {
+      const delta = (moveEv.clientX - startX) / zoom;
+      const newWidth = Math.max(36, Math.round(startWidths[colIndex] + delta));
+      const nextWidths = [...startWidths];
+      nextWidths[colIndex] = newWidth;
+      setLocalColWidths(nextWidths);
+    };
+
+    const handlePointerUp = (upEv: PointerEvent) => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      const delta = (upEv.clientX - startX) / zoom;
+      const newWidth = Math.max(36, Math.round(startWidths[colIndex] + delta));
+      const nextWidths = [...startWidths];
+      nextWidths[colIndex] = newWidth;
+      setLocalColWidths(nextWidths);
+      context?.onUpdateProps?.({ colWidths: nextWidths.join(",") });
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp);
+  };
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden rounded border border-neutral-200 bg-white text-xs">
-      <div className="flex border-b border-neutral-200" style={{ backgroundColor: headerBg }}>
-        {Array.from({ length: cols }).map((_, c) => (
-          <div key={c} className="flex-1 truncate border-r border-neutral-200 px-2.5 py-1.5 font-semibold text-neutral-700 last:border-r-0">
-            {headers[c] || `表头 ${c + 1}`}
-          </div>
-        ))}
-      </div>
-      <div className="flex flex-1 flex-col">
-        {Array.from({ length: Math.max(1, rows - 1) }).map((_, r) => (
-          <div key={r} className="flex flex-1 items-center border-b border-neutral-100 last:border-b-0">
-            {Array.from({ length: cols }).map((_, c) => (
-              <div key={c} className="flex-1 truncate border-r border-neutral-100 px-2.5 py-1 text-[11px] text-neutral-600 last:border-r-0">
-                数据 {r + 1}-{c + 1}
-              </div>
+    <div className="group/table relative flex h-full w-full flex-col overflow-hidden rounded-xs border border-border-visible bg-surface font-mono text-xs select-none">
+      {/* Table Content Area with clean overflow handling */}
+      <div className="flex-1 w-full overflow-hidden">
+        <table className="w-full border-collapse table-fixed text-left font-mono">
+          <colgroup>
+            {localColWidths.map((w, i) => (
+              <col key={i} style={{ width: `${w}px` }} />
             ))}
-          </div>
-        ))}
+          </colgroup>
+
+          {/* Table Header */}
+          <thead>
+            <tr
+              className={cn(
+                "border-b border-border-visible",
+                !headerBg && "bg-surface-raised/60"
+              )}
+              style={headerBg ? { backgroundColor: headerBg } : undefined}
+            >
+              {headers.map((headerText, c) => {
+                const isEditing = editingCell?.type === "header" && editingCell.col === c;
+                const isSelected = Boolean(context?.isSelected) && selectedCell?.type === "header" && selectedCell.col === c;
+                return (
+                  <th
+                    key={c}
+                    style={{ width: `${localColWidths[c]}px` }}
+                    className={cn(
+                      "relative border-r border-border-visible p-0 font-mono text-[11px] font-medium uppercase tracking-wider text-muted-foreground last:border-r-0 transition-colors select-none",
+                      isSelected && "ring-1 ring-inset ring-foreground bg-surface-raised text-foreground",
+                      !isEditing && "hover:bg-surface-raised/80 hover:text-foreground cursor-pointer"
+                    )}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (context?.elementId && context?.onSelect) {
+                        context.onSelect(context.elementId);
+                      }
+                      setSelectedCell({ type: "header", col: c });
+                    }}
+                    onDoubleClick={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      startEditing("header", c, undefined, headerText);
+                    }}
+                  >
+                    <div className="relative flex h-8 items-center px-2.5 min-w-0">
+                      {isEditing ? (
+                        <input
+                          ref={inputRef}
+                          type="text"
+                          value={editValue}
+                          onChange={(e) => setEditValue(e.target.value)}
+                          onBlur={() => {
+                            commitEdit();
+                            setEditingCell(null);
+                          }}
+                          onKeyDown={handleKeyDown}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onPointerDown={(e) => e.stopPropagation()}
+                          onDoubleClick={(e) => e.stopPropagation()}
+                          className="h-6 w-full rounded-2xs border border-foreground bg-background px-1 font-mono text-[11px] font-medium uppercase tracking-wider text-foreground outline-none ring-1 ring-border-visible"
+                        />
+                      ) : (
+                        <span className="truncate">{headerText}</span>
+                      )}
+                    </div>
+
+                    {/* Column Divider Resizer */}
+                    <div
+                      className="absolute top-0 right-0 h-full w-2.5 cursor-col-resize z-20 group/resizer flex items-center justify-center -mr-1.5"
+                      title="拖拽调节此列宽度"
+                      onMouseDown={(e) => handleStartColResize(e, c)}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onDoubleClick={(e) => e.stopPropagation()}
+                    >
+                      <div className="h-full w-0.5 bg-transparent group-hover/resizer:bg-foreground transition-colors" />
+                    </div>
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+
+          {/* Table Body */}
+          <tbody className="divide-y divide-border">
+            {cellMatrix.map((row, r) => (
+              <tr
+                key={r}
+                className="border-b border-border/80 transition-colors bg-transparent"
+              >
+                {row.map((cellText, c) => {
+                  const isEditing = editingCell?.type === "data" && editingCell.row === r && editingCell.col === c;
+                  const isSelected = Boolean(context?.isSelected) && selectedCell?.type === "data" && selectedCell.row === r && selectedCell.col === c;
+                  const isStatusCol = c === cols - 1 && (cellText === "正常" || cellText === "离线" || cellText === "待处理" || cellText === "运行中" || cellText === "Active" || cellText === "Offline");
+                  const isSuccess = cellText === "正常" || cellText === "运行中" || cellText === "Active";
+                  const isWarning = cellText === "待处理" || cellText === "排队中";
+                  const isDanger = cellText === "离线" || cellText === "已停止" || cellText === "Offline";
+
+                  return (
+                    <td
+                      key={c}
+                      style={{ width: `${localColWidths[c]}px` }}
+                      className={cn(
+                        "relative border-r border-border p-0 font-mono text-xs text-foreground last:border-r-0 transition-colors select-none",
+                        isSelected && "ring-1 ring-inset ring-foreground/80 bg-surface-raised/40",
+                        !isEditing && "hover:bg-surface-raised/60 cursor-pointer"
+                      )}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (context?.elementId && context?.onSelect) {
+                          context.onSelect(context.elementId);
+                        }
+                        setSelectedCell({ type: "data", row: r, col: c });
+                      }}
+                      onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        startEditing("data", c, r, cellText);
+                      }}
+                    >
+                      <div className="relative flex h-8 items-center px-2.5 min-w-0">
+                        {isEditing ? (
+                          <input
+                            ref={inputRef}
+                            type="text"
+                            value={editValue}
+                            onChange={(e) => setEditValue(e.target.value)}
+                            onBlur={() => {
+                              commitEdit();
+                              setEditingCell(null);
+                            }}
+                            onKeyDown={handleKeyDown}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onDoubleClick={(e) => e.stopPropagation()}
+                            className="h-6 w-full rounded-2xs border border-foreground bg-background px-1 font-mono text-xs text-foreground outline-none ring-1 ring-border-visible"
+                          />
+                        ) : isStatusCol ? (
+                          <span
+                            className={cn(
+                              "inline-flex items-center rounded-2xs px-1.5 py-0.5 font-mono text-[10px] font-medium border leading-none tracking-wide",
+                              isSuccess && "border-emerald-500/40 text-emerald-600 dark:text-emerald-400 bg-emerald-500/5",
+                              isWarning && "border-amber-500/40 text-amber-600 dark:text-amber-400 bg-amber-500/5",
+                              isDanger && "border-border-visible text-muted-foreground bg-surface-raised/40",
+                              !isSuccess && !isWarning && !isDanger && "border-border-visible text-muted-foreground bg-surface-raised/40"
+                            )}
+                          >
+                            {cellText}
+                          </span>
+                        ) : (
+                          <span className="truncate">{cellText}</span>
+                        )}
+                      </div>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );
 }
 
 function StickyNotePreview({ props }: { props: Props }) {
-  const title = String(val(props, "title", "需求说明"));
-  const text = String(val(props, "text", "此处为需求说明与交互批注..."));
-  const fill = String(val(props, "fill", "#FEF08A"));
-  const textColor = String(val(props, "textColor", "#713F12"));
-  const stroke = String(val(props, "stroke", "#EAB308"));
+  const title = String(val(props, "title", "需求批注"));
+  const text = String(val(props, "text", "此处记录业务逻辑说明与交互原型备注信息..."));
+  const fill = String(val(props, "fill", "#FFFBEB"));
+  const textColor = String(val(props, "textColor", "#78350F"));
+  const stroke = String(val(props, "stroke", "#D97706"));
   const strokeEnabled = Boolean(props.strokeEnabled);
   const borderWidth = Number(val(props, "borderWidth", 1));
   return (
     <div
-      className="relative flex h-full w-full flex-col p-3 shadow-md overflow-hidden"
+      className="relative flex h-full w-full flex-col p-3 overflow-hidden font-sans select-none"
       style={{
         backgroundColor: fill,
         color: textColor,
-        border: strokeEnabled ? `${borderWidth}px solid ${stroke}` : "none",
-        clipPath: "polygon(0 0, calc(100% - 16px) 0, 100% 16px, 100% 100%, 0 100%)",
+        border: strokeEnabled ? `${borderWidth}px solid ${stroke}` : "1px solid rgba(0,0,0,0.06)",
+        clipPath: "polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%)",
       }}
     >
       <div
-        className="absolute top-0 right-0 size-4 opacity-70"
+        className="absolute top-0 right-0 size-3.5 opacity-60"
         style={{
-          background: "linear-gradient(135deg, rgba(0,0,0,0.15) 50%, rgba(0,0,0,0.05) 50%)",
+          background: "linear-gradient(135deg, rgba(0,0,0,0.2) 50%, rgba(0,0,0,0.08) 50%)",
         }}
       />
-      <div className="mb-1 flex items-center gap-1 opacity-75 shrink-0">
+      <div className="mb-1.5 flex items-center gap-1 opacity-80 shrink-0 font-mono">
         <FileText aria-hidden="true" className="size-3" />
-        <span className="text-[10px] font-bold uppercase tracking-wider truncate">{title}</span>
+        <span className="text-[10px] font-bold tracking-wider uppercase truncate">[ {title} ]</span>
       </div>
-      <p className="line-clamp-6 text-xs leading-relaxed whitespace-pre-wrap">{text}</p>
+      <p className="line-clamp-5 text-xs leading-relaxed whitespace-pre-wrap font-sans opacity-90">{text}</p>
     </div>
   );
 }
 
 function PinNotePreview({ props }: { props: Props }) {
   const index = String(val(props, "index", "1"));
-  const fill = String(val(props, "fill", "#EF4444"));
+  const fill = String(val(props, "fill", "#D71921"));
   const textColor = String(val(props, "textColor", "#FFFFFF"));
   return (
-    <div className="flex h-full w-full items-center justify-center">
+    <div className="flex h-full w-full items-center justify-center select-none">
       <div
-        className="flex size-7 items-center justify-center rounded-full font-bold shadow-md ring-2 ring-white select-none"
-        style={{ backgroundColor: fill, color: textColor, fontSize: "12px" }}
+        className="flex size-7 items-center justify-center rounded-full font-mono font-bold ring-2 ring-background shadow-xs select-none"
+        style={{ backgroundColor: fill, color: textColor, fontSize: "11px" }}
       >
         {index}
       </div>
@@ -2283,83 +2460,91 @@ function PinNotePreview({ props }: { props: Props }) {
 
 function ScrollPanelPreview({ props }: { props: Props }) {
   const fill = String(val(props, "fill", "#FFFFFF"));
-  const stroke = String(val(props, "stroke", "#E2E8F0"));
+  const stroke = String(val(props, "stroke", "#CCCCCC"));
   const strokeEnabled = props.strokeEnabled !== false && props.strokeEnabled !== "false";
   const borderWidth = Number(val(props, "borderWidth", 1));
   const radius = Number(val(props, "radius", 6));
   return (
     <div
-      className="relative flex h-full w-full p-3"
+      className="relative flex h-full w-full p-3 font-sans select-none"
       style={{
         backgroundColor: fill,
-        border: strokeEnabled ? `${borderWidth}px solid ${stroke}` : "none",
+        border: strokeEnabled ? `${borderWidth}px solid ${stroke}` : "1px solid var(--border)",
         borderRadius: radius,
       }}
     >
       <div className="flex-1 overflow-hidden">
         <div className="space-y-2">
-          <div className="h-4 w-3/4 rounded bg-neutral-200" />
-          <div className="h-3 w-full rounded bg-neutral-100" />
-          <div className="h-3 w-5/6 rounded bg-neutral-100" />
-          <div className="h-3 w-2/3 rounded bg-neutral-100" />
+          <div className="h-3.5 w-3/4 rounded-xs bg-surface-raised border border-border" />
+          <div className="h-2.5 w-full rounded-xs bg-surface-raised" />
+          <div className="h-2.5 w-5/6 rounded-xs bg-surface-raised" />
+          <div className="h-2.5 w-2/3 rounded-xs bg-surface-raised" />
         </div>
       </div>
-      <div className="absolute top-1 right-1 bottom-1 w-1.5 rounded-full bg-neutral-200">
-        <div className="h-8 w-full rounded-full bg-neutral-400" />
+      <div className="absolute top-1.5 right-1.5 bottom-1.5 w-1 rounded-full bg-border">
+        <div className="h-8 w-full rounded-full bg-muted-foreground/60" />
       </div>
     </div>
   );
 }
 
 function ModalDialogPreview({ props }: { props: Props }) {
-  const title = String(val(props, "title", "弹窗浮层标题"));
-  const text = String(val(props, "text", "这里是浮层提示内容或表单区域"));
+  const title = String(val(props, "title", "操作提示浮层"));
+  const text = String(val(props, "text", "这里是弹窗说明文本，用于关键确认或信息录入"));
   const confirmText = String(val(props, "confirmText", "确定"));
   const cancelText = String(val(props, "cancelText", "取消"));
   const fill = String(val(props, "fill", "#FFFFFF"));
-  const stroke = String(val(props, "stroke", "#D4D4D8"));
+  const stroke = String(val(props, "stroke", "#CCCCCC"));
   const strokeEnabled = props.strokeEnabled !== false && props.strokeEnabled !== "false";
   const borderWidth = Number(val(props, "borderWidth", 1));
   const radius = Number(val(props, "radius", 8));
   return (
     <div
-      className="flex h-full w-full flex-col overflow-hidden bg-white shadow-xl"
+      className="flex h-full w-full flex-col overflow-hidden font-sans select-none"
       style={{
         backgroundColor: fill,
-        border: strokeEnabled ? `${borderWidth}px solid ${stroke}` : "none",
+        border: strokeEnabled ? `${borderWidth}px solid ${stroke}` : "1px solid var(--border-visible)",
         borderRadius: radius,
       }}
     >
-      <div className="flex items-center justify-between border-b border-neutral-200 bg-neutral-50 px-4 py-2.5">
-        <span className="text-xs font-semibold text-neutral-800 truncate">{title}</span>
-        <div className="flex size-5 items-center justify-center rounded text-neutral-400 hover:bg-neutral-200">
+      <div className="flex items-center justify-between border-b border-border bg-surface-raised px-4 py-2.5 font-mono">
+        <span className="text-xs font-bold tracking-wider uppercase text-foreground truncate">[ {title} ]</span>
+        <div className="flex size-5 items-center justify-center rounded-xs text-muted-foreground hover:bg-surface hover:text-foreground">
           <X aria-hidden="true" className="size-3.5" />
         </div>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col justify-center px-4 py-3 text-xs text-neutral-600">
+      <div className="flex min-h-0 flex-1 flex-col justify-center px-4 py-3 text-xs text-foreground/80">
         <p className="line-clamp-3 leading-relaxed">{text}</p>
       </div>
-      <div className="flex items-center justify-end gap-2 border-t border-neutral-100 bg-neutral-50/50 px-4 py-2.5">
-        {cancelText && <div className="rounded border border-neutral-300 bg-white px-3 py-1 text-[11px] font-medium text-neutral-700">{cancelText}</div>}
-        {confirmText && <div className="rounded bg-blue-600 px-3 py-1 text-[11px] font-medium text-white shadow-2xs">{confirmText}</div>}
+      <div className="flex items-center justify-end gap-2 border-t border-border bg-surface-raised/40 px-4 py-2.5 font-mono">
+        {cancelText && (
+          <div className="rounded-full border border-border-visible bg-surface px-4 py-1 text-[10px] font-medium text-foreground tracking-wider uppercase">
+            {cancelText}
+          </div>
+        )}
+        {confirmText && (
+          <div className="rounded-full bg-foreground px-4 py-1 text-[10px] font-semibold text-background tracking-wider uppercase">
+            {confirmText}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
 function MindMapPreview({ props }: { props: Props }) {
-  const rootTitle = String(val(props, "rootTitle", "中心主题"));
-  const nodesStr = String(val(props, "nodes", "分支节点 1,分支节点 2"));
-  const nodes = parseItems(nodesStr, ["分支节点 1", "分支节点 2"]);
+  const rootTitle = String(val(props, "rootTitle", "中心核心主题"));
+  const nodesStr = String(val(props, "nodes", "分支节点一,分支节点二,分支节点三"));
+  const nodes = parseItems(nodesStr, ["分支节点一", "分支节点二", "分支节点三"]);
 
   return (
-    <div className="flex h-full w-full items-center justify-center gap-4 rounded-lg border border-dashed border-neutral-300 bg-neutral-50/70 p-3 overflow-hidden">
-      <div className="rounded-lg border-2 border-blue-500 bg-blue-50 px-3 py-1.5 text-xs font-bold text-blue-700 shadow-xs truncate max-w-[45%]">
+    <div className="flex h-full w-full items-center justify-center gap-4 rounded-lg border border-border-visible bg-surface p-3 overflow-hidden font-sans select-none">
+      <div className="rounded-full border border-foreground bg-foreground text-background px-3 py-1.5 font-mono text-xs font-bold tracking-wider truncate max-w-[45%]">
         {rootTitle}
       </div>
-      <div className="flex flex-col gap-2 border-l-2 border-neutral-300 pl-3 min-w-0 flex-1">
+      <div className="flex flex-col gap-2 border-l border-border-visible pl-3 min-w-0 flex-1">
         {nodes.map((node, i) => (
-          <div key={`${node}-${i}`} className="rounded border border-neutral-300 bg-white px-2.5 py-1 text-[11px] text-neutral-700 truncate shadow-2xs">
+          <div key={`${node}-${i}`} className="rounded-full border border-border-visible bg-surface-raised px-3 py-1 font-mono text-[10px] text-foreground truncate">
             {node}
           </div>
         ))}
@@ -2369,70 +2554,66 @@ function MindMapPreview({ props }: { props: Props }) {
 }
 
 function DocumentPreview({ props }: { props: Props }) {
-  const title = String(val(props, "title", "产品文档草稿"));
+  const title = String(val(props, "title", "产品需求规格文档"));
   return (
-    <div className="flex h-full w-full flex-col rounded-lg border border-neutral-200 bg-white p-4 shadow-xs">
-      <div className="flex items-center gap-1.5 border-b border-neutral-100 pb-2">
-        <BookOpen aria-hidden="true" className="size-4 text-blue-600" />
-        <span className="text-xs font-bold text-neutral-800 truncate">{title}</span>
+    <div className="flex h-full w-full flex-col rounded-lg border border-border-visible bg-surface p-4 font-sans select-none">
+      <div className="flex items-center gap-1.5 border-b border-border pb-2">
+        <BookOpen aria-hidden="true" className="size-4 text-foreground" />
+        <span className="font-mono text-xs font-bold tracking-wider uppercase text-foreground truncate">[ {title} ]</span>
       </div>
-      <div className="mt-3 space-y-2 text-[10px] text-neutral-500">
-        <div className="h-3 w-1/3 rounded bg-neutral-200" />
-        <div className="h-2.5 w-full rounded bg-neutral-100" />
-        <div className="h-2.5 w-5/6 rounded bg-neutral-100" />
-        <div className="h-2.5 w-4/6 rounded bg-neutral-100" />
+      <div className="mt-3 space-y-2 text-[10px] text-muted-foreground">
+        <div className="h-3 w-1/3 rounded-xs bg-surface-raised border border-border" />
+        <div className="h-2.5 w-full rounded-xs bg-surface-raised" />
+        <div className="h-2.5 w-5/6 rounded-xs bg-surface-raised" />
+        <div className="h-2.5 w-4/6 rounded-xs bg-surface-raised" />
       </div>
     </div>
   );
 }
 
 function AiComponentPreview({ props }: { props: Props }) {
-  const prompt = String(val(props, "prompt", "AI 智能生成原型模块"));
-  const hint = String(val(props, "hint", "输入提示词，自动构建线框元件"));
+  const prompt = String(val(props, "prompt", "智能原型助手"));
+  const hint = String(val(props, "hint", "输入自然语言提示词，自动推演生成交互原型"));
   const fill = String(val(props, "fill", ""));
-  const stroke = String(val(props, "stroke", "#E9D5FF"));
+  const stroke = String(val(props, "stroke", "#CCCCCC"));
   const strokeEnabled = props.strokeEnabled !== false && props.strokeEnabled !== "false";
   const borderWidth = Number(val(props, "borderWidth", 1));
-  const radius = Number(val(props, "radius", 12));
+  const radius = Number(val(props, "radius", 8));
   return (
     <div
       className={cn(
-        "flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center",
-        !fill && "bg-gradient-to-br from-purple-50/60 to-indigo-50/60"
+        "flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center font-sans select-none",
+        !fill && "bg-surface"
       )}
       style={{
         backgroundColor: fill || undefined,
-        border: strokeEnabled ? `${borderWidth}px solid ${stroke}` : "none",
+        border: strokeEnabled ? `${borderWidth}px solid ${stroke}` : "1px solid var(--border-visible)",
         borderRadius: radius,
       }}
     >
-      <div className="flex size-8 items-center justify-center rounded-full bg-purple-600 text-white shadow-sm">
-        <Sparkles aria-hidden="true" className="size-4" />
+      <div className="flex size-7 items-center justify-center rounded-full border border-border-visible bg-surface-raised text-foreground">
+        <Sparkles aria-hidden="true" className="size-3.5" />
       </div>
-      <span className="text-xs font-bold text-purple-900 line-clamp-2">{prompt}</span>
-      {hint && <span className="text-[10px] text-purple-600/70 line-clamp-1">{hint}</span>}
+      <span className="font-mono text-xs font-bold uppercase tracking-wider text-foreground line-clamp-1">[ {prompt} ]</span>
+      {hint && <span className="text-[10px] text-muted-foreground line-clamp-1">{hint}</span>}
     </div>
   );
 }
 
 function InputPreview({ props }: { props?: Props }) {
-  const label = props ? String(val(props, "label", "")) : "";
-  const placeholder = props ? String(val(props, "placeholder", "请输入内容...")) : "请输入内容...";
-  const radius = props ? Number(val(props, "radius", 6)) : 6;
-  const fill = props ? String(val(props, "fill", "#FFFFFF")) : "#FFFFFF";
-  const stroke = props ? String(val(props, "stroke", "#D4D4D8")) : "#D4D4D8";
-  const strokeEnabled = props ? (props.strokeEnabled !== false && props.strokeEnabled !== "false") : true;
-  const borderWidth = props ? Number(val(props, "borderWidth", 1)) : 1;
+  const p = props || {};
+  const label = String(val(p, "label", ""));
+  const placeholder = String(val(p, "placeholder", "请输入内容..."));
+  const style = computeShapeStyle(p, { fill: "var(--background)", stroke: "var(--border-visible)", borderWidth: 1, radius: 6 });
   return (
-    <div className="flex h-full w-full flex-col justify-center gap-1">
-      {label && <span className="text-[11px] font-medium text-neutral-700 truncate">{label}</span>}
+    <div className="flex h-full w-full flex-col justify-between gap-1 overflow-hidden font-sans select-none">
+      {label && <span className="text-[11px] font-medium text-foreground/80 truncate shrink-0 leading-none py-0.5">{label}</span>}
       <div
-        className="flex h-9 w-full items-center px-3 text-xs text-neutral-400 shadow-xs"
-        style={{
-          backgroundColor: fill,
-          borderRadius: radius,
-          border: strokeEnabled ? `${borderWidth}px solid ${stroke}` : "none",
-        }}
+        className={cn(
+          "flex w-full items-center px-3 text-xs text-muted-foreground shadow-xs min-h-0",
+          label ? "flex-1 min-h-6" : "h-full"
+        )}
+        style={style}
       >
         <span className="truncate">{placeholder}</span>
       </div>
@@ -2441,23 +2622,16 @@ function InputPreview({ props }: { props?: Props }) {
 }
 
 function TextareaPreview({ props }: { props?: Props }) {
-  const label = props ? String(val(props, "label", "")) : "";
-  const placeholder = props ? String(val(props, "placeholder", "请输入详细多行说明...")) : "请输入详细多行说明...";
-  const radius = props ? Number(val(props, "radius", 6)) : 6;
-  const fill = props ? String(val(props, "fill", "#FFFFFF")) : "#FFFFFF";
-  const stroke = props ? String(val(props, "stroke", "#D4D4D8")) : "#D4D4D8";
-  const strokeEnabled = props ? (props.strokeEnabled !== false && props.strokeEnabled !== "false") : true;
-  const borderWidth = props ? Number(val(props, "borderWidth", 1)) : 1;
+  const p = props || {};
+  const label = String(val(p, "label", ""));
+  const placeholder = String(val(p, "placeholder", "请输入详细多行说明..."));
+  const style = computeShapeStyle(p, { fill: "var(--background)", stroke: "var(--border-visible)", borderWidth: 1, radius: 6 });
   return (
-    <div className="flex h-full w-full flex-col gap-1">
-      {label && <span className="text-[11px] font-medium text-neutral-700 truncate">{label}</span>}
+    <div className="flex h-full w-full flex-col gap-1 overflow-hidden font-sans select-none">
+      {label && <span className="text-[11px] font-medium text-foreground/80 truncate shrink-0 leading-none py-0.5">{label}</span>}
       <div
-        className="flex flex-1 p-2.5 text-xs text-neutral-400 shadow-xs"
-        style={{
-          backgroundColor: fill,
-          borderRadius: radius,
-          border: strokeEnabled ? `${borderWidth}px solid ${stroke}` : "none",
-        }}
+        className="flex flex-1 min-h-0 p-2.5 text-xs text-muted-foreground shadow-xs"
+        style={style}
       >
         <span className="truncate">{placeholder}</span>
       </div>
@@ -2466,39 +2640,40 @@ function TextareaPreview({ props }: { props?: Props }) {
 }
 
 function SelectPreview({ props }: { props?: Props }) {
-  const label = props ? String(val(props, "label", "")) : "";
-  const placeholder = props ? String(val(props, "placeholder", "请选择...")) : "请选择...";
-  const radius = props ? Number(val(props, "radius", 6)) : 6;
-  const fill = props ? String(val(props, "fill", "#FFFFFF")) : "#FFFFFF";
-  const stroke = props ? String(val(props, "stroke", "#D4D4D8")) : "#D4D4D8";
-  const strokeEnabled = props ? (props.strokeEnabled !== false && props.strokeEnabled !== "false") : true;
-  const borderWidth = props ? Number(val(props, "borderWidth", 1)) : 1;
+  const p = props || {};
+  const label = String(val(p, "label", ""));
+  const placeholder = String(val(p, "placeholder", "请选择..."));
+  const style = computeShapeStyle(p, { fill: "var(--background)", stroke: "var(--border-visible)", borderWidth: 1, radius: 6 });
   return (
-    <div className="flex h-full w-full flex-col justify-center gap-1">
-      {label && <span className="text-[11px] font-medium text-neutral-700 truncate">{label}</span>}
+    <div className="flex h-full w-full flex-col justify-between gap-1 overflow-hidden font-sans select-none">
+      {label && <span className="text-[11px] font-medium text-foreground/80 truncate shrink-0 leading-none py-0.5">{label}</span>}
       <div
-        className="flex h-9 w-full items-center justify-between px-3 text-xs text-neutral-600 shadow-xs"
-        style={{
-          backgroundColor: fill,
-          borderRadius: radius,
-          border: strokeEnabled ? `${borderWidth}px solid ${stroke}` : "none",
-        }}
+        className={cn(
+          "flex w-full items-center justify-between px-3 text-xs text-foreground shadow-xs min-h-0",
+          label ? "flex-1 min-h-6" : "h-full"
+        )}
+        style={style}
       >
         <span className="truncate">{placeholder}</span>
-        <ChevronsUpDown aria-hidden="true" className="size-3.5 text-neutral-400 shrink-0 ml-1" />
+        <ChevronsUpDown aria-hidden="true" className="size-3.5 text-muted-foreground shrink-0 ml-1" />
       </div>
     </div>
   );
 }
 
 function FileUploadPreview({ props }: { props?: Props }) {
-  const text = props ? String(val(props, "text", "点击或将文件拖拽到这里上传")) : "点击或将文件拖拽到这里上传";
-  const hint = props ? String(val(props, "hint", "支持 png, jpg, pdf 格式")) : "支持 png, jpg, pdf 格式";
+  const p = props || {};
+  const text = String(val(p, "text", "点击或将文件拖拽到这里上传"));
+  const hint = String(val(p, "hint", "支持 png, jpg, pdf 格式"));
+  const style = computeShapeStyle(p, { fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 2, radius: 8 });
   return (
-    <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-neutral-300 bg-neutral-50/60 p-3 text-center">
-      <Upload aria-hidden="true" className="size-5 text-neutral-400" />
-      <span className="text-xs font-medium text-neutral-700 line-clamp-1">{text}</span>
-      {hint && <span className="text-[10px] text-neutral-400 line-clamp-1">{hint}</span>}
+    <div
+      className="flex h-full w-full flex-col items-center justify-center gap-1.5 border-dashed p-3 text-center font-sans select-none"
+      style={style}
+    >
+      <Upload aria-hidden="true" className="size-5 text-muted-foreground" />
+      <span className="text-xs font-medium text-foreground line-clamp-1">{text}</span>
+      {hint && <span className="text-[10px] text-muted-foreground line-clamp-1">{hint}</span>}
     </div>
   );
 }
@@ -2608,34 +2783,29 @@ function StepperPreview({ props }: { props?: Props }) {
 }
 
 function SearchPreview({ props }: { props?: Props }) {
-  const placeholder = props ? String(val(props, "placeholder", "搜索关键词...")) : "搜索关键词...";
-  const fill = props ? String(val(props, "fill", "#FFFFFF")) : "#FFFFFF";
-  const stroke = props ? String(val(props, "stroke", "#D4D4D8")) : "#D4D4D8";
-  const strokeEnabled = props ? (props.strokeEnabled !== false && props.strokeEnabled !== "false") : true;
-  const borderWidth = props ? Number(val(props, "borderWidth", 1)) : 1;
-  const radius = props ? Number(val(props, "radius", 6)) : 6;
+  const p = props || {};
+  const placeholder = String(val(p, "placeholder", "搜索关键词..."));
+  const style = computeShapeStyle(p, { fill: "var(--background)", stroke: "var(--border-visible)", borderWidth: 1, radius: 6 });
   return (
     <div
-      className="flex h-full w-full items-center gap-2 px-3 text-xs text-neutral-400 shadow-xs"
-      style={{
-        backgroundColor: fill,
-        borderRadius: radius,
-        border: strokeEnabled ? `${borderWidth}px solid ${stroke}` : "none",
-      }}
+      className="flex h-full w-full items-center gap-2 px-3 text-xs text-muted-foreground shadow-xs font-sans select-none"
+      style={style}
     >
-      <Search aria-hidden="true" className="size-3.5 text-neutral-400 shrink-0" />
+      <Search aria-hidden="true" className="size-3.5 text-muted-foreground shrink-0" />
       <span className="truncate">{placeholder}</span>
     </div>
   );
 }
 
 function DropdownMenuPreview({ props }: { props?: Props }) {
-  const itemsStr = props ? String(val(props, "items", "个人中心,账号设置,退出登录")) : "个人中心,账号设置,退出登录";
+  const p = props || {};
+  const itemsStr = String(val(p, "items", "个人中心,账号设置,退出登录"));
   const items = parseItems(itemsStr, ["个人中心", "账号设置", "退出登录"]);
+  const style = computeShapeStyle(p, { fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1, radius: 6 });
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden rounded-md border border-neutral-200 bg-white py-1 shadow-lg text-xs">
+    <div className="flex h-full w-full flex-col overflow-hidden py-1 shadow-lg text-xs font-sans select-none" style={style}>
       {items.map((it, i) => (
-        <div key={`${it}-${i}`} className="flex items-center px-3 py-1.5 text-neutral-700 hover:bg-neutral-100 truncate">
+        <div key={`${it}-${i}`} className="flex items-center px-3 py-1.5 text-foreground hover:bg-surface-raised truncate">
           {it}
         </div>
       ))}
@@ -2644,13 +2814,15 @@ function DropdownMenuPreview({ props }: { props?: Props }) {
 }
 
 function PopupMenuPreview({ props }: { props?: Props }) {
-  const title = props ? String(val(props, "title", "更多操作")) : "更多操作";
-  const itemsStr = props ? String(val(props, "items", "配置详情,分享项目,删除项目")) : "配置详情,分享项目,删除项目";
+  const p = props || {};
+  const title = String(val(p, "title", "更多操作"));
+  const itemsStr = String(val(p, "items", "配置详情,分享项目,删除项目"));
   const items = parseItems(itemsStr, ["配置详情", "分享项目", "删除项目"]);
+  const style = computeShapeStyle(p, { fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1, radius: 8 });
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-xl text-xs">
-      <div className="border-b border-neutral-100 bg-neutral-50 px-3 py-2 font-semibold text-neutral-700 truncate">
+    <div className="flex h-full w-full flex-col overflow-hidden shadow-xl text-xs font-sans select-none" style={style}>
+      <div className="border-b border-border-visible bg-surface-raised px-3 py-2 font-semibold text-foreground truncate">
         {title}
       </div>
       <div className="p-1 space-y-0.5 overflow-y-auto">
@@ -2660,13 +2832,13 @@ function PopupMenuPreview({ props }: { props?: Props }) {
             <div
               key={`${it}-${i}`}
               className={`flex items-center gap-2 rounded px-2.5 py-1.5 truncate ${
-                isDanger ? "text-red-600 hover:bg-red-50" : "text-neutral-700 hover:bg-neutral-100"
+                isDanger ? "text-[#D71921] hover:bg-[#D71921]/10 font-medium" : "text-foreground hover:bg-surface-raised"
               }`}
             >
               {isDanger ? (
                 <Trash aria-hidden="true" className="size-3.5 shrink-0" />
               ) : (
-                <Settings aria-hidden="true" className="size-3.5 text-neutral-500 shrink-0" />
+                <Settings aria-hidden="true" className="size-3.5 text-muted-foreground shrink-0" />
               )}
               <span className="truncate">{it}</span>
             </div>
@@ -2790,23 +2962,16 @@ function BrowserFramePreview({ props, children }: { props: Props; children?: Rea
 }
 
 function DatePickerPreview({ props }: { props?: Props }) {
-  const placeholder = props ? String(val(props, "placeholder", "2026-08-30")) : "2026-08-30";
-  const fill = props ? String(val(props, "fill", "#FFFFFF")) : "#FFFFFF";
-  const stroke = props ? String(val(props, "stroke", "#D4D4D8")) : "#D4D4D8";
-  const strokeEnabled = props ? (props.strokeEnabled !== false && props.strokeEnabled !== "false") : true;
-  const borderWidth = props ? Number(val(props, "borderWidth", 1)) : 1;
-  const radius = props ? Number(val(props, "radius", 6)) : 6;
+  const p = props || {};
+  const placeholder = String(val(p, "placeholder", "2026-08-30"));
+  const style = computeShapeStyle(p, { fill: "var(--background)", stroke: "var(--border-visible)", borderWidth: 1, radius: 6 });
   return (
     <div
-      className="flex h-full w-full items-center justify-between px-3 text-xs text-neutral-700 shadow-xs"
-      style={{
-        backgroundColor: fill,
-        borderRadius: radius,
-        border: strokeEnabled ? `${borderWidth}px solid ${stroke}` : "none",
-      }}
+      className="flex h-full w-full items-center justify-between px-3 text-xs text-foreground shadow-xs font-sans select-none"
+      style={style}
     >
       <span>{placeholder}</span>
-      <CalendarDays aria-hidden="true" className="size-3.5 text-neutral-400" />
+      <CalendarDays aria-hidden="true" className="size-3.5 text-muted-foreground shrink-0" />
     </div>
   );
 }
@@ -2814,14 +2979,14 @@ function DatePickerPreview({ props }: { props?: Props }) {
 function IconButtonPreview({ props }: { props?: Props }) {
   const p = props || {};
   const style = computeShapeStyle(p, {
-    fill: "#FFFFFF",
-    stroke: "#D4D4D8",
+    fill: "var(--surface)",
+    stroke: "var(--border-visible)",
     borderWidth: 1,
     radius: 6,
   });
   return (
     <div className="flex h-full w-full items-center justify-center shadow-xs select-none" style={style}>
-      <Plus aria-hidden="true" className="size-4 text-neutral-600" />
+      <Plus aria-hidden="true" className="size-4 text-foreground" />
     </div>
   );
 }
@@ -2871,11 +3036,11 @@ function FlowchartShapePreview({ type, props }: { type: ComponentType; props: Pr
   const p = props || {};
   const fillEnabled = p.fillEnabled !== false && p.fillEnabled !== "false";
   const strokeEnabled = p.strokeEnabled !== false && p.strokeEnabled !== "false";
-  const rawFill = String(val(p, "fill", "#FFFFFF"));
+  const rawFill = String(val(p, "fill", "var(--surface)"));
   const fillOpacity = Number(p.fillOpacity ?? 100);
   const fill = fillEnabled ? (rawFill === "transparent" || rawFill === "none" ? "none" : hexToRgba(rawFill, fillOpacity)) : "none";
 
-  const rawStroke = String(val(p, "stroke", "#52525B"));
+  const rawStroke = String(val(p, "stroke", "var(--border-visible)"));
   const strokeOpacity = Number(p.strokeOpacity ?? 100);
   const stroke = strokeEnabled ? hexToRgba(rawStroke, strokeOpacity) : "none";
   const borderWidth = Number(val(p, "borderWidth", 1.5));

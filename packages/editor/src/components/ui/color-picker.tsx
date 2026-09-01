@@ -609,6 +609,197 @@ export function ColorSwatchBadge({
   );
 }
 
+function DraftHexInput({
+  value,
+  prefix = "#",
+  placeholder = "FFFFFF",
+  onChange,
+  className,
+  inputClassName,
+}: {
+  value: string;
+  prefix?: string;
+  placeholder?: string;
+  onChange: (hex: string) => void;
+  className?: string;
+  inputClassName?: string;
+}) {
+  const [text, setText] = useState(value);
+  const [isFocused, setIsFocused] = useState(false);
+
+  useEffect(() => {
+    if (!isFocused) {
+      setText(value);
+    }
+  }, [value, isFocused]);
+
+  const commit = (raw: string) => {
+    const clean = raw.trim().replace(/^#/, "");
+    if (clean.toLowerCase() === "transparent" || clean.toLowerCase() === "none") {
+      onChange("transparent");
+      return;
+    }
+    if (/^[0-9a-fA-F]{3,8}$/.test(clean)) {
+      let hex = clean;
+      if (hex.length === 3) {
+        hex = hex.split("").map((c) => c + c).join("");
+      }
+      if (hex.length >= 6) {
+        const standardHex = `#${hex.slice(0, 6).toUpperCase()}`;
+        setText(hex.slice(0, 6).toUpperCase());
+        onChange(standardHex);
+        return;
+      }
+    }
+    setText(value);
+  };
+
+  return (
+    <Input
+      size="sm"
+      type="text"
+      value={text}
+      prefix={prefix}
+      placeholder={placeholder}
+      onFocus={(e) => {
+        setIsFocused(true);
+        e.currentTarget.select();
+      }}
+      onBlur={() => {
+        setIsFocused(false);
+        commit(text);
+      }}
+      onChange={(e) => {
+        const raw = e.target.value.trim().replace(/^#/, "");
+        setText(raw.toUpperCase());
+        if (/^[0-9a-fA-F]{3}$|^[0-9a-fA-F]{6}$|^[0-9a-fA-F]{8}$/.test(raw)) {
+          let hex = raw;
+          if (hex.length === 3) {
+            hex = hex.split("").map((c) => c + c).join("");
+          }
+          if (hex.length >= 6) {
+            onChange(`#${hex.slice(0, 6).toUpperCase()}`);
+          }
+        }
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          commit(text);
+          (e.target as HTMLInputElement).blur();
+        } else if (e.key === "Escape") {
+          setText(value);
+          (e.target as HTMLInputElement).blur();
+        }
+      }}
+      className={className}
+      inputClassName={inputClassName}
+    />
+  );
+}
+
+function DraftNumInput({
+  value,
+  min = 0,
+  max = 100,
+  suffix,
+  title,
+  onChange,
+  className,
+  inputClassName,
+}: {
+  value: number;
+  min?: number;
+  max?: number;
+  suffix?: string;
+  title?: string;
+  onChange: (val: number) => void;
+  className?: string;
+  inputClassName?: string;
+}) {
+  const [text, setText] = useState(() => (Number.isNaN(value) ? "0" : String(value)));
+  const [isFocused, setIsFocused] = useState(false);
+
+  useEffect(() => {
+    if (!isFocused) {
+      setText(Number.isNaN(value) ? "0" : String(value));
+    }
+  }, [value, isFocused]);
+
+  const commit = (raw: string) => {
+    const trimmed = raw.trim();
+    if (!trimmed) {
+      setText(Number.isNaN(value) ? "0" : String(value));
+      return;
+    }
+    const num = Number(trimmed);
+    if (Number.isNaN(num)) {
+      setText(Number.isNaN(value) ? "0" : String(value));
+      return;
+    }
+    const clamped = clamp(Math.round(num), min, max);
+    setText(String(clamped));
+    if (clamped !== value) {
+      onChange(clamped);
+    }
+  };
+
+  return (
+    <Input
+      size="sm"
+      type="text"
+      inputMode="numeric"
+      value={text}
+      suffix={suffix}
+      title={title}
+      onFocus={(e) => {
+        setIsFocused(true);
+        e.currentTarget.select();
+      }}
+      onBlur={() => {
+        setIsFocused(false);
+        commit(text);
+      }}
+      onChange={(e) => {
+        setText(e.target.value);
+        const trimmed = e.target.value.trim();
+        if (trimmed !== "" && !Number.isNaN(Number(trimmed))) {
+          const num = Number(trimmed);
+          if (num >= min && num <= max) {
+            onChange(clamp(Math.round(num), min, max));
+          }
+        }
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          commit(text);
+          (e.target as HTMLInputElement).blur();
+        } else if (e.key === "Escape") {
+          setText(Number.isNaN(value) ? "0" : String(value));
+          (e.target as HTMLInputElement).blur();
+        } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+          e.preventDefault();
+          const current = Number(text.trim()) || value;
+          const mult = e.shiftKey ? 10 : 1;
+          const delta = (e.key === "ArrowUp" ? 1 : -1) * mult;
+          const clamped = clamp(current + delta, min, max);
+          setText(String(clamped));
+          onChange(clamped);
+        }
+      }}
+      onWheel={(e) => {
+        const current = Number(text.trim()) || value;
+        const mult = e.shiftKey ? 10 : 1;
+        const delta = (e.deltaY < 0 ? 1 : -1) * mult;
+        const clamped = clamp(current + delta, min, max);
+        setText(String(clamped));
+        onChange(clamped);
+      }}
+      className={className}
+      inputClassName={inputClassName}
+    />
+  );
+}
+
 /* =========================================================================
    Main ColorPicker Popover Content Panel
    ========================================================================= */
@@ -804,36 +995,27 @@ export function ColorPickerPanel({
         {/* Dynamic Format Inputs */}
         {format === "HEX" && (
           <div className="flex min-w-0 flex-1 items-center gap-1.5 font-mono">
-            <Input
-              size="sm"
+            <DraftHexInput
               value={currentHex}
               prefix="#"
-              onChange={(e) => {
-                const val = e.target.value.trim().replace(/^#/, "");
-                if (/^[0-9a-fA-F]{0,8}$/.test(val)) {
-                  if (val.length === 6 || val.length === 3 || val.length === 8) {
-                    const newRgba = parseColor(`#${val}`, currentOpacityPercent);
-                    setHsva(rgbaToHsva(newRgba));
-                    onChange(`#${val.toUpperCase()}`, Math.round(newRgba.a * 100));
-                    saveRecentColor(`#${val.toUpperCase()}`);
-                    setRecentColors(getRecentColors());
-                  }
-                }
+              placeholder="FFFFFF"
+              onChange={(hex) => {
+                const newRgba = parseColor(hex, currentOpacityPercent);
+                setHsva(rgbaToHsva(newRgba));
+                onChange(hex, Math.round(newRgba.a * 100));
+                saveRecentColor(hex);
+                setRecentColors(getRecentColors());
               }}
               className="h-7.5 min-w-0 flex-1 font-mono text-xs uppercase border-border-visible/80 bg-surface rounded-md focus-within:border-foreground"
               inputClassName="font-mono text-xs uppercase tracking-wider"
-              placeholder="FFFFFF"
             />
             <div className="w-16 shrink-0">
-              <Input
-                size="sm"
-                type="number"
+              <DraftNumInput
                 min={0}
                 max={100}
                 value={currentOpacityPercent}
                 suffix="%"
-                onChange={(e) => {
-                  const o = clamp(Number(e.target.value) || 0, 0, 100);
+                onChange={(o) => {
                   handleHsvaChange({ ...hsva, a: o / 100 });
                 }}
                 className="h-7.5 w-full font-mono text-xs border-border-visible/80 bg-surface rounded-md focus-within:border-foreground"
@@ -845,14 +1027,11 @@ export function ColorPickerPanel({
 
         {format === "RGB" && (
           <div className="grid min-w-0 flex-1 grid-cols-4 gap-1 font-mono">
-            <Input
-              size="sm"
-              type="number"
+            <DraftNumInput
               min={0}
               max={255}
               value={currentRgba.r}
-              onChange={(e) => {
-                const r = clamp(Number(e.target.value) || 0, 0, 255);
+              onChange={(r) => {
                 const nextRgba = { ...currentRgba, r };
                 setHsva(rgbaToHsva(nextRgba));
                 onChange(rgbaToHex(nextRgba), Math.round(nextRgba.a * 100));
@@ -861,14 +1040,11 @@ export function ColorPickerPanel({
               className="h-7.5 border-border-visible/80 bg-surface rounded-md"
               inputClassName="text-center font-mono text-[10px] px-0.5"
             />
-            <Input
-              size="sm"
-              type="number"
+            <DraftNumInput
               min={0}
               max={255}
               value={currentRgba.g}
-              onChange={(e) => {
-                const g = clamp(Number(e.target.value) || 0, 0, 255);
+              onChange={(g) => {
                 const nextRgba = { ...currentRgba, g };
                 setHsva(rgbaToHsva(nextRgba));
                 onChange(rgbaToHex(nextRgba), Math.round(nextRgba.a * 100));
@@ -877,14 +1053,11 @@ export function ColorPickerPanel({
               className="h-7.5 border-border-visible/80 bg-surface rounded-md"
               inputClassName="text-center font-mono text-[10px] px-0.5"
             />
-            <Input
-              size="sm"
-              type="number"
+            <DraftNumInput
               min={0}
               max={255}
               value={currentRgba.b}
-              onChange={(e) => {
-                const b = clamp(Number(e.target.value) || 0, 0, 255);
+              onChange={(b) => {
                 const nextRgba = { ...currentRgba, b };
                 setHsva(rgbaToHsva(nextRgba));
                 onChange(rgbaToHex(nextRgba), Math.round(nextRgba.a * 100));
@@ -893,15 +1066,12 @@ export function ColorPickerPanel({
               className="h-7.5 border-border-visible/80 bg-surface rounded-md"
               inputClassName="text-center font-mono text-[10px] px-0.5"
             />
-            <Input
-              size="sm"
-              type="number"
+            <DraftNumInput
               min={0}
               max={100}
               value={currentOpacityPercent}
               suffix="%"
-              onChange={(e) => {
-                const o = clamp(Number(e.target.value) || 0, 0, 100);
+              onChange={(o) => {
                 handleHsvaChange({ ...hsva, a: o / 100 });
               }}
               title="Opacity %"
@@ -913,14 +1083,11 @@ export function ColorPickerPanel({
 
         {format === "HSL" && (
           <div className="grid min-w-0 flex-1 grid-cols-4 gap-1 font-mono">
-            <Input
-              size="sm"
-              type="number"
+            <DraftNumInput
               min={0}
               max={360}
               value={currentHsla.h}
-              onChange={(e) => {
-                const h = clamp(Number(e.target.value) || 0, 0, 360);
+              onChange={(h) => {
                 const nextRgba = hslaToRgba({ ...currentHsla, h });
                 setHsva(rgbaToHsva(nextRgba));
                 onChange(rgbaToHex(nextRgba), Math.round(nextRgba.a * 100));
@@ -929,14 +1096,11 @@ export function ColorPickerPanel({
               className="h-7.5 border-border-visible/80 bg-surface rounded-md"
               inputClassName="text-center font-mono text-[10px] px-0.5"
             />
-            <Input
-              size="sm"
-              type="number"
+            <DraftNumInput
               min={0}
               max={100}
               value={currentHsla.s}
-              onChange={(e) => {
-                const s = clamp(Number(e.target.value) || 0, 0, 100);
+              onChange={(s) => {
                 const nextRgba = hslaToRgba({ ...currentHsla, s });
                 setHsva(rgbaToHsva(nextRgba));
                 onChange(rgbaToHex(nextRgba), Math.round(nextRgba.a * 100));
@@ -945,14 +1109,11 @@ export function ColorPickerPanel({
               className="h-7.5 border-border-visible/80 bg-surface rounded-md"
               inputClassName="text-center font-mono text-[10px] px-0.5"
             />
-            <Input
-              size="sm"
-              type="number"
+            <DraftNumInput
               min={0}
               max={100}
               value={currentHsla.l}
-              onChange={(e) => {
-                const l = clamp(Number(e.target.value) || 0, 0, 100);
+              onChange={(l) => {
                 const nextRgba = hslaToRgba({ ...currentHsla, l });
                 setHsva(rgbaToHsva(nextRgba));
                 onChange(rgbaToHex(nextRgba), Math.round(nextRgba.a * 100));
@@ -961,15 +1122,12 @@ export function ColorPickerPanel({
               className="h-7.5 border-border-visible/80 bg-surface rounded-md"
               inputClassName="text-center font-mono text-[10px] px-0.5"
             />
-            <Input
-              size="sm"
-              type="number"
+            <DraftNumInput
               min={0}
               max={100}
               value={currentOpacityPercent}
               suffix="%"
-              onChange={(e) => {
-                const o = clamp(Number(e.target.value) || 0, 0, 100);
+              onChange={(o) => {
                 handleHsvaChange({ ...hsva, a: o / 100 });
               }}
               title="Opacity %"
@@ -1133,16 +1291,15 @@ export function ColorPickerRow({
       </Popover>
 
       {/* Hex / Color Text Input */}
-      <Input
-        size="sm"
+      <DraftHexInput
         value={hexValue}
         prefix="#"
-        onChange={(e) => {
-          const v = e.target.value.trim().replace(/^#/, "");
-          if (v.toLowerCase() === "transparent" || v === "none") {
+        placeholder="FFFFFF"
+        onChange={(hex) => {
+          if (hex === "transparent") {
             handleColorPicked("transparent", 0);
           } else {
-            handleColorPicked(`#${v}`, opacity);
+            handleColorPicked(hex, opacity);
           }
         }}
         className="h-7.5 min-w-0 flex-1 font-mono text-xs uppercase border-border-visible/80 bg-surface rounded-md focus-within:border-foreground"
@@ -1151,15 +1308,12 @@ export function ColorPickerRow({
 
       {/* Opacity % */}
       <div className="w-16 shrink-0 font-mono">
-        <Input
-          size="sm"
-          type="number"
+        <DraftNumInput
           min={0}
           max={100}
           value={isTransparent ? 0 : opacity}
           suffix="%"
-          onChange={(e) => {
-            const v = clamp(Number(e.target.value) || 0, 0, 100);
+          onChange={(v) => {
             handleColorPicked(color, v);
           }}
           className="h-7.5 w-full font-mono text-xs border-border-visible/80 bg-surface rounded-md focus-within:border-foreground"

@@ -1,7 +1,7 @@
 "use client";
 
 import { NumberField as NumberFieldPrimitive } from "@base-ui/react/number-field";
-import { MinusIcon, PlusIcon } from "lucide-react";
+import { MinusIcon, PlusIcon, ChevronUp, ChevronDown } from "lucide-react";
 import * as React from "react";
 import { cn } from "@bluepen/editor/lib/utils";
 import { Label } from "@bluepen/editor/components/ui/label";
@@ -85,6 +85,58 @@ export function NumberFieldIncrement({
     >
       <PlusIcon />
     </NumberFieldPrimitive.Increment>
+  );
+}
+
+export function NumberFieldSteppers({
+  className,
+  ...props
+}: React.ComponentProps<"div">): React.ReactElement {
+  return (
+    <div
+      className={cn(
+        "flex flex-col border-s border-border-visible/80 divide-y divide-border-visible/80 shrink-0 self-stretch my-0.5 mr-0.5",
+        className,
+      )}
+      data-slot="number-field-steppers"
+      {...props}
+    />
+  );
+}
+
+export function NumberFieldStepperUp({
+  className,
+  ...props
+}: NumberFieldPrimitive.Increment.Props): React.ReactElement {
+  return (
+    <NumberFieldPrimitive.Increment
+      className={cn(
+        "flex flex-1 items-center justify-center px-1.5 text-muted-foreground hover:text-foreground hover:bg-surface-raised active:bg-surface-raised/80 transition-colors cursor-pointer select-none",
+        className,
+      )}
+      data-slot="number-field-stepper-up"
+      {...props}
+    >
+      <ChevronUp className="size-3" />
+    </NumberFieldPrimitive.Increment>
+  );
+}
+
+export function NumberFieldStepperDown({
+  className,
+  ...props
+}: NumberFieldPrimitive.Decrement.Props): React.ReactElement {
+  return (
+    <NumberFieldPrimitive.Decrement
+      className={cn(
+        "flex flex-1 items-center justify-center px-1.5 text-muted-foreground hover:text-foreground hover:bg-surface-raised active:bg-surface-raised/80 transition-colors cursor-pointer select-none",
+        className,
+      )}
+      data-slot="number-field-stepper-down"
+      {...props}
+    >
+      <ChevronDown className="size-3" />
+    </NumberFieldPrimitive.Decrement>
   );
 }
 

@@ -7,6 +7,7 @@ import {
   // Navigation / Shell icons
   Layers,
   Box,
+  Boxes,
   Search,
   Plus,
   Trash2,
@@ -76,6 +77,7 @@ import {
   Menu,
   PanelTop,
   Columns3,
+  Columns2,
   ChevronsRight,
   LayoutTemplate,
   FolderTree,
@@ -87,6 +89,7 @@ import {
   FileSpreadsheet,
   PanelBottomClose,
   PanelRightClose,
+  PanelLeftClose,
   BellRing,
   LayoutDashboard,
   SearchCode,
@@ -117,9 +120,15 @@ import {
   HelpCircle,
   MousePointerClick,
   Video,
+  BarChart3,
+  Settings,
+  Bot,
+  UserCheck,
+  Terminal,
+  LayoutGrid,
 } from "lucide-react";
 import type { ComponentType, EditorElement, Page } from "./types";
-import { library, type LibraryComponent } from "./library/index";
+import { library, type LibraryComponent, agentLibrary } from "./library/index";
 import { webLibrary } from "./library/web-components";
 
 interface LeftSidebarProps {
@@ -138,10 +147,14 @@ interface LeftSidebarProps {
   onUpdateElement: (id: string, patch: Partial<EditorElement>) => void;
   onDeleteElement: (id: string) => void;
   onAddAsset: (type: ComponentType) => void;
+  drawerCollapsed?: boolean;
+  onToggleDrawer?: () => void;
 }
 
 export function getElementIcon(type: ComponentType) {
   switch (type) {
+    case "group":
+      return Boxes;
     // Basic Wireframe
     case "text":
       return Type;
@@ -326,6 +339,8 @@ export function getElementIcon(type: ComponentType) {
       return ListOrdered;
 
     // Web Form
+    case "web-button":
+      return RectangleHorizontal;
     case "web-input":
       return TextCursorInput;
     case "web-input-number":
@@ -416,6 +431,64 @@ export function getElementIcon(type: ComponentType) {
       return LockKeyhole;
     case "web-steps-form":
       return Workflow;
+    case "web-button-group":
+      return Columns2;
+    case "web-card":
+      return Square;
+    case "web-chart":
+      return BarChart3;
+    case "web-kanban":
+      return Columns3;
+    case "web-calendar":
+      return CalendarDays;
+    case "web-dashboard-page":
+      return LayoutDashboard;
+    case "web-settings-page":
+      return Settings;
+    case "web-pricing-table":
+      return CreditCard;
+    case "web-faq-section":
+      return HelpCircle;
+
+    // Agent Templates & Components
+    case "agent-home-layout":
+      return Bot;
+    case "agent-chat-stream-layout":
+      return MessageSquare;
+    case "agent-split-workspace-layout":
+      return Columns3;
+    case "agent-employee-workspace-layout":
+      return Users;
+    case "agent-employee-market-layout":
+      return LayoutGrid;
+    case "agent-nav-sidebar":
+      return PanelLeft;
+    case "agent-project-tree":
+      return FolderTree;
+    case "agent-user-footer":
+      return User;
+    case "agent-prompt-box":
+      return TextCursorInput;
+    case "agent-prompt-toolbar":
+      return SlidersHorizontal;
+    case "agent-prompt-suggestions":
+      return Sparkles;
+    case "agent-stream-header":
+      return Bot;
+    case "agent-tool-step":
+      return Terminal;
+    case "agent-thought-stream":
+      return Sparkles;
+    case "agent-file-attachments":
+      return FileText;
+    case "agent-employee-card":
+      return UserCheck;
+    case "agent-template-card":
+      return Square;
+    case "agent-artifact-tabs":
+      return Columns2;
+    case "agent-console-table":
+      return Table;
 
     default:
       return Box;
@@ -617,7 +690,7 @@ const LayerTreeItem = memo(function LayerTreeItem({
   );
 });
 
-type NavTab = "pages" | "components" | "web";
+type NavTab = "pages" | "components" | "web" | "agent";
 
 export const LeftSidebar = memo(function LeftSidebar({
   pages,
@@ -635,10 +708,40 @@ export const LeftSidebar = memo(function LeftSidebar({
   onUpdateElement,
   onDeleteElement,
   onAddAsset,
+  drawerCollapsed: controlledDrawerCollapsed,
+  onToggleDrawer,
 }: LeftSidebarProps) {
-  const [activeTab, setActiveTab] = useState<NavTab>("web");
+  const [internalCollapsed, setInternalCollapsed] = useState(false);
+  const isDrawerCollapsed = controlledDrawerCollapsed !== undefined ? controlledDrawerCollapsed : internalCollapsed;
+
+  const toggleDrawer = () => {
+    if (onToggleDrawer) {
+      onToggleDrawer();
+    } else {
+      setInternalCollapsed((prev) => !prev);
+    }
+  };
+
+  const [activeTab, setActiveTab] = useState<NavTab>("agent");
   const [searchQuery, setSearchQuery] = useState("");
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
+
+  const handleTabClick = (tabId: NavTab) => {
+    if (isDrawerCollapsed) {
+      setActiveTab(tabId);
+      if (onToggleDrawer) {
+        onToggleDrawer();
+      } else {
+        setInternalCollapsed(false);
+      }
+    } else {
+      if (activeTab === tabId) {
+        toggleDrawer();
+      } else {
+        setActiveTab(tabId);
+      }
+    }
+  };
 
   const toggleCategory = (cat: string) => {
     setCollapsedCategories((prev) => ({
@@ -648,7 +751,7 @@ export const LeftSidebar = memo(function LeftSidebar({
   };
 
   const filteredLibrary = library.filter((item) => {
-    if (item.category.startsWith("Web")) return false;
+    if (item.category.startsWith("Web") || item.category.startsWith("Agent")) return false;
     return searchQuery === "" || item.label.toLowerCase().includes(searchQuery.toLowerCase());
   });
 
@@ -656,7 +759,11 @@ export const LeftSidebar = memo(function LeftSidebar({
     return searchQuery === "" || item.label.toLowerCase().includes(searchQuery.toLowerCase()) || item.type.toLowerCase().includes(searchQuery.toLowerCase());
   });
 
-  const allCategories = ["基础", "流程", "表单", "导航", "容器", "展示"];
+  const filteredAgentLibrary = agentLibrary.filter((item) => {
+    return searchQuery === "" || item.label.toLowerCase().includes(searchQuery.toLowerCase()) || item.type.toLowerCase().includes(searchQuery.toLowerCase());
+  });
+
+  const allCategories = ["基础", "流程"];
   const groupedCategories = allCategories.filter((cat) =>
     filteredLibrary.some((c) => c.category === cat),
   );
@@ -666,21 +773,27 @@ export const LeftSidebar = memo(function LeftSidebar({
     filteredWebLibrary.some((c) => c.category === cat),
   );
 
+  const agentCategories = ["Agent模版", "Agent输入", "Agent执行流", "Agent侧栏", "Agent角色与工件"];
+  const groupedAgentCategories = agentCategories.filter((cat) =>
+    filteredAgentLibrary.some((c) => c.category === cat),
+  );
+
   const roots = elements.filter((el) => !el.parentId || !elements.some((p) => p.id === el.parentId));
 
   const navItems: { id: NavTab; label: string; dockLabel: string; icon: typeof Layers }[] = [
-    { id: "pages", label: "CATALOG", dockLabel: "PAGES", icon: Layers },
-    { id: "components", label: "LIBRARY", dockLabel: "LIBS", icon: Box },
-    { id: "web", label: "WEB TEMPLATES", dockLabel: "WEB", icon: LayoutTemplate },
+    { id: "pages", label: "页面与图层", dockLabel: "页面", icon: Layers },
+    { id: "components", label: "基础通用组件", dockLabel: "组件", icon: Box },
+    { id: "web", label: "业务模版库", dockLabel: "Web", icon: LayoutTemplate },
+    { id: "agent", label: "Agent智能体库", dockLabel: "Agent", icon: Bot },
   ];
 
   return (
-    <div className="flex h-full shrink-0 select-none border-r border-border bg-surface text-foreground">
+    <div className="relative flex h-full w-12 shrink-0 select-none bg-surface text-foreground z-20">
       {/* 1. PRIMARY NARROW DOCK (48px) */}
-      <div className="flex w-12 shrink-0 flex-col items-center justify-between border-r border-border bg-surface py-2">
+      <div className="flex w-12 shrink-0 flex-col items-center justify-between border-r border-border bg-surface py-2 z-20">
         <div className="flex flex-col items-center gap-1.5">
           {navItems.map((item) => {
-            const isActive = activeTab === item.id;
+            const isActive = !isDrawerCollapsed && activeTab === item.id;
             const Icon = item.icon;
             return (
               <button
@@ -692,14 +805,14 @@ export const LeftSidebar = memo(function LeftSidebar({
                     ? "bg-surface-raised text-foreground font-bold border border-border-visible shadow-2xs"
                     : "text-muted-foreground hover:bg-surface-raised/50 hover:text-foreground"
                 )}
-                onClick={() => setActiveTab(item.id)}
-                title={item.label}
+                onClick={() => handleTabClick(item.id)}
+                title={isActive ? `${item.label} (再次点击收起)` : `${item.label} (点击展开)`}
               >
-                <Icon className={cn("size-4 transition-transform duration-150", isActive && "scale-105 text-foreground")} />
+                <Icon className={cn("size-4 transition-transform duration-150", isActive ? "scale-105 text-foreground" : "text-muted-foreground group-hover:text-foreground")} />
                 <span
                   className={cn(
                     "mt-0.5 font-mono text-[8px] tracking-wider uppercase leading-none",
-                    isActive ? "text-foreground font-bold" : "text-muted-foreground/70"
+                    isActive ? "text-foreground font-bold" : "text-muted-foreground/70 group-hover:text-foreground"
                   )}
                 >
                   {item.dockLabel}
@@ -709,358 +822,499 @@ export const LeftSidebar = memo(function LeftSidebar({
           })}
         </div>
 
-        {/* Bottom Status / More Button */}
-        <button
-          type="button"
-          className="flex size-8 items-center justify-center rounded-xs text-muted-foreground hover:bg-muted hover:text-foreground"
-          title="设置与信息"
+        {/* Bottom Status / More */}
+        <div
+          className="flex size-8 items-center justify-center rounded-xs text-muted-foreground/50 select-none"
         >
           <MoreHorizontal className="size-4" />
-        </button>
+        </div>
       </div>
 
-      {/* 2. SECONDARY DRAWER PANEL (248px) */}
-      <aside className="flex w-62 flex-col overflow-hidden bg-surface text-foreground">
-        {/* ===================== TAB: WEB TEMPLATES & COMPONENTS ===================== */}
-        {activeTab === "web" && (
-          <div className="flex h-full flex-col">
-            {/* Search Bar */}
-            <div className="border-b border-border p-2">
-              <div className="relative flex items-center">
-                <Search className="pointer-events-none absolute left-2 size-3 text-muted-foreground" />
-                <input
-                  type="text"
-                  placeholder="SEARCH WEB..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="h-7 w-full rounded-xs border border-border-visible bg-background pl-7 pr-6 font-mono text-[11px] uppercase tracking-wider text-foreground placeholder:text-muted-foreground/60 outline-none transition-colors focus:border-foreground"
-                />
-                {searchQuery && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchQuery("")}
-                    className="absolute right-2 text-muted-foreground hover:text-foreground cursor-pointer"
-                  >
-                    <X className="size-3" />
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Web Component Groups */}
-            <div className="flex-1 overflow-y-auto p-2 space-y-2.5">
-              {groupedWebCategories.map((cat) => {
-                const items = filteredWebLibrary.filter((c) => c.category === cat);
-                const isCollapsed = searchQuery.trim().length > 0 ? false : Boolean(collapsedCategories[cat]);
-                const isTemplateCat = cat === "Web模版";
-
-                const categoryLabels: Record<string, string> = {
-                  "Web导航": "导航与定位",
-                  "Web表单": "表单与输入",
-                  "Web展示": "数据展示",
-                  "Web反馈": "反馈与浮层",
-                  "Web模版": "业务区块模版",
-                };
-
-                return (
-                  <div key={cat} className="space-y-1">
-                    {/* Collapsible Category Header */}
-                    <button
-                      type="button"
-                      onClick={() => toggleCategory(cat)}
-                      className="flex w-full items-center gap-1 rounded-xs px-1.5 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors cursor-pointer"
-                    >
-                      {isCollapsed ? (
-                        <ChevronRight className="size-3 text-muted-foreground" />
-                      ) : (
-                        <ChevronDown className="size-3 text-muted-foreground" />
-                      )}
-                      <span className="font-mono text-[11px] text-muted-foreground/70">[</span>
-                      <span className="text-xs font-semibold tracking-wide text-foreground/90">{categoryLabels[cat] || cat}</span>
-                      <span className="font-mono text-[11px] text-muted-foreground/70">]</span>
-                      <span className="ml-auto font-mono text-[10px] font-normal text-muted-foreground">
-                        {String(items.length).padStart(2, "0")}
-                      </span>
-                    </button>
-
-                    {/* Component Grid */}
-                    {!isCollapsed && (
-                      <div className={cn("gap-1.5 pt-0.5", isTemplateCat ? "grid grid-cols-2" : "grid grid-cols-3")}>
-                        {items.map((item) => {
-                          const isToolActive = activeTool === item.type;
-                          return (
-                            <div
-                              key={item.type}
-                              draggable
-                              onDragStart={(e) => {
-                                e.dataTransfer.setData("application/json", JSON.stringify({ type: item.type }));
-                                e.dataTransfer.effectAllowed = "copy";
-                              }}
-                              onClick={() => {
-                                if (onSelectTool) {
-                                  onSelectTool(item.type);
-                                } else {
-                                  onAddAsset(item.type);
-                                }
-                              }}
-                              title={`${item.label} (点击在画布绘制或拖拽)`}
-                              className={cn(
-                                "group relative flex cursor-pointer flex-col items-center justify-center rounded-md border p-1.5 text-center transition-all duration-150 active:scale-95 select-none",
-                                isToolActive
-                                  ? "border-foreground bg-surface-raised text-foreground font-semibold ring-1 ring-border-visible shadow-2xs"
-                                  : "border-border/80 bg-surface-raised/50 hover:border-border-visible hover:bg-surface-raised text-muted-foreground hover:text-foreground",
-                                isTemplateCat && "py-2"
-                              )}
-                            >
-                              {/* Shortcut tag in top-left */}
-                              {item.shortcut && (
-                                <span className="absolute top-1 left-1 rounded-2xs border border-border-visible/60 bg-background/80 px-1 font-mono text-[7.5px] font-semibold text-muted-foreground/80 group-hover:text-foreground group-hover:border-border-visible">
-                                  {item.shortcut}
-                                </span>
-                              )}
-
-                              {/* Miniature Preview Box */}
-                              <div className={cn("flex w-full items-center justify-center", isTemplateCat ? "h-9" : "h-8")}>
-                                <ComponentMiniPreview type={item.type} icon={item.icon} />
-                              </div>
-
-                              {/* Label */}
-                              <span
-                                className={cn(
-                                  "mt-1 w-full truncate text-[11px] leading-tight transition-colors",
-                                  isToolActive
-                                    ? "font-bold text-foreground"
-                                    : "text-foreground/85 group-hover:text-foreground font-medium",
-                                )}
-                              >
-                                {item.label}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+      {/* 2. SECONDARY DRAWER PANEL (248px) - Absolute Overlay */}
+      <aside
+        className={cn(
+          "absolute top-0 bottom-0 left-12 z-20 flex w-62 flex-col overflow-hidden border-r border-border bg-surface text-foreground transition-all duration-200 ease-out",
+          isDrawerCollapsed
+            ? "pointer-events-none -translate-x-3 opacity-0"
+            : "translate-x-0 opacity-100"
         )}
-
-        {/* ===================== TAB: COMPONENTS ===================== */}
-        {activeTab === "components" && (
-          <div className="flex h-full flex-col">
-            {/* Search Bar */}
-            <div className="border-b border-border p-2">
-              <div className="relative flex items-center">
-                <Search className="pointer-events-none absolute left-2 size-3 text-muted-foreground" />
-                <input
-                  type="text"
-                  placeholder="SEARCH COMPONENTS..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="h-7 w-full rounded-xs border border-border-visible bg-background pl-7 pr-6 font-mono text-[11px] uppercase tracking-wider text-foreground placeholder:text-muted-foreground/60 outline-none transition-colors focus:border-foreground"
-                />
-                {searchQuery && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchQuery("")}
-                    className="absolute right-2 text-muted-foreground hover:text-foreground cursor-pointer"
-                  >
-                    <X className="size-3" />
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Component Groups & 3-Column Grid */}
-            <div className="flex-1 overflow-y-auto p-2 space-y-2.5">
-              {groupedCategories.map((cat) => {
-                const items = filteredLibrary.filter((c) => c.category === cat);
-                const isCollapsed = searchQuery.trim().length > 0 ? false : Boolean(collapsedCategories[cat]);
-
-                return (
-                  <div key={cat} className="space-y-1">
-                    {/* Collapsible Category Header */}
-                    <button
-                      type="button"
-                      onClick={() => toggleCategory(cat)}
-                      className="flex w-full items-center gap-1 rounded-xs px-1.5 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors cursor-pointer"
-                    >
-                      {isCollapsed ? (
-                        <ChevronRight className="size-3 text-muted-foreground" />
-                      ) : (
-                        <ChevronDown className="size-3 text-muted-foreground" />
-                      )}
-                      <span className="font-mono text-[11px] text-muted-foreground/70">[</span>
-                      <span className="text-xs font-semibold tracking-wide text-foreground/90">{cat}</span>
-                      <span className="font-mono text-[11px] text-muted-foreground/70">]</span>
-                      <span className="ml-auto font-mono text-[10px] font-normal text-muted-foreground">
-                        {String(items.length).padStart(2, "0")}
-                      </span>
-                    </button>
-
-                    {/* Component Grid */}
-                    {!isCollapsed && (
-                      <div className="grid grid-cols-3 gap-1.5 pt-0.5">
-                        {items.map((item) => {
-                          const isToolActive = activeTool === item.type;
-                          return (
-                            <div
-                              key={item.type}
-                              draggable
-                              onDragStart={(e) => {
-                                e.dataTransfer.setData("application/json", JSON.stringify({ type: item.type }));
-                                e.dataTransfer.effectAllowed = "copy";
-                              }}
-                              onClick={() => {
-                                if (onSelectTool) {
-                                   onSelectTool(item.type);
-                                } else {
-                                  onAddAsset(item.type);
-                                }
-                              }}
-                              title={`${item.label} (点击在画布绘制或拖拽)`}
-                              className={cn(
-                                "group relative flex cursor-pointer flex-col items-center justify-center rounded-md border p-1.5 text-center transition-all duration-150 active:scale-95 select-none",
-                                isToolActive
-                                  ? "border-foreground bg-surface-raised text-foreground font-semibold ring-1 ring-border-visible shadow-2xs"
-                                  : "border-border/80 bg-surface-raised/50 hover:border-border-visible hover:bg-surface-raised text-muted-foreground hover:text-foreground",
-                              )}
-                            >
-                              {/* Shortcut tag in top-left */}
-                              {item.shortcut && (
-                                <span className="absolute top-1 left-1 rounded-2xs border border-border-visible/60 bg-background/80 px-1 font-mono text-[7.5px] font-semibold text-muted-foreground/80 group-hover:text-foreground group-hover:border-border-visible">
-                                  {item.shortcut}
-                                </span>
-                              )}
-
-                              {/* Miniature Preview Box */}
-                              <div className="flex h-8 w-full items-center justify-center">
-                                <ComponentMiniPreview type={item.type} icon={item.icon} />
-                              </div>
-
-                              {/* Label */}
-                              <span
-                                className={cn(
-                                  "mt-1 w-full truncate text-[11px] leading-tight transition-colors",
-                                  isToolActive
-                                    ? "font-bold text-foreground"
-                                    : "text-foreground/85 group-hover:text-foreground font-medium",
-                                )}
-                              >
-                                {item.label}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* ===================== TAB: PAGES & CATALOG ===================== */}
-        {activeTab === "pages" && (
-          <div className="flex h-full flex-col overflow-hidden">
-            {/* Top Module: PAGES */}
-            <div className="flex shrink-0 flex-col border-b border-border">
-              {/* Header */}
-              <div className="flex items-center justify-between border-b border-border/50 px-3 py-2 bg-surface">
-                <div className="flex items-center gap-1.5">
-                  <span className="font-mono text-xs font-bold tracking-wider uppercase text-foreground">[ PAGES ]</span>
+      >
+        <div className="flex h-full w-62 min-w-[248px] flex-col overflow-hidden">
+          {/* ===================== TAB: AGENT TEMPLATES & COMPONENTS ===================== */}
+          {activeTab === "agent" && (
+            <div className="flex h-full flex-col">
+              {/* Tab Header & Search */}
+              <div className="flex shrink-0 flex-col border-b border-border p-2 gap-1.5 bg-surface">
+                <div className="flex items-center justify-between px-1 py-0.5">
+                  <span className="font-mono text-xs font-bold tracking-wider uppercase text-foreground">[ AGENT 智能体库 ]</span>
+                  <span className="font-mono text-[10px] text-muted-foreground/80">{String(filteredAgentLibrary.length).padStart(2, "0")} ITEMS</span>
                 </div>
-                <div className="flex items-center gap-1">
-                  <button
-                    type="button"
-                    onClick={onPageAdd}
-                    className="flex size-5.5 items-center justify-center rounded-xs text-muted-foreground hover:bg-surface-raised hover:text-foreground transition-colors cursor-pointer"
-                    title="新建页面"
-                  >
-                    <Plus className="size-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onPageAdd}
-                    className="flex size-5.5 items-center justify-center rounded-xs text-muted-foreground hover:bg-surface-raised hover:text-foreground transition-colors cursor-pointer"
-                    title="新建文件夹"
-                  >
-                    <FolderPlus className="size-3.5" />
-                  </button>
+                <div className="relative flex items-center">
+                  <Search className="pointer-events-none absolute left-2 size-3 text-muted-foreground" />
+                  <input
+                    type="text"
+                    placeholder="搜索 Agent 模版或组件..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="h-7 w-full rounded-xs border border-border-visible bg-background pl-7 pr-6 font-mono text-[11px] uppercase tracking-wider text-foreground placeholder:text-muted-foreground/60 outline-none transition-colors focus:border-foreground"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-2 text-muted-foreground hover:text-foreground cursor-pointer"
+                    >
+                      <X className="size-3" />
+                    </button>
+                  )}
                 </div>
               </div>
 
-              {/* Canvas / Pages List (Dedicated Height Area) */}
-              <div className="h-44 min-h-[120px] max-h-[200px] overflow-y-auto p-2 space-y-1 bg-surface">
-                {pages.map((page) => {
-                  const isActive = activePageId === page.id;
+              {/* Agent Component Groups */}
+              <div className="flex-1 overflow-y-auto p-2 space-y-2.5">
+                {groupedAgentCategories.map((cat) => {
+                  const items = filteredAgentLibrary.filter((c) => c.category === cat);
+                  const isCollapsed = searchQuery.trim().length > 0 ? false : Boolean(collapsedCategories[cat]);
+                  const isTemplateCat = cat === "Agent模版";
+
+                  const categoryLabels: Record<string, string> = {
+                    "Agent模版": "整屏业务模版",
+                    "Agent输入": "输入与控制",
+                    "Agent执行流": "执行流与消息",
+                    "Agent侧栏": "侧栏与资产",
+                    "Agent角色与工件": "角色与工件预览",
+                  };
+
                   return (
-                    <div
-                      key={page.id}
-                      onClick={() => onPageSelect(page.id)}
-                      className={cn(
-                        "group flex h-7.5 cursor-pointer items-center justify-between rounded-md px-2.5 text-xs transition-all duration-150 select-none",
-                        isActive
-                          ? "bg-surface-raised text-foreground font-bold border border-border-visible shadow-2xs"
-                          : "text-muted-foreground hover:bg-surface-raised/50 hover:text-foreground"
-                      )}
-                    >
-                      <div className="flex items-center gap-2 min-w-0 flex-1">
-                        <Layout className={cn("size-3.5 shrink-0", isActive ? "text-foreground" : "text-muted-foreground/70")} />
-                        <span className="truncate text-xs font-medium tracking-normal">{page.name}</span>
-                      </div>
-                      {pages.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onPageDelete(page.id);
-                          }}
-                          className="opacity-0 group-hover:opacity-100 flex size-4 items-center justify-center rounded-xs text-muted-foreground hover:text-destructive transition-opacity"
-                          title="删除页面"
-                        >
-                          <X className="size-3" />
-                        </button>
+                    <div key={cat} className="space-y-1">
+                      {/* Collapsible Category Header */}
+                      <button
+                        type="button"
+                        onClick={() => toggleCategory(cat)}
+                        className="flex w-full items-center gap-1 rounded-xs px-1.5 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors cursor-pointer"
+                      >
+                        {isCollapsed ? (
+                          <ChevronRight className="size-3 text-muted-foreground" />
+                        ) : (
+                          <ChevronDown className="size-3 text-muted-foreground" />
+                        )}
+                        <span className="font-mono text-[11px] text-muted-foreground/70">[</span>
+                        <span className="text-xs font-semibold tracking-wide text-foreground/90">{categoryLabels[cat] || cat}</span>
+                        <span className="font-mono text-[11px] text-muted-foreground/70">]</span>
+                        <span className="ml-auto font-mono text-[10px] font-normal text-muted-foreground">
+                          {String(items.length).padStart(2, "0")}
+                        </span>
+                      </button>
+
+                      {/* Component Grid */}
+                      {!isCollapsed && (
+                        <div className={cn("gap-1.5 pt-0.5", isTemplateCat ? "grid grid-cols-2" : "grid grid-cols-3")}>
+                          {items.map((item) => {
+                            const isToolActive = activeTool === item.type;
+                            return (
+                              <div
+                                key={item.type}
+                                draggable
+                                onDragStart={(e) => {
+                                  e.dataTransfer.setData("application/json", JSON.stringify({ type: item.type }));
+                                  e.dataTransfer.effectAllowed = "copy";
+                                }}
+                                onClick={() => {
+                                  if (onSelectTool) {
+                                    onSelectTool(item.type);
+                                  } else {
+                                    onAddAsset(item.type);
+                                  }
+                                }}
+                                title={`${item.label} (点击在画布绘制或拖拽)`}
+                                className={cn(
+                                  "group relative flex cursor-pointer flex-col items-center justify-center rounded-md border p-1.5 text-center transition-all duration-150 active:scale-95 select-none",
+                                  isToolActive
+                                    ? "border-foreground bg-surface-raised text-foreground font-semibold ring-1 ring-border-visible shadow-2xs"
+                                    : "border-border/80 bg-surface-raised/50 hover:border-border-visible hover:bg-surface-raised text-muted-foreground hover:text-foreground",
+                                  isTemplateCat && "py-2"
+                                )}
+                              >
+                                {item.shortcut && (
+                                  <span className="absolute top-1 left-1 rounded-2xs border border-border-visible/60 bg-background/80 px-1 font-mono text-[7.5px] font-semibold text-muted-foreground/80 group-hover:text-foreground group-hover:border-border-visible">
+                                    {item.shortcut}
+                                  </span>
+                                )}
+
+                                <div className={cn("flex w-full items-center justify-center", isTemplateCat ? "h-9" : "h-8")}>
+                                  <ComponentMiniPreview type={item.type} icon={item.icon} />
+                                </div>
+
+                                <span
+                                  className={cn(
+                                    "mt-1 w-full truncate text-[11px] leading-tight transition-colors",
+                                    isToolActive
+                                      ? "font-bold text-foreground"
+                                      : "text-foreground/85 group-hover:text-foreground font-medium",
+                                  )}
+                                >
+                                  {item.label}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
                       )}
                     </div>
                   );
                 })}
               </div>
             </div>
-
-            {/* Bottom Module: LAYERS */}
-            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-              <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2 text-xs font-bold bg-surface">
-                <span className="font-mono text-xs font-bold tracking-wider uppercase text-foreground">[ LAYERS ]</span>
-                <span className="nd-num text-[10px] font-mono text-muted-foreground">{String(roots.length).padStart(2, "0")}</span>
-              </div>
-
-              {/* Tree Items List */}
-              <div className="flex-1 overflow-y-auto p-2">
-                <div className="space-y-0.5">
-                  {[...roots].reverse().map((el) => (
-                    <LayerTreeItem
-                      key={el.id}
-                      el={el}
-                      selectedId={selectedId}
-                      selectedIds={selectedIds}
-                      onSelect={onSelect}
-                      onSelectIds={onSelectIds}
-                      onUpdateElement={onUpdateElement}
-                      onDeleteElement={onDeleteElement}
-                    />
-                  ))}
-                  {roots.length === 0 && (
-                    <p className="px-3 py-4 text-center font-mono text-[11px] text-muted-foreground uppercase tracking-wider">NO LAYERS</p>
+          )}
+          {/* ===================== TAB: WEB TEMPLATES & COMPONENTS ===================== */}
+          {activeTab === "web" && (
+            <div className="flex h-full flex-col">
+              {/* Tab Header & Search */}
+              <div className="flex shrink-0 flex-col border-b border-border p-2 gap-1.5 bg-surface">
+                <div className="flex items-center justify-between px-1 py-0.5">
+                  <span className="font-mono text-xs font-bold tracking-wider uppercase text-foreground">[ 业务模版库 ]</span>
+                  <span className="font-mono text-[10px] text-muted-foreground/80">{String(filteredWebLibrary.length).padStart(2, "0")} ITEMS</span>
+                </div>
+                <div className="relative flex items-center">
+                  <Search className="pointer-events-none absolute left-2 size-3 text-muted-foreground" />
+                  <input
+                    type="text"
+                    placeholder="搜索模版或组件..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="h-7 w-full rounded-xs border border-border-visible bg-background pl-7 pr-6 font-mono text-[11px] uppercase tracking-wider text-foreground placeholder:text-muted-foreground/60 outline-none transition-colors focus:border-foreground"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-2 text-muted-foreground hover:text-foreground cursor-pointer"
+                    >
+                      <X className="size-3" />
+                    </button>
                   )}
                 </div>
               </div>
+
+              {/* Web Component Groups */}
+              <div className="flex-1 overflow-y-auto p-2 space-y-2.5">
+                {groupedWebCategories.map((cat) => {
+                  const items = filteredWebLibrary.filter((c) => c.category === cat);
+                  const isCollapsed = searchQuery.trim().length > 0 ? false : Boolean(collapsedCategories[cat]);
+                  const isTemplateCat = cat === "Web模版";
+
+                  const categoryLabels: Record<string, string> = {
+                    "Web导航": "导航与定位",
+                    "Web表单": "表单与输入",
+                    "Web展示": "数据展示",
+                    "Web反馈": "反馈与浮层",
+                    "Web模版": "业务区块模版",
+                  };
+
+                  return (
+                    <div key={cat} className="space-y-1">
+                      {/* Collapsible Category Header */}
+                      <button
+                        type="button"
+                        onClick={() => toggleCategory(cat)}
+                        className="flex w-full items-center gap-1 rounded-xs px-1.5 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors cursor-pointer"
+                      >
+                        {isCollapsed ? (
+                          <ChevronRight className="size-3 text-muted-foreground" />
+                        ) : (
+                          <ChevronDown className="size-3 text-muted-foreground" />
+                        )}
+                        <span className="font-mono text-[11px] text-muted-foreground/70">[</span>
+                        <span className="text-xs font-semibold tracking-wide text-foreground/90">{categoryLabels[cat] || cat}</span>
+                        <span className="font-mono text-[11px] text-muted-foreground/70">]</span>
+                        <span className="ml-auto font-mono text-[10px] font-normal text-muted-foreground">
+                          {String(items.length).padStart(2, "0")}
+                        </span>
+                      </button>
+
+                      {/* Component Grid */}
+                      {!isCollapsed && (
+                        <div className={cn("gap-1.5 pt-0.5", isTemplateCat ? "grid grid-cols-2" : "grid grid-cols-3")}>
+                          {items.map((item) => {
+                            const isToolActive = activeTool === item.type;
+                            return (
+                              <div
+                                key={item.type}
+                                draggable
+                                onDragStart={(e) => {
+                                  e.dataTransfer.setData("application/json", JSON.stringify({ type: item.type }));
+                                  e.dataTransfer.effectAllowed = "copy";
+                                }}
+                                onClick={() => {
+                                  if (onSelectTool) {
+                                    onSelectTool(item.type);
+                                  } else {
+                                    onAddAsset(item.type);
+                                  }
+                                }}
+                                title={`${item.label} (点击在画布绘制或拖拽)`}
+                                className={cn(
+                                  "group relative flex cursor-pointer flex-col items-center justify-center rounded-md border p-1.5 text-center transition-all duration-150 active:scale-95 select-none",
+                                  isToolActive
+                                    ? "border-foreground bg-surface-raised text-foreground font-semibold ring-1 ring-border-visible shadow-2xs"
+                                    : "border-border/80 bg-surface-raised/50 hover:border-border-visible hover:bg-surface-raised text-muted-foreground hover:text-foreground",
+                                  isTemplateCat && "py-2"
+                                )}
+                              >
+                                {/* Shortcut tag in top-left */}
+                                {item.shortcut && (
+                                  <span className="absolute top-1 left-1 rounded-2xs border border-border-visible/60 bg-background/80 px-1 font-mono text-[7.5px] font-semibold text-muted-foreground/80 group-hover:text-foreground group-hover:border-border-visible">
+                                    {item.shortcut}
+                                  </span>
+                                )}
+
+                                {/* Miniature Preview Box */}
+                                <div className={cn("flex w-full items-center justify-center", isTemplateCat ? "h-9" : "h-8")}>
+                                  <ComponentMiniPreview type={item.type} icon={item.icon} />
+                                </div>
+
+                                {/* Label */}
+                                <span
+                                  className={cn(
+                                    "mt-1 w-full truncate text-[11px] leading-tight transition-colors",
+                                    isToolActive
+                                      ? "font-bold text-foreground"
+                                      : "text-foreground/85 group-hover:text-foreground font-medium",
+                                  )}
+                                >
+                                  {item.label}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          </div>
-        )}
+          )}
+
+          {/* ===================== TAB: COMPONENTS ===================== */}
+          {activeTab === "components" && (
+            <div className="flex h-full flex-col">
+              {/* Tab Header & Search */}
+              <div className="flex shrink-0 flex-col border-b border-border p-2 gap-1.5 bg-surface">
+                <div className="flex items-center justify-between px-1 py-0.5">
+                  <span className="font-mono text-xs font-bold tracking-wider uppercase text-foreground">[ 基础组件库 ]</span>
+                  <span className="font-mono text-[10px] text-muted-foreground/80">{String(filteredLibrary.length).padStart(2, "0")} ITEMS</span>
+                </div>
+                <div className="relative flex items-center">
+                  <Search className="pointer-events-none absolute left-2 size-3 text-muted-foreground" />
+                  <input
+                    type="text"
+                    placeholder="搜索基础与流程组件..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="h-7 w-full rounded-xs border border-border-visible bg-background pl-7 pr-6 font-mono text-[11px] uppercase tracking-wider text-foreground placeholder:text-muted-foreground/60 outline-none transition-colors focus:border-foreground"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-2 text-muted-foreground hover:text-foreground cursor-pointer"
+                    >
+                      <X className="size-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Component Groups & 3-Column Grid */}
+              <div className="flex-1 overflow-y-auto p-2 space-y-2.5">
+                {groupedCategories.map((cat) => {
+                  const items = filteredLibrary.filter((c) => c.category === cat);
+                  const isCollapsed = searchQuery.trim().length > 0 ? false : Boolean(collapsedCategories[cat]);
+
+                  return (
+                    <div key={cat} className="space-y-1">
+                      {/* Collapsible Category Header */}
+                      <button
+                        type="button"
+                        onClick={() => toggleCategory(cat)}
+                        className="flex w-full items-center gap-1 rounded-xs px-1.5 py-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors cursor-pointer"
+                      >
+                        {isCollapsed ? (
+                          <ChevronRight className="size-3 text-muted-foreground" />
+                        ) : (
+                          <ChevronDown className="size-3 text-muted-foreground" />
+                        )}
+                        <span className="font-mono text-[11px] text-muted-foreground/70">[</span>
+                        <span className="text-xs font-semibold tracking-wide text-foreground/90">{cat}</span>
+                        <span className="font-mono text-[11px] text-muted-foreground/70">]</span>
+                        <span className="ml-auto font-mono text-[10px] font-normal text-muted-foreground">
+                          {String(items.length).padStart(2, "0")}
+                        </span>
+                      </button>
+
+                      {/* Component Grid */}
+                      {!isCollapsed && (
+                        <div className="grid grid-cols-3 gap-1.5 pt-0.5">
+                          {items.map((item) => {
+                            const isToolActive = activeTool === item.type;
+                            return (
+                              <div
+                                key={item.type}
+                                draggable
+                                onDragStart={(e) => {
+                                  e.dataTransfer.setData("application/json", JSON.stringify({ type: item.type }));
+                                  e.dataTransfer.effectAllowed = "copy";
+                                }}
+                                onClick={() => {
+                                  if (onSelectTool) {
+                                     onSelectTool(item.type);
+                                  } else {
+                                    onAddAsset(item.type);
+                                  }
+                                }}
+                                title={`${item.label} (点击在画布绘制或拖拽)`}
+                                className={cn(
+                                  "group relative flex cursor-pointer flex-col items-center justify-center rounded-md border p-1.5 text-center transition-all duration-150 active:scale-95 select-none",
+                                  isToolActive
+                                    ? "border-foreground bg-surface-raised text-foreground font-semibold ring-1 ring-border-visible shadow-2xs"
+                                    : "border-border/80 bg-surface-raised/50 hover:border-border-visible hover:bg-surface-raised text-muted-foreground hover:text-foreground",
+                                )}
+                              >
+                                {/* Shortcut tag in top-left */}
+                                {item.shortcut && (
+                                  <span className="absolute top-1 left-1 rounded-2xs border border-border-visible/60 bg-background/80 px-1 font-mono text-[7.5px] font-semibold text-muted-foreground/80 group-hover:text-foreground group-hover:border-border-visible">
+                                    {item.shortcut}
+                                  </span>
+                                )}
+
+                                {/* Miniature Preview Box */}
+                                <div className="flex h-8 w-full items-center justify-center">
+                                  <ComponentMiniPreview type={item.type} icon={item.icon} />
+                                </div>
+
+                                {/* Label */}
+                                <span
+                                  className={cn(
+                                    "mt-1 w-full truncate text-[11px] leading-tight transition-colors",
+                                    isToolActive
+                                      ? "font-bold text-foreground"
+                                      : "text-foreground/85 group-hover:text-foreground font-medium",
+                                  )}
+                                >
+                                  {item.label}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ===================== TAB: PAGES & CATALOG ===================== */}
+          {activeTab === "pages" && (
+            <div className="flex h-full flex-col overflow-hidden">
+              {/* Top Module: PAGES */}
+              <div className="flex shrink-0 flex-col border-b border-border">
+                {/* Header */}
+                <div className="flex items-center justify-between border-b border-border/50 px-3 py-2 bg-surface">
+                  <div className="flex items-center gap-1.5">
+                    <span className="font-mono text-xs font-bold tracking-wider uppercase text-foreground">[ 页面管理 ]</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={onPageAdd}
+                      className="flex size-5.5 items-center justify-center rounded-xs text-muted-foreground hover:bg-surface-raised hover:text-foreground transition-colors cursor-pointer"
+                      title="新建页面"
+                    >
+                      <Plus className="size-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={onPageAdd}
+                      className="flex size-5.5 items-center justify-center rounded-xs text-muted-foreground hover:bg-surface-raised hover:text-foreground transition-colors cursor-pointer"
+                      title="新建文件夹"
+                    >
+                      <FolderPlus className="size-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Canvas / Pages List (Dedicated Height Area) */}
+                <div className="h-44 min-h-[120px] max-h-[200px] overflow-y-auto p-2 space-y-1 bg-surface">
+                  {pages.map((page) => {
+                    const isActive = activePageId === page.id;
+                    return (
+                      <div
+                        key={page.id}
+                        onClick={() => onPageSelect(page.id)}
+                        className={cn(
+                          "group flex h-7.5 cursor-pointer items-center justify-between rounded-md px-2.5 text-xs transition-all duration-150 select-none",
+                          isActive
+                            ? "bg-surface-raised text-foreground font-bold border border-border-visible shadow-2xs"
+                            : "text-muted-foreground hover:bg-surface-raised/50 hover:text-foreground"
+                        )}
+                      >
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          <Layout className={cn("size-3.5 shrink-0", isActive ? "text-foreground" : "text-muted-foreground/70")} />
+                          <span className="truncate text-xs font-medium tracking-normal">{page.name}</span>
+                        </div>
+                        {pages.length > 1 && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onPageDelete(page.id);
+                            }}
+                            className="opacity-0 group-hover:opacity-100 flex size-4 items-center justify-center rounded-xs text-muted-foreground hover:text-destructive transition-opacity"
+                            title="删除页面"
+                          >
+                            <X className="size-3" />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Bottom Module: LAYERS */}
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2 text-xs font-bold bg-surface">
+                  <span className="font-mono text-xs font-bold tracking-wider uppercase text-foreground">[ 图层列表 ]</span>
+                  <span className="nd-num text-[10px] font-mono text-muted-foreground">{String(roots.length).padStart(2, "0")}</span>
+                </div>
+
+                {/* Tree Items List */}
+                <div className="flex-1 overflow-y-auto p-2">
+                  <div className="space-y-0.5">
+                    {[...roots].reverse().map((el) => (
+                      <LayerTreeItem
+                        key={el.id}
+                        el={el}
+                        selectedId={selectedId}
+                        selectedIds={selectedIds}
+                        onSelect={onSelect}
+                        onSelectIds={onSelectIds}
+                        onUpdateElement={onUpdateElement}
+                        onDeleteElement={onDeleteElement}
+                      />
+                    ))}
+                    {roots.length === 0 && (
+                      <p className="px-3 py-4 text-center font-mono text-[11px] text-muted-foreground uppercase tracking-wider">NO LAYERS</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
       </aside>
     </div>
   );

@@ -1,10 +1,13 @@
-import React from "react";
+import React, { useState, useRef, useEffect } from "react";
 import type { ComponentType } from "../types";
+import type { ComponentRenderContext } from "./renderers";
 import { cn } from "@bluepen/editor/lib/utils";
+import { computeShapeStyle, hexToRgba } from "../utils/shape-styles";
 import {
   Search,
   Bell,
   ChevronDown,
+  ChevronUp,
   ChevronRight,
   Plus,
   X,
@@ -39,6 +42,11 @@ import {
   FileText,
   Sliders,
   ExternalLink,
+  Loader2,
+  Trash2,
+  Download,
+  Settings,
+  Edit,
 } from "lucide-react";
 
 type Props = Record<string, string | number | boolean>;
@@ -66,11 +74,15 @@ export function WebDropdownPreview({ props = {} }: { props?: Props }) {
   const rawItems = val(props, "items", "查看详情,编辑信息,权限设置,---,导出数据,删除项目:danger");
   const items = parseItems(rawItems, ["查看详情", "编辑信息", "权限设置", "---", "导出数据", "删除项目:danger"]);
   const isOpen = props.isOpen === true || props.isOpen === "true";
+  const triggerStyle = computeShapeStyle(props, { fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1, radius: 6 });
 
   return (
     <div className="flex h-full w-full flex-col font-sans select-none">
       {/* Trigger Button */}
-      <div className="flex h-9 w-full items-center justify-between rounded-md border border-border-visible bg-surface px-3 text-xs font-medium text-foreground shadow-2xs">
+      <div
+        className={cn("flex w-full items-center justify-between px-3 text-xs font-medium text-foreground shadow-2xs", isOpen ? "h-9 shrink-0" : "h-full")}
+        style={triggerStyle}
+      >
         <span className="truncate">{triggerText}</span>
         <ChevronDown className="size-3.5 text-muted-foreground shrink-0 ml-1.5" />
       </div>
@@ -107,11 +119,11 @@ export function WebDropdownPreview({ props = {} }: { props?: Props }) {
 }
 
 export function WebTopNavPreview({ props = {} }: { props?: Props }) {
-  const logoText = String(val(props, "logoText", "BLUEPEN SaaS"));
+  const logoText = String(val(props, "logoText", "后台管理系统"));
   const rawLinks = val(props, "links", "概览仪表盘,项目管理,数据资产,团队协作,系统配置");
   const links = parseItems(rawLinks, ["概览仪表盘", "项目管理", "数据资产", "团队协作", "系统配置"]);
   const activeIndex = Number(val(props, "activeIndex", 0));
-  const userName = String(val(props, "userName", "Alex Morgan"));
+  const userName = String(val(props, "userName", "系统管理员"));
 
   return (
     <div className="flex h-full w-full items-center justify-between border-b border-border bg-surface px-6 select-none">
@@ -119,7 +131,7 @@ export function WebTopNavPreview({ props = {} }: { props?: Props }) {
       <div className="flex min-w-0 items-center gap-8">
         <div className="flex shrink-0 items-center gap-2.5">
           <div className="flex size-6 items-center justify-center rounded-md bg-foreground text-background font-mono text-xs font-bold">
-            BP
+            系统
           </div>
           <span className="font-mono text-xs font-bold tracking-wider uppercase text-foreground">{logoText}</span>
         </div>
@@ -216,8 +228,10 @@ export function WebMenuPreview({ props = {} }: { props?: Props }) {
     );
   };
 
+  const menuStyle = computeShapeStyle(props, { fill: "var(--surface)", stroke: "var(--border)", borderWidth: 1, radius: 0 });
+
   return (
-    <div className="flex h-full w-full flex-col border-r border-border bg-surface select-none font-sans">
+    <div className="flex h-full w-full flex-col border-r select-none font-sans" style={menuStyle}>
       {title && (
         <div className="flex h-11 items-center justify-between border-b border-border px-4">
           <span className="font-mono text-xs font-bold tracking-wider uppercase text-foreground">{title}</span>
@@ -343,9 +357,10 @@ export function WebPaginationPreview({ props = {} }: { props?: Props }) {
   const total = Number(val(props, "total", 128));
   const pageSize = Number(val(props, "pageSize", 10));
   const totalPages = Math.ceil(total / pageSize) || 13;
+  const pagStyle = computeShapeStyle(props, { fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1, radius: 6 });
 
   return (
-    <div className="flex h-full w-full items-center justify-between rounded-md border border-border-visible bg-surface px-3.5 font-mono text-xs select-none">
+    <div className="flex h-full w-full items-center justify-between px-3.5 font-mono text-xs select-none" style={pagStyle}>
       <span className="text-muted-foreground">共 {total} 条</span>
 
       <div className="flex items-center gap-1.5">
@@ -438,8 +453,113 @@ export function WebStepsPreview({ props = {} }: { props?: Props }) {
 }
 
 // =========================================================================
-// 2. Web 表单输入组件 (Web Form / Data Entry)
+// 2. Web 表单输入与操作组件 (Web Form & Action)
 // =========================================================================
+
+export function WebButtonPreview({ props = {} }: { props?: Props }) {
+  const text = String(val(props, "text", "主要操作"));
+  const variant = String(val(props, "variant", "primary"));
+  const size = String(val(props, "size", "md"));
+  const shape = String(val(props, "shape", "pill"));
+  const icon = String(val(props, "icon", "Plus"));
+  const disabled = props.disabled === true || props.disabled === "false";
+  const loading = props.loading === true || props.loading === "true";
+
+  // Size styling
+  const sizeClasses = {
+    sm: "h-7 px-2.5 text-[11px] gap-1",
+    md: "h-8 px-3.5 text-xs gap-1.5",
+    lg: "h-10 px-5 text-sm gap-2",
+  }[size] || "h-8 px-3.5 text-xs gap-1.5";
+
+  // Shape styling
+  const shapeClasses = {
+    pill: "rounded-full",
+    rectangle: "rounded-md",
+    circle: "rounded-full aspect-square p-0 justify-center",
+    square: "rounded-md aspect-square p-0 justify-center",
+  }[shape] || (shape === "pill" ? "rounded-full" : "rounded-md");
+
+  // Variant styling according to nothing-design
+  let variantClasses = "";
+  switch (variant) {
+    case "primary":
+      variantClasses = "bg-primary text-primary-foreground font-bold border-transparent shadow-2xs hover:opacity-90";
+      break;
+    case "secondary":
+      variantClasses = "bg-surface border border-border-visible text-foreground hover:bg-surface-raised shadow-2xs";
+      break;
+    case "dashed":
+      variantClasses = "bg-transparent border border-dashed border-border-visible text-foreground hover:border-foreground";
+      break;
+    case "ghost":
+      variantClasses = "bg-transparent border-transparent text-muted-foreground hover:text-foreground hover:bg-surface-raised";
+      break;
+    case "danger":
+      variantClasses = "bg-transparent border border-[#D71921] text-[#D71921] hover:bg-[#D71921]/10 font-bold";
+      break;
+    case "link":
+      variantClasses = "bg-transparent border-transparent text-foreground underline underline-offset-4 p-0 h-auto font-medium";
+      break;
+    default:
+      variantClasses = "bg-primary text-primary-foreground font-bold";
+  }
+
+  const customStyle = computeShapeStyle(props);
+
+  if (props.textColor) {
+    customStyle.color = hexToRgba(String(props.textColor), Number(props.textOpacity ?? 100));
+  }
+  if (props.fontSize) {
+    customStyle.fontSize = `${props.fontSize}px`;
+  }
+  if (props.fontWeight) {
+    customStyle.fontWeight = Number(props.fontWeight);
+  }
+
+  // Icon mapping
+  const renderIcon = () => {
+    if (loading) return <Loader2 className="size-3.5 shrink-0 animate-spin" />;
+    switch (icon) {
+      case "Plus": return <Plus className="size-3.5 shrink-0" />;
+      case "Download": return <Download className="size-3.5 shrink-0" />;
+      case "Trash2": return <Trash2 className="size-3.5 shrink-0" />;
+      case "Search": return <Search className="size-3.5 shrink-0" />;
+      case "Settings": return <Settings className="size-3.5 shrink-0" />;
+      case "Upload": return <Upload className="size-3.5 shrink-0" />;
+      case "RefreshCw": return <RefreshCw className="size-3.5 shrink-0" />;
+      case "Filter": return <Filter className="size-3.5 shrink-0" />;
+      case "Check": return <Check className="size-3.5 shrink-0" />;
+      case "ExternalLink": return <ExternalLink className="size-3.5 shrink-0" />;
+      case "Edit": return <Edit className="size-3.5 shrink-0" />;
+      case "none":
+      default:
+        return null;
+    }
+  };
+
+  const isIconOnly = shape === "circle" || shape === "square";
+  const isGroupChild = props.isGroupChild === true || props.isGroupChild === "true";
+
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      style={customStyle}
+      className={cn(
+        "items-center justify-center font-mono uppercase tracking-wider transition-all select-none border whitespace-nowrap overflow-hidden",
+        isGroupChild ? "inline-flex h-full" : "flex size-full",
+        shapeClasses,
+        variantClasses,
+        sizeClasses.split(" ").filter((c) => !c.startsWith("h-")).join(" "),
+        disabled && "opacity-40 cursor-not-allowed pointer-events-none",
+      )}
+    >
+      {renderIcon()}
+      {!isIconOnly && <span className="whitespace-nowrap truncate">{loading ? "处理中..." : text}</span>}
+    </button>
+  );
+}
 
 export function WebInputPreview({ props = {} }: { props?: Props }) {
   const label = String(val(props, "label", "企业名称"));
@@ -447,19 +567,26 @@ export function WebInputPreview({ props = {} }: { props?: Props }) {
   const required = props.required !== false && props.required !== "false";
   const prefixText = String(val(props, "prefixText", ""));
   const suffixText = String(val(props, "suffixText", ""));
+  const boxStyle = computeShapeStyle(props, { fill: "var(--background)", stroke: "var(--border-visible)", borderWidth: 1, radius: 6 });
 
   return (
-    <div className="flex h-full w-full flex-col justify-center gap-1 font-sans select-none">
+    <div className="flex h-full w-full flex-col justify-between gap-1 font-sans select-none overflow-hidden">
       {label && (
-        <div className="flex items-center gap-1 text-xs font-medium text-foreground">
+        <div className="flex items-center gap-1 text-xs font-medium text-foreground shrink-0 leading-none py-0.5">
           {required && <span className="font-mono text-[#D71921]">*</span>}
-          <span>{label}</span>
+          <span className="truncate">{label}</span>
         </div>
       )}
-      <div className="flex h-9 w-full items-center rounded-md border border-border-visible bg-background px-3 text-xs text-foreground shadow-2xs">
-        {prefixText && <span className="mr-2 font-mono text-muted-foreground">{prefixText}</span>}
+      <div
+        className={cn(
+          "flex w-full items-center px-3 text-xs text-foreground shadow-2xs min-h-0",
+          label ? "flex-1 min-h-6" : "h-full"
+        )}
+        style={boxStyle}
+      >
+        {prefixText && <span className="mr-2 font-mono text-muted-foreground shrink-0">{prefixText}</span>}
         <span className="flex-1 truncate text-muted-foreground/70">{placeholder}</span>
-        {suffixText && <span className="ml-2 font-mono text-muted-foreground">{suffixText}</span>}
+        {suffixText && <span className="ml-2 font-mono text-muted-foreground shrink-0">{suffixText}</span>}
       </div>
     </div>
   );
@@ -469,21 +596,61 @@ export function WebInputNumberPreview({ props = {} }: { props?: Props }) {
   const label = String(val(props, "label", "购买配额"));
   const value = val(props, "value", 5);
   const unit = String(val(props, "unit", "台"));
+  const controlsPosition = String(val(props, "controlsPosition", "right-vertical"));
+  const boxStyle = computeShapeStyle(props, { fill: "var(--background)", stroke: "var(--border-visible)", borderWidth: 1, radius: 6 });
 
   return (
-    <div className="flex h-full w-full flex-col justify-center gap-1 font-sans select-none">
-      {label && <span className="text-xs font-medium text-foreground">{label}</span>}
-      <div className="flex h-9 w-full items-center rounded-md border border-border-visible bg-background overflow-hidden shadow-2xs">
-        <button type="button" className="flex size-9 items-center justify-center border-r border-border-visible bg-surface font-mono text-sm text-foreground hover:bg-surface-raised">
-          -
-        </button>
-        <div className="flex flex-1 items-center justify-center gap-1 font-mono text-xs font-bold text-foreground">
-          <span>{String(value)}</span>
-          {unit && <span className="text-[10px] font-normal text-muted-foreground">{unit}</span>}
-        </div>
-        <button type="button" className="flex size-9 items-center justify-center border-l border-border-visible bg-surface font-mono text-sm text-foreground hover:bg-surface-raised">
-          +
-        </button>
+    <div className="flex h-full w-full flex-col justify-between gap-1 font-sans select-none overflow-hidden">
+      {label && <span className="text-xs font-medium text-foreground shrink-0 leading-none py-0.5 truncate">{label}</span>}
+      <div
+        className={cn(
+          "flex w-full items-center overflow-hidden shadow-2xs min-h-0 relative",
+          label ? "flex-1 min-h-6" : "h-full"
+        )}
+        style={boxStyle}
+      >
+        {controlsPosition === "both-sides" ? (
+          <>
+            <button type="button" className="flex size-full max-w-9 items-center justify-center border-r border-border-visible bg-surface font-mono text-sm text-foreground hover:bg-surface-raised shrink-0">
+              -
+            </button>
+            <div className="flex flex-1 items-center justify-center gap-1 font-mono text-xs font-bold text-foreground px-2">
+              <span>{String(value)}</span>
+              {unit && <span className="text-[10px] font-normal text-muted-foreground">{unit}</span>}
+            </div>
+            <button type="button" className="flex size-full max-w-9 items-center justify-center border-l border-border-visible bg-surface font-mono text-sm text-foreground hover:bg-surface-raised shrink-0">
+              +
+            </button>
+          </>
+        ) : controlsPosition === "right-vertical" ? (
+          <>
+            <div className="flex flex-1 items-center justify-start gap-1 font-mono text-xs font-bold text-foreground px-3">
+              <span>{String(value)}</span>
+              {unit && <span className="text-[10px] font-normal text-muted-foreground">{unit}</span>}
+            </div>
+            <div className="flex h-full w-7 flex-col border-l border-border-visible bg-surface shrink-0">
+              <button
+                type="button"
+                className="flex flex-1 items-center justify-center border-b border-border-visible/80 text-muted-foreground hover:text-foreground hover:bg-surface-raised transition-colors"
+                title="增加"
+              >
+                <ChevronUp className="size-3" />
+              </button>
+              <button
+                type="button"
+                className="flex flex-1 items-center justify-center text-muted-foreground hover:text-foreground hover:bg-surface-raised transition-colors"
+                title="减少"
+              >
+                <ChevronDown className="size-3" />
+              </button>
+            </div>
+          </>
+        ) : (
+          <div className="flex flex-1 items-center justify-start gap-1 font-mono text-xs font-bold text-foreground px-3">
+            <span>{String(value)}</span>
+            {unit && <span className="text-[10px] font-normal text-muted-foreground">{unit}</span>}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -494,12 +661,16 @@ export function WebTextareaPreview({ props = {} }: { props?: Props }) {
   const placeholder = String(val(props, "placeholder", "请输入详细描述信息..."));
   const maxLength = Number(val(props, "maxLength", 200));
   const currentLength = Number(val(props, "currentLength", 32));
+  const boxStyle = computeShapeStyle(props, { fill: "var(--background)", stroke: "var(--border-visible)", borderWidth: 1, radius: 6 });
 
   return (
-    <div className="flex h-full w-full flex-col justify-between gap-1 font-sans select-none">
-      {label && <span className="text-xs font-medium text-foreground">{label}</span>}
-      <div className="relative flex flex-1 flex-col rounded-md border border-border-visible bg-background p-2.5 text-xs shadow-2xs">
-        <span className="text-muted-foreground/70">{placeholder}</span>
+    <div className="flex h-full w-full flex-col justify-between gap-1 font-sans select-none overflow-hidden">
+      {label && <span className="text-xs font-medium text-foreground shrink-0 leading-none py-0.5 truncate">{label}</span>}
+      <div
+        className="relative flex flex-1 min-h-0 flex-col p-2.5 text-xs shadow-2xs"
+        style={boxStyle}
+      >
+        <span className="text-muted-foreground/70 truncate">{placeholder}</span>
         <span className="absolute bottom-2 right-2.5 font-mono text-[10px] text-muted-foreground">
           {currentLength} / {maxLength}
         </span>
@@ -511,11 +682,18 @@ export function WebTextareaPreview({ props = {} }: { props?: Props }) {
 export function WebSelectPreview({ props = {} }: { props?: Props }) {
   const label = String(val(props, "label", "所属部门"));
   const selected = String(val(props, "selected", "用户体验设计部 (UED)"));
+  const boxStyle = computeShapeStyle(props, { fill: "var(--background)", stroke: "var(--border-visible)", borderWidth: 1, radius: 6 });
 
   return (
-    <div className="flex h-full w-full flex-col justify-center gap-1 font-sans select-none">
-      {label && <span className="text-xs font-medium text-foreground">{label}</span>}
-      <div className="flex h-9 w-full items-center justify-between rounded-md border border-border-visible bg-background px-3 text-xs text-foreground shadow-2xs">
+    <div className="flex h-full w-full flex-col justify-between gap-1 font-sans select-none overflow-hidden">
+      {label && <span className="text-xs font-medium text-foreground shrink-0 leading-none py-0.5 truncate">{label}</span>}
+      <div
+        className={cn(
+          "flex w-full items-center justify-between px-3 text-xs text-foreground shadow-2xs min-h-0",
+          label ? "flex-1 min-h-6" : "h-full"
+        )}
+        style={boxStyle}
+      >
         <span className="truncate font-medium">{selected}</span>
         <ChevronDown className="size-3.5 text-muted-foreground shrink-0 ml-1" />
       </div>
@@ -527,43 +705,50 @@ export function WebCascaderPreview({ props = {} }: { props?: Props }) {
   const label = String(val(props, "label", "所属区域"));
   const value = String(val(props, "value", "广东省 / 深圳市 / 南山区"));
   const isOpen = props.isOpen !== false && props.isOpen !== "false";
+  const boxStyle = computeShapeStyle(props, { fill: "var(--background)", stroke: "var(--border-visible)", borderWidth: 1, radius: 6 });
 
   return (
-    <div className="flex h-full w-full flex-col font-sans select-none">
-      {label && <span className="text-xs font-medium text-foreground mb-1">{label}</span>}
-      <div className="flex h-9 w-full items-center justify-between rounded-md border border-border-visible bg-background px-3 text-xs text-foreground shadow-2xs">
+    <div className="flex h-full w-full flex-col font-sans select-none overflow-hidden">
+      {label && <span className="text-xs font-medium text-foreground mb-1 shrink-0 leading-none truncate">{label}</span>}
+      <div
+        className={cn(
+          "flex w-full items-center justify-between px-3 text-xs text-foreground shadow-2xs min-h-0",
+          isOpen ? "h-9 shrink-0" : label ? "flex-1 min-h-6" : "h-full"
+        )}
+        style={boxStyle}
+      >
         <span className="truncate font-medium">{value}</span>
         <FolderTree className="size-3.5 text-muted-foreground shrink-0" />
       </div>
 
       {isOpen && (
-        <div className="mt-1.5 flex flex-1 overflow-hidden rounded-md border border-border-visible bg-surface shadow-md">
+        <div className="mt-1.5 flex flex-1 min-h-0 overflow-hidden rounded-md border border-border-visible bg-surface shadow-md">
           {/* Level 1 */}
-          <div className="flex-1 border-r border-border-visible p-1 space-y-0.5 font-sans text-xs">
-            <div className="rounded-xs px-2 py-1 text-muted-foreground">北京市</div>
+          <div className="flex-1 border-r border-border-visible p-1 space-y-0.5 font-sans text-xs overflow-y-auto">
+            <div className="rounded-xs px-2 py-1 text-muted-foreground truncate">北京市</div>
             <div className="flex items-center justify-between rounded-xs bg-surface-raised px-2 py-1 font-bold text-foreground">
-              <span>广东省</span>
-              <ChevronRight className="size-3 text-muted-foreground" />
+              <span className="truncate">广东省</span>
+              <ChevronRight className="size-3 text-muted-foreground shrink-0" />
             </div>
-            <div className="rounded-xs px-2 py-1 text-muted-foreground">上海市</div>
+            <div className="rounded-xs px-2 py-1 text-muted-foreground truncate">上海市</div>
           </div>
           {/* Level 2 */}
-          <div className="flex-1 border-r border-border-visible p-1 space-y-0.5 font-sans text-xs">
-            <div className="rounded-xs px-2 py-1 text-muted-foreground">广州市</div>
+          <div className="flex-1 border-r border-border-visible p-1 space-y-0.5 font-sans text-xs overflow-y-auto">
+            <div className="rounded-xs px-2 py-1 text-muted-foreground truncate">广州市</div>
             <div className="flex items-center justify-between rounded-xs bg-surface-raised px-2 py-1 font-bold text-foreground">
-              <span>深圳市</span>
-              <ChevronRight className="size-3 text-muted-foreground" />
+              <span className="truncate">深圳市</span>
+              <ChevronRight className="size-3 text-muted-foreground shrink-0" />
             </div>
-            <div className="rounded-xs px-2 py-1 text-muted-foreground">珠海市</div>
+            <div className="rounded-xs px-2 py-1 text-muted-foreground truncate">珠海市</div>
           </div>
           {/* Level 3 */}
-          <div className="flex-1 p-1 space-y-0.5 font-sans text-xs">
+          <div className="flex-1 p-1 space-y-0.5 font-sans text-xs overflow-y-auto">
             <div className="flex items-center justify-between rounded-xs bg-foreground text-background px-2 py-1 font-bold">
-              <span>南山区</span>
-              <Check className="size-3" />
+              <span className="truncate">南山区</span>
+              <Check className="size-3 shrink-0" />
             </div>
-            <div className="rounded-xs px-2 py-1 text-muted-foreground">福田区</div>
-            <div className="rounded-xs px-2 py-1 text-muted-foreground">宝安区</div>
+            <div className="rounded-xs px-2 py-1 text-muted-foreground truncate">福田区</div>
+            <div className="rounded-xs px-2 py-1 text-muted-foreground truncate">宝安区</div>
           </div>
         </div>
       )}
@@ -576,19 +761,26 @@ export function WebDateRangePickerPreview({ props = {} }: { props?: Props }) {
   const startDate = String(val(props, "startDate", "2026-08-01"));
   const endDate = String(val(props, "endDate", "2026-08-31"));
   const quickTag = String(val(props, "quickTag", "近30天"));
+  const boxStyle = computeShapeStyle(props, { fill: "var(--background)", stroke: "var(--border-visible)", borderWidth: 1, radius: 6 });
 
   return (
-    <div className="flex h-full w-full flex-col justify-center gap-1 font-sans select-none">
-      {label && <span className="text-xs font-medium text-foreground">{label}</span>}
-      <div className="flex h-9 w-full items-center justify-between rounded-md border border-border-visible bg-background px-3 font-mono text-xs text-foreground shadow-2xs">
-        <div className="flex items-center gap-2">
-          <CalendarDays className="size-3.5 text-muted-foreground" />
-          <span>{startDate}</span>
+    <div className="flex h-full w-full flex-col justify-between gap-1 font-sans select-none overflow-hidden">
+      {label && <span className="text-xs font-medium text-foreground shrink-0 leading-none py-0.5 truncate">{label}</span>}
+      <div
+        className={cn(
+          "flex w-full items-center justify-between px-3 font-mono text-xs text-foreground shadow-2xs min-h-0",
+          label ? "flex-1 min-h-6" : "h-full"
+        )}
+        style={boxStyle}
+      >
+        <div className="flex items-center gap-2 truncate">
+          <CalendarDays className="size-3.5 text-muted-foreground shrink-0" />
+          <span className="truncate">{startDate}</span>
           <span className="text-muted-foreground">~</span>
-          <span>{endDate}</span>
+          <span className="truncate">{endDate}</span>
         </div>
         {quickTag && (
-          <span className="rounded-xs bg-surface-raised border border-border-visible px-1.5 py-0.5 text-[10px] font-sans text-foreground">
+          <span className="rounded-xs bg-surface-raised border border-border-visible px-1.5 py-0.5 text-[10px] font-sans text-foreground shrink-0">
             {quickTag}
           </span>
         )}
@@ -602,11 +794,12 @@ export function WebTransferPreview({ props = {} }: { props?: Props }) {
   const targetTitle = String(val(props, "targetTitle", "已选导出字段 (2)"));
   const sourceItems = parseItems(val(props, "sourceItems", "用户 ID,电子邮箱,注册时间,最后登录"), ["用户 ID", "电子邮箱", "注册时间", "最后登录"]);
   const targetItems = parseItems(val(props, "targetItems", "真实姓名,手机号码"), ["真实姓名", "手机号码"]);
+  const boxStyle = computeShapeStyle(props, { fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1, radius: 6 });
 
   return (
     <div className="flex h-full w-full items-center gap-2 font-sans select-none">
       {/* Source Box */}
-      <div className="flex flex-1 h-full flex-col rounded-md border border-border-visible bg-surface overflow-hidden">
+      <div className="flex flex-1 h-full flex-col overflow-hidden" style={boxStyle}>
         <div className="flex h-8 items-center border-b border-border-visible bg-surface-raised px-2.5 font-mono text-xs font-bold text-foreground">
           {sourceTitle}
         </div>
@@ -631,7 +824,7 @@ export function WebTransferPreview({ props = {} }: { props?: Props }) {
       </div>
 
       {/* Target Box */}
-      <div className="flex flex-1 h-full flex-col rounded-md border border-border-visible bg-surface overflow-hidden">
+      <div className="flex flex-1 h-full flex-col overflow-hidden" style={boxStyle}>
         <div className="flex h-8 items-center border-b border-border-visible bg-surface-raised px-2.5 font-mono text-xs font-bold text-foreground">
           {targetTitle}
         </div>
@@ -651,9 +844,10 @@ export function WebTransferPreview({ props = {} }: { props?: Props }) {
 export function WebUploadPreview({ props = {} }: { props?: Props }) {
   const title = String(val(props, "title", "点击或将文件拖拽至此区域上传"));
   const hint = String(val(props, "hint", "支持 PNG、JPG、PDF 或 ZIP 归档文件，单文件不超过 50MB"));
+  const boxStyle = computeShapeStyle(props, { fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 2, radius: 8 });
 
   return (
-    <div className="flex h-full w-full flex-col items-center justify-center rounded-lg border-2 border-dashed border-border-visible bg-surface/50 p-4 text-center select-none">
+    <div className="flex h-full w-full flex-col items-center justify-center border-dashed p-4 text-center select-none font-sans" style={boxStyle}>
       <div className="flex size-10 items-center justify-center rounded-full bg-surface-raised border border-border-visible mb-2 text-foreground">
         <UploadCloud className="size-5" />
       </div>
@@ -667,9 +861,34 @@ export function WebUploadPreview({ props = {} }: { props?: Props }) {
 // 3. Web 数据展示组件 (Web Data Display)
 // =========================================================================
 
-export function WebTablePreview({ props = {} }: { props?: Props }) {
+export function WebTablePreview({ props = {}, context }: { props?: Props; context?: ComponentRenderContext }) {
   const rawCols = val(props, "columns", "应用名称,版本号,所属集群,运行状态,最后更新,操作");
   const cols = parseItems(rawCols, ["应用名称", "版本号", "所属集群", "运行状态", "最后更新", "操作"]);
+  const [editingCol, setEditingCol] = useState<number | null>(null);
+  const [editVal, setEditVal] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+  const tableStyle = computeShapeStyle(props, { fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1, radius: 8 });
+
+  useEffect(() => {
+    if (editingCol !== null && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [editingCol]);
+
+  const commitColEdit = () => {
+    if (editingCol === null) return;
+    const nextCols = [...cols];
+    nextCols[editingCol] = editVal;
+    context?.onUpdateProps?.({ columns: nextCols.join(",") });
+    setEditingCol(null);
+  };
+
+  useEffect(() => {
+    if (!context?.isSelected && editingCol !== null) {
+      commitColEdit();
+    }
+  }, [context?.isSelected]);
 
   const sampleRows = [
     { name: "auth-gateway-srv", ver: "v2.1.4", cluster: "华南-集群01", status: "运行中", statusType: "success", time: "2026-08-30 14:20" },
@@ -679,16 +898,56 @@ export function WebTablePreview({ props = {} }: { props?: Props }) {
   ];
 
   return (
-    <div className="flex h-full w-full flex-col rounded-lg border border-border-visible bg-surface overflow-hidden font-sans select-none">
+    <div className="flex h-full w-full flex-col overflow-hidden font-sans select-none shadow-2xs" style={tableStyle}>
       {/* Table Header */}
-      <div className="flex h-9 items-center border-b border-border-visible bg-surface-raised px-3 text-xs font-bold text-foreground">
+      <div className="flex h-9 items-center border-b border-border-visible bg-surface-raised/60 px-3 text-[11px] font-mono font-medium uppercase tracking-wider text-muted-foreground">
         <div className="w-8">
           <CheckSquare className="size-3.5 text-muted-foreground" />
         </div>
         {cols.map((col, idx) => (
-          <div key={col} className={cn("flex items-center gap-1", idx === 0 ? "flex-2" : idx === cols.length - 1 ? "w-24 justify-end" : "flex-1")}>
-            <span className="truncate">{col}</span>
-            {col !== "操作" && <span className="font-mono text-[9px] text-muted-foreground">▲▼</span>}
+          <div
+            key={idx}
+            className={cn(
+              "relative flex items-center gap-1 min-w-0 transition-colors",
+              idx === 0 ? "flex-2" : idx === cols.length - 1 ? "w-24 justify-end" : "flex-1",
+              editingCol !== idx && "hover:text-foreground cursor-pointer"
+            )}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (context?.elementId && context?.onSelect) context.onSelect(context.elementId);
+            }}
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              setEditingCol(idx);
+              setEditVal(col);
+            }}
+          >
+            {editingCol === idx ? (
+              <input
+                ref={inputRef}
+                type="text"
+                value={editVal}
+                onChange={(e) => setEditVal(e.target.value)}
+                onBlur={commitColEdit}
+                onKeyDown={(e) => {
+                  e.stopPropagation();
+                  if (e.key === "Enter" || e.key === "Tab") {
+                    e.preventDefault();
+                    commitColEdit();
+                  } else if (e.key === "Escape") {
+                    setEditingCol(null);
+                  }
+                }}
+                onMouseDown={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+                className="h-6 w-full rounded-2xs border border-foreground bg-background px-1 font-sans text-xs text-foreground outline-none ring-1 ring-border-visible"
+              />
+            ) : (
+              <>
+                <span className="truncate">{col}</span>
+                {col !== "操作" && <span className="font-mono text-[9px] text-muted-foreground">▲▼</span>}
+              </>
+            )}
           </div>
         ))}
       </div>
@@ -696,7 +955,14 @@ export function WebTablePreview({ props = {} }: { props?: Props }) {
       {/* Table Rows */}
       <div className="flex-1 overflow-y-auto divide-y divide-border-visible/60">
         {sampleRows.map((row, idx) => (
-          <div key={`${row.name}-${idx}`} className="flex h-10 items-center px-3 text-xs text-foreground hover:bg-surface-raised/40 transition-colors">
+          <div
+            key={`${row.name}-${idx}`}
+            className="flex h-10 items-center px-3 text-xs text-foreground hover:bg-surface-raised/40 transition-colors"
+            onClick={(e) => {
+              e.stopPropagation();
+              if (context?.elementId && context?.onSelect) context.onSelect(context.elementId);
+            }}
+          >
             <div className="w-8">
               <CheckSquare className="size-3.5 text-muted-foreground" />
             </div>
@@ -729,8 +995,9 @@ export function WebTablePreview({ props = {} }: { props?: Props }) {
 
 export function WebDescriptionsPreview({ props = {} }: { props?: Props }) {
   const title = String(val(props, "title", "服务实例基本详情"));
-  const rawItems = val(props, "items", "实例 ID:ins-982143;运行环境:生产集群-华南;公网 IP:119.29.29.29;创建时间:2026-08-30;计费模式:按量计费;到期状态:正常运行");
+  const rawItems = val(props, "items", "实例编号:实例-982143;运行环境:华南生产集群;网络地址:119.29.29.29;创建时间:2026-08-30;计费模式:按量计费;到期状态:正常运行");
   const cols = Number(val(props, "cols", 3));
+  const descStyle = computeShapeStyle(props, { fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1, radius: 6 });
 
   const items = String(rawItems)
     .split(String(rawItems).includes("\n") ? "\n" : ";")
@@ -746,7 +1013,7 @@ export function WebDescriptionsPreview({ props = {} }: { props?: Props }) {
     });
 
   return (
-    <div className="flex h-full w-full flex-col rounded-lg border border-border-visible bg-surface overflow-hidden font-sans select-none">
+    <div className="flex h-full w-full flex-col overflow-hidden font-sans select-none" style={descStyle}>
       <div className="flex h-8.5 items-center border-b border-border-visible bg-surface-raised px-3.5 font-mono text-xs font-bold text-foreground">
         {title}
       </div>
@@ -766,14 +1033,15 @@ export function WebDescriptionsPreview({ props = {} }: { props?: Props }) {
 }
 
 export function WebStatisticCardPreview({ props = {} }: { props?: Props }) {
-  const title = String(val(props, "title", "今日活跃用户数 (DAU)"));
+  const title = String(val(props, "title", "今日活跃用户数"));
   const value = String(val(props, "value", "148,290"));
   const delta = String(val(props, "delta", "+18.4%"));
   const isPositive = props.isPositive !== false && props.isPositive !== "false";
   const subText = String(val(props, "subText", "较昨日同期"));
+  const cardStyle = computeShapeStyle(props, { fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1, radius: 8 });
 
   return (
-    <div className="flex h-full w-full flex-col justify-between rounded-lg border border-border-visible bg-surface p-4 font-sans select-none shadow-2xs">
+    <div className="flex h-full w-full flex-col justify-between p-4 font-sans select-none shadow-2xs" style={cardStyle}>
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium text-muted-foreground">{title}</span>
         <TrendingUp className="size-4 text-muted-foreground" />
@@ -802,9 +1070,10 @@ export function WebModalPreview({ props = {} }: { props?: Props }) {
   const content = String(val(props, "content", "请确认节点分配的 CPU 与内存资源，配置提交后将触发自动化部署流水线。"));
   const confirmText = String(val(props, "confirmText", "立即创建"));
   const cancelText = String(val(props, "cancelText", "取消"));
+  const modalStyle = computeShapeStyle(props, { fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1, radius: 12 });
 
   return (
-    <div className="flex h-full w-full flex-col rounded-xl border border-border-visible bg-surface shadow-2xl font-sans select-none overflow-hidden">
+    <div className="flex h-full w-full flex-col shadow-2xl font-sans select-none overflow-hidden" style={modalStyle}>
       {/* Header */}
       <div className="flex h-12 items-center justify-between border-b border-border px-5">
         <span className="text-sm font-bold text-foreground">{title}</span>
@@ -835,9 +1104,10 @@ export function WebFilterBarPreview({ props = {} }: { props?: Props }) {
   const keyword = String(val(props, "keyword", "搜索关键词..."));
   const dept = String(val(props, "dept", "全部部门"));
   const dateRange = String(val(props, "dateRange", "2026-08-01 ~ 2026-08-31"));
+  const barStyle = computeShapeStyle(props, { fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1, radius: 6 });
 
   return (
-    <div className="flex h-full w-full items-center justify-between rounded-lg border border-border-visible bg-surface px-4 font-sans select-none gap-3">
+    <div className="flex h-full w-full items-center justify-between px-4 font-sans select-none gap-3" style={barStyle}>
       <div className="flex flex-1 items-center gap-3">
         <div className="flex h-8.5 w-52 items-center gap-2 rounded-md border border-border-visible bg-background px-2.5 text-xs">
           <Search className="size-3.5 text-muted-foreground" />
@@ -868,7 +1138,7 @@ export function WebFilterBarPreview({ props = {} }: { props?: Props }) {
 }
 
 export function WebAdminLayoutPreview({ props = {} }: { props?: Props }) {
-  const systemTitle = String(val(props, "systemTitle", "BLUEPEN 管理后台"));
+  const systemTitle = String(val(props, "systemTitle", "后台管理控制中心"));
 
   return (
     <div className="flex h-full w-full flex-col rounded-xl border border-border-visible bg-background overflow-hidden font-sans select-none shadow-lg">
@@ -911,9 +1181,10 @@ export function WebDrawerPreview({ props = {} }: { props?: Props }) {
   const title = String(val(props, "title", "查看实例运行详情"));
   const confirmText = String(val(props, "confirmText", "保存修改"));
   const cancelText = String(val(props, "cancelText", "关闭"));
+  const drawerStyle = computeShapeStyle(props, { fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1, radius: 0 });
 
   return (
-    <div className="flex h-full w-full flex-col rounded-xl border border-border-visible bg-surface shadow-2xl font-sans select-none overflow-hidden">
+    <div className="flex h-full w-full flex-col shadow-2xl font-sans select-none overflow-hidden" style={drawerStyle}>
       <div className="flex h-12 items-center justify-between border-b border-border px-4">
         <span className="text-xs font-bold text-foreground">{title}</span>
         <button type="button" className="text-muted-foreground hover:text-foreground">
@@ -946,16 +1217,14 @@ export function WebAlertPreview({ props = {} }: { props?: Props }) {
   const title = String(val(props, "title", "系统维护升级通知"));
   const description = String(val(props, "description", "底层网络将于今日 24:00 进行例行维护，请提前做好数据保存。"));
   const tone = String(val(props, "tone", "warning"));
+  const defaultFill = tone === "warning" ? "rgba(245, 158, 11, 0.1)" : tone === "error" ? "rgba(244, 63, 94, 0.1)" : tone === "success" ? "rgba(16, 185, 129, 0.1)" : "var(--surface)";
+  const defaultStroke = tone === "warning" ? "rgba(245, 158, 11, 0.3)" : tone === "error" ? "rgba(244, 63, 94, 0.3)" : tone === "success" ? "rgba(16, 185, 129, 0.3)" : "var(--border-visible)";
+  const alertStyle = computeShapeStyle(props, { fill: defaultFill, stroke: defaultStroke, borderWidth: 1, radius: 6 });
 
   return (
     <div
-      className={cn(
-        "flex h-full w-full items-center justify-between rounded-lg border px-4 py-2 font-sans select-none gap-3",
-        tone === "warning" && "border-amber-500/30 bg-amber-500/10 text-foreground",
-        tone === "error" && "border-rose-500/30 bg-rose-500/10 text-foreground",
-        tone === "success" && "border-emerald-500/30 bg-emerald-500/10 text-foreground",
-        tone === "info" && "border-border-visible bg-surface text-foreground"
-      )}
+      className="flex h-full w-full items-center justify-between px-4 py-2 font-sans select-none gap-3 text-foreground"
+      style={alertStyle}
     >
       <div className="flex items-center gap-2.5 min-w-0">
         <AlertTriangle className={cn("size-4 shrink-0", tone === "warning" ? "text-amber-500" : tone === "error" ? "text-rose-500" : "text-foreground")} />
@@ -975,9 +1244,10 @@ export function WebPopconfirmPreview({ props = {} }: { props?: Props }) {
   const title = String(val(props, "title", "确定要永久删除该记录吗？"));
   const confirmText = String(val(props, "confirmText", "确定"));
   const cancelText = String(val(props, "cancelText", "取消"));
+  const popStyle = computeShapeStyle(props, { fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1, radius: 8 });
 
   return (
-    <div className="flex h-full w-full flex-col justify-between rounded-lg border border-border-visible bg-surface p-3 font-sans select-none shadow-xl">
+    <div className="flex h-full w-full flex-col justify-between p-3 font-sans select-none shadow-xl" style={popStyle}>
       <div className="flex items-center gap-2 text-xs font-medium text-foreground">
         <HelpCircle className="size-4 text-amber-500 shrink-0" />
         <span className="truncate">{title}</span>
@@ -998,9 +1268,10 @@ export function WebNotificationPreview({ props = {} }: { props?: Props }) {
   const title = String(val(props, "title", "任务执行成功"));
   const message = String(val(props, "message", "您的数据导出任务已完成，点击可直接下载生成的报表文件。"));
   const time = String(val(props, "time", "刚刚"));
+  const notifStyle = computeShapeStyle(props, { fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1, radius: 8 });
 
   return (
-    <div className="flex h-full w-full flex-col justify-between rounded-lg border border-border-visible bg-surface p-3 font-sans select-none shadow-xl">
+    <div className="flex h-full w-full flex-col justify-between p-3 font-sans select-none shadow-xl" style={notifStyle}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2">
           <div className="flex size-5 items-center justify-center rounded-full bg-emerald-500/20 text-emerald-500">
@@ -1021,18 +1292,13 @@ export function WebTipsPreview({ props = {} }: { props?: Props }) {
   const tone = String(val(props, "tone", "info")); // "info" | "success" | "warning" | "error" | "default"
   const placement = String(val(props, "placement", "top")); // "top" | "bottom" | "left" | "right"
   const showArrow = props.showArrow !== false && props.showArrow !== "false";
+  const tipsStyle = computeShapeStyle(props, { fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1, radius: 8 });
 
   return (
     <div className="relative flex h-full w-full items-center justify-center p-2 font-sans select-none">
       <div
-        className={cn(
-          "relative flex flex-col justify-center rounded-lg border bg-surface p-3 text-xs shadow-xl w-full h-full",
-          tone === "warning" && "border-amber-500/40 bg-surface",
-          tone === "error" && "border-rose-500/40 bg-surface",
-          tone === "success" && "border-emerald-500/40 bg-surface",
-          tone === "info" && "border-sky-500/40 bg-surface",
-          tone === "default" && "border-border-visible bg-surface"
-        )}
+        className="relative flex flex-col justify-center p-3 text-xs shadow-xl w-full h-full"
+        style={tipsStyle}
       >
         {/* Header with tone indicator */}
         <div className="flex items-center gap-1.5 mb-1">
@@ -1080,9 +1346,10 @@ export function WebMessagePreview({ props = {} }: { props?: Props }) {
   const content = String(val(props, "content", "操作成功：业务数据已实时同步至集群"));
   const tone = String(val(props, "tone", "success")); // "success" | "warning" | "error" | "info" | "loading"
   const closable = props.closable !== false && props.closable !== "false";
+  const msgStyle = computeShapeStyle(props, { fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1, radius: 6 });
 
   return (
-    <div className="flex h-full w-full items-center justify-between rounded-md border border-border-visible bg-surface px-3 py-2 font-sans select-none shadow-md gap-2.5">
+    <div className="flex h-full w-full items-center justify-between px-3 py-2 font-sans select-none shadow-md gap-2.5" style={msgStyle}>
       <div className="flex items-center gap-2 min-w-0">
         {tone === "success" && <Check className="size-3.5 text-emerald-500 shrink-0 stroke-[2.5]" />}
         {tone === "warning" && <AlertTriangle className="size-3.5 text-amber-500 shrink-0" />}
@@ -1123,9 +1390,10 @@ export function WebEmptyStatePreview({ props = {} }: { props?: Props }) {
   const title = String(val(props, "title", "暂无关联业务数据"));
   const description = String(val(props, "description", "当前筛选条件下未检索到任何符合条件的结果"));
   const buttonText = String(val(props, "buttonText", "新建一条记录"));
+  const emptyStyle = computeShapeStyle(props, { fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1, radius: 8 });
 
   return (
-    <div className="flex h-full w-full flex-col items-center justify-center rounded-lg border border-border-visible bg-surface p-4 text-center font-sans select-none">
+    <div className="flex h-full w-full flex-col items-center justify-center p-4 text-center font-sans select-none" style={emptyStyle}>
       <div className="flex size-12 items-center justify-center rounded-full bg-surface-raised border border-border-visible mb-2 text-muted-foreground">
         <PackageOpen className="size-6" />
       </div>
@@ -1175,14 +1443,15 @@ export function WebTreePreview({ props = {} }: { props?: Props }) {
 }
 
 export function WebCollapsePreview({ props = {} }: { props?: Props }) {
-  const rawPanels = val(props, "panels", "通用配置规则:支持自定义配置默认路由与访问策略;安全与防火墙:已开启 DDoS 基础防护与白名单拦截:open;日志归档策略:按日切分并保留最近 180 天");
+  const rawPanels = val(props, "panels", "通用配置规则:支持自定义配置默认路由与访问策略;网络安全防护:已开启基础防护与白名单拦截:open;日志归档策略:按日切分并保留最近 180 天");
   const panelItems = String(rawPanels)
     .split(String(rawPanels).includes("\n") ? "\n" : ";")
     .map((s) => s.trim())
     .filter(Boolean);
+  const collapseStyle = computeShapeStyle(props, { fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1, radius: 8 });
 
   return (
-    <div className="flex h-full w-full flex-col rounded-lg border border-border-visible bg-surface overflow-hidden font-sans select-none divide-y divide-border-visible">
+    <div className="flex h-full w-full flex-col overflow-hidden font-sans select-none divide-y divide-border-visible" style={collapseStyle}>
       {panelItems.map((p, idx) => {
         const parts = p.split(":");
         const header = parts[0] || `面板 ${idx + 1}`;
@@ -1241,8 +1510,8 @@ export function WebTagPreview({ props = {} }: { props?: Props }) {
 }
 
 export function WebTimelinePreview({ props = {} }: { props?: Props }) {
-  const rawEvents = val(props, "events", "14:32:45 提交发布单:done,14:35:10 自动化单元测试通过:done,14:40:00 灰度发布至50%流量:process,15:00:00 全量上线:pending");
-  const events = parseItems(rawEvents, ["14:32:45 提交发布单:done", "14:35:10 自动化单元测试通过:done", "14:40:00 灰度发布至50%流量:process", "15:00:00 全量上线:pending"]);
+  const rawEvents = val(props, "events", "14:32 提交发布单:done,14:35 自动化单元测试通过:done,14:40 灰度发布至50%流量:process,15:00 全量上线:pending");
+  const events = parseItems(rawEvents, ["14:32 提交发布单:done", "14:35 自动化单元测试通过:done", "14:40 灰度发布至50%流量:process", "15:00 全量上线:pending"]);
 
   return (
     <div className="flex h-full w-full flex-col justify-between p-3 font-sans select-none text-xs overflow-y-auto">
@@ -1277,24 +1546,23 @@ export function WebTimelinePreview({ props = {} }: { props?: Props }) {
 }
 
 export function WebBadgePreview({ props = {} }: { props?: Props }) {
-  const label = String(val(props, "label", "未读消息"));
+  const label = String(val(props, "label", "未读通知"));
   const count = String(val(props, "count", "99+"));
+  const badgeStyle = computeShapeStyle(props, { fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1, radius: 6 });
 
   return (
-    <div className="relative inline-flex h-full w-full items-center justify-center font-sans select-none">
-      <div className="flex h-9 w-full items-center justify-between rounded-md border border-border-visible bg-surface px-3 text-xs text-foreground">
-        <span>{label}</span>
-        <span className="rounded-full bg-[#D71921] px-1.5 py-0.2 font-mono text-[10px] font-bold text-white">
-          {count}
-        </span>
-      </div>
+    <div className="flex h-full w-full items-center justify-between px-3 text-xs text-foreground select-none" style={badgeStyle}>
+      <span>{label}</span>
+      <span className="rounded-full bg-[#D71921] px-1.5 py-0.2 font-mono text-[10px] font-bold text-white">
+        {count}
+      </span>
     </div>
   );
 }
 
 export function WebAvatarGroupPreview({ props = {} }: { props?: Props }) {
-  const rawInitials = val(props, "initials", "TX,BP,AL,WD");
-  const initials = parseItems(rawInitials, ["TX", "BP", "AL", "WD"]);
+  const rawInitials = val(props, "initials", "张,李,王,赵");
+  const initials = parseItems(rawInitials, ["张", "李", "王", "赵"]);
   const overflowText = String(val(props, "overflowText", "+6"));
 
   return (
@@ -1353,7 +1621,7 @@ export function WebCrudTablePreview({ props = {} }: { props?: Props }) {
 }
 
 export function WebFormLayoutPreview({ props = {} }: { props?: Props }) {
-  const formTitle = String(val(props, "formTitle", "新建企业级微服务实例"));
+  const formTitle = String(val(props, "formTitle", "新建企业微服务实例"));
 
   return (
     <div className="flex h-full w-full flex-col justify-between rounded-xl border border-border-visible bg-surface p-5 font-sans select-none shadow-md">
@@ -1362,10 +1630,10 @@ export function WebFormLayoutPreview({ props = {} }: { props?: Props }) {
       </div>
 
       <div className="grid grid-cols-2 gap-4 my-2">
-        <WebInputPreview props={{ label: "实例名称", placeholder: "e.g. srv-order-core" }} />
-        <WebSelectPreview props={{ label: "所属环境", selected: "生产环境集群 (Prod)" }} />
+        <WebInputPreview props={{ label: "实例名称", placeholder: "例如：核心订单服务" }} />
+        <WebSelectPreview props={{ label: "所属环境", selected: "生产环境集群" }} />
         <WebDateRangePickerPreview props={{ label: "有效周期" }} />
-        <WebInputNumberPreview props={{ label: "副本数量", value: 3, unit: "Pods" }} />
+        <WebInputNumberPreview props={{ label: "副本数量", value: 3, unit: "节点" }} />
       </div>
 
       <div className="flex items-center justify-end gap-2 border-t border-border pt-3">
@@ -1381,10 +1649,11 @@ export function WebFormLayoutPreview({ props = {} }: { props?: Props }) {
 }
 
 export function WebLoginCardPreview({ props = {} }: { props?: Props }) {
-  const systemName = String(val(props, "systemName", "BLUEPEN PROTOTYPE"));
+  const systemName = String(val(props, "systemName", "用户认证与登录中心"));
+  const loginStyle = computeShapeStyle(props, { fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1, radius: 12 });
 
   return (
-    <div className="flex h-full w-full flex-col justify-between rounded-xl border border-border-visible bg-surface p-6 font-sans select-none shadow-xl">
+    <div className="flex h-full w-full flex-col justify-between p-6 font-sans select-none shadow-xl" style={loginStyle}>
       <div className="text-center">
         <div className="font-mono text-xs font-bold tracking-widest uppercase text-foreground">{systemName}</div>
         <div className="text-xs text-muted-foreground mt-1">请使用企业域账号登录</div>
@@ -1417,7 +1686,7 @@ export function WebLoginCardPreview({ props = {} }: { props?: Props }) {
 }
 
 export function WebStepsFormPreview({ props = {} }: { props?: Props }) {
-  const stepTitle = String(val(props, "stepTitle", "第一步：填写基础集群参数"));
+  const stepTitle = String(val(props, "stepTitle", "第一步：填写基础参数配置"));
 
   return (
     <div className="flex h-full w-full flex-col justify-between rounded-xl border border-border-visible bg-surface p-5 font-sans select-none shadow-md">
@@ -1428,8 +1697,8 @@ export function WebStepsFormPreview({ props = {} }: { props?: Props }) {
       <div className="text-xs font-bold text-foreground my-1.5">{stepTitle}</div>
 
       <div className="grid grid-cols-2 gap-4 my-2">
-        <WebInputPreview props={{ label: "集群域名", placeholder: "k8s-cluster.prod.net" }} />
-        <WebSelectPreview props={{ label: "网络方案", selected: "VPC 高级路由" }} />
+        <WebInputPreview props={{ label: "集群服务标识", placeholder: "例如：微服务核心网关" }} />
+        <WebSelectPreview props={{ label: "网络方案", selected: "专有网络高级路由" }} />
       </div>
 
       <div className="flex items-center justify-between border-t border-border pt-3 font-mono text-xs">
@@ -1447,13 +1716,20 @@ export function WebStepsFormPreview({ props = {} }: { props?: Props }) {
 export function WebTreeSelectPreview({ props = {} }: { props?: Props }) {
   const label = String(val(props, "label", "组织树节点"));
   const value = String(val(props, "value", "技术中台 / 架构组"));
+  const boxStyle = computeShapeStyle(props, { fill: "var(--background)", stroke: "var(--border-visible)", borderWidth: 1, radius: 6 });
 
   return (
-    <div className="flex h-full w-full flex-col justify-center gap-1 font-sans select-none">
-      {label && <span className="text-xs font-medium text-foreground">{label}</span>}
-      <div className="flex h-9 w-full items-center justify-between rounded-md border border-border-visible bg-background px-3 text-xs text-foreground shadow-2xs">
+    <div className="flex h-full w-full flex-col justify-between gap-1 font-sans select-none overflow-hidden">
+      {label && <span className="text-xs font-medium text-foreground shrink-0 leading-none py-0.5 truncate">{label}</span>}
+      <div
+        className={cn(
+          "flex w-full items-center justify-between px-3 text-xs text-foreground shadow-2xs min-h-0",
+          label ? "flex-1 min-h-6" : "h-full"
+        )}
+        style={boxStyle}
+      >
         <div className="flex items-center gap-2 truncate">
-          <FolderTree className="size-3.5 text-muted-foreground" />
+          <FolderTree className="size-3.5 text-muted-foreground shrink-0" />
           <span className="font-medium truncate">{value}</span>
         </div>
         <ChevronDown className="size-3.5 text-muted-foreground shrink-0" />
@@ -1463,20 +1739,24 @@ export function WebTreeSelectPreview({ props = {} }: { props?: Props }) {
 }
 
 export function WebAutoCompletePreview({ props = {} }: { props?: Props }) {
-  const value = String(val(props, "value", "Tencent"));
-  const suggestions = parseItems(val(props, "suggestions", "Tencent Cloud,Tencent Video,Tencent Meeting"), ["Tencent Cloud", "Tencent Video", "Tencent Meeting"]);
+  const value = String(val(props, "value", "云原生"));
+  const suggestions = parseItems(val(props, "suggestions", "云原生技术中台,云原生微服务网关,云原生容器集群"), ["云原生技术中台", "云原生微服务网关", "云原生容器集群"]);
   const isOpen = props.isOpen === true || props.isOpen === "true";
+  const boxStyle = computeShapeStyle(props, { fill: "var(--background)", stroke: "var(--border-visible)", borderWidth: 1, radius: 6 });
 
   return (
-    <div className="flex h-full w-full flex-col font-sans select-none">
-      <div className="flex h-9 w-full items-center rounded-md border border-border-visible bg-background px-3 text-xs text-foreground shadow-2xs">
+    <div className="flex h-full w-full flex-col font-sans select-none overflow-hidden">
+      <div
+        className={cn("flex w-full items-center px-3 text-xs text-foreground shadow-2xs min-h-0", isOpen ? "h-9 shrink-0" : "h-full")}
+        style={boxStyle}
+      >
         <Search className="size-3.5 text-muted-foreground mr-2 shrink-0" />
         <span className="font-bold text-foreground truncate">{value}</span>
       </div>
       {isOpen && (
-        <div className="mt-1 flex-1 overflow-hidden rounded-md border border-border-visible bg-surface p-1 shadow-md text-xs">
+        <div className="mt-1 flex-1 min-h-0 overflow-hidden rounded-md border border-border-visible bg-surface p-1 shadow-md text-xs">
           {suggestions.map((sug) => (
-            <div key={sug} className="flex h-7 items-center rounded-xs px-2 hover:bg-surface-raised text-foreground">
+            <div key={sug} className="flex h-7 items-center rounded-xs px-2 hover:bg-surface-raised text-foreground truncate">
               {sug}
             </div>
           ))}
@@ -1487,17 +1767,18 @@ export function WebAutoCompletePreview({ props = {} }: { props?: Props }) {
 }
 
 export function WebTagInputPreview({ props = {} }: { props?: Props }) {
-  const tags = parseItems(val(props, "tags", "React 19,TDesign,Tauri 2"), ["React 19", "TDesign", "Tauri 2"]);
+  const tags = parseItems(val(props, "tags", "前端框架,组件库,桌面端"), ["前端框架", "组件库", "桌面端"]);
+  const boxStyle = computeShapeStyle(props, { fill: "var(--background)", stroke: "var(--border-visible)", borderWidth: 1, radius: 6 });
 
   return (
-    <div className="flex h-full w-full items-center gap-1.5 rounded-md border border-border-visible bg-background px-2.5 font-sans select-none overflow-hidden">
+    <div className="flex h-full w-full items-center gap-1.5 px-2.5 font-sans select-none overflow-hidden" style={boxStyle}>
       {tags.map((t) => (
-        <span key={t} className="inline-flex items-center gap-1 rounded-xs bg-surface-raised border border-border-visible px-2 py-0.5 font-mono text-[10px] text-foreground">
+        <span key={t} className="inline-flex items-center gap-1 rounded-xs bg-surface-raised border border-border-visible px-2 py-0.5 font-mono text-[10px] text-foreground shrink-0">
           <span>{t}</span>
           <X className="size-2.5 text-muted-foreground" />
         </span>
       ))}
-      <span className="size-2 animate-pulse bg-foreground/70" />
+      <span className="size-2 animate-pulse bg-foreground/70 shrink-0" />
     </div>
   );
 }
@@ -1505,13 +1786,20 @@ export function WebTagInputPreview({ props = {} }: { props?: Props }) {
 export function WebDatePickerPreview({ props = {} }: { props?: Props }) {
   const label = String(val(props, "label", "截止日期"));
   const value = String(val(props, "value", "2026-09-01"));
+  const boxStyle = computeShapeStyle(props, { fill: "var(--background)", stroke: "var(--border-visible)", borderWidth: 1, radius: 6 });
 
   return (
-    <div className="flex h-full w-full flex-col justify-center gap-1 font-sans select-none">
-      {label && <span className="text-xs font-medium text-foreground">{label}</span>}
-      <div className="flex h-9 w-full items-center justify-between rounded-md border border-border-visible bg-background px-3 font-mono text-xs text-foreground shadow-2xs">
-        <span>{value}</span>
-        <CalendarDays className="size-3.5 text-muted-foreground" />
+    <div className="flex h-full w-full flex-col justify-between gap-1 font-sans select-none overflow-hidden">
+      {label && <span className="text-xs font-medium text-foreground shrink-0 leading-none py-0.5 truncate">{label}</span>}
+      <div
+        className={cn(
+          "flex w-full items-center justify-between px-3 font-mono text-xs text-foreground shadow-2xs min-h-0",
+          label ? "flex-1 min-h-6" : "h-full"
+        )}
+        style={boxStyle}
+      >
+        <span className="truncate">{value}</span>
+        <CalendarDays className="size-3.5 text-muted-foreground shrink-0" />
       </div>
     </div>
   );
@@ -1520,30 +1808,37 @@ export function WebDatePickerPreview({ props = {} }: { props?: Props }) {
 export function WebTimePickerPreview({ props = {} }: { props?: Props }) {
   const label = String(val(props, "label", "执行时间"));
   const value = String(val(props, "value", "14:30:00"));
+  const boxStyle = computeShapeStyle(props, { fill: "var(--background)", stroke: "var(--border-visible)", borderWidth: 1, radius: 6 });
 
   return (
-    <div className="flex h-full w-full flex-col justify-center gap-1 font-sans select-none">
-      {label && <span className="text-xs font-medium text-foreground">{label}</span>}
-      <div className="flex h-9 w-full items-center justify-between rounded-md border border-border-visible bg-background px-3 font-mono text-xs text-foreground shadow-2xs">
-        <span>{value}</span>
-        <Clock className="size-3.5 text-muted-foreground" />
+    <div className="flex h-full w-full flex-col justify-between gap-1 font-sans select-none overflow-hidden">
+      {label && <span className="text-xs font-medium text-foreground shrink-0 leading-none py-0.5 truncate">{label}</span>}
+      <div
+        className={cn(
+          "flex w-full items-center justify-between px-3 font-mono text-xs text-foreground shadow-2xs min-h-0",
+          label ? "flex-1 min-h-6" : "h-full"
+        )}
+        style={boxStyle}
+      >
+        <span className="truncate">{value}</span>
+        <Clock className="size-3.5 text-muted-foreground shrink-0" />
       </div>
     </div>
   );
 }
 
 export function WebRadioGroupPreview({ props = {} }: { props?: Props }) {
-  const options = parseItems(val(props, "options", "开发环境 (Dev),测试环境 (Test),生产环境 (Prod)"), ["开发环境 (Dev)", "测试环境 (Test)", "生产环境 (Prod)"]);
+  const options = parseItems(val(props, "options", "开发环境,测试环境,生产环境"), ["开发环境", "测试环境", "生产环境"]);
   const selectedIndex = Number(val(props, "selectedIndex", 0));
 
   return (
-    <div className="flex h-full w-full items-center gap-4 px-2 font-sans text-xs select-none">
+    <div className="flex h-full w-full items-center gap-4 px-2 font-sans text-xs select-none overflow-hidden">
       {options.map((opt, i) => (
-        <div key={opt} className="flex items-center gap-1.5 cursor-default">
-          <div className={cn("flex size-3.5 items-center justify-center rounded-full border", i === selectedIndex ? "border-foreground" : "border-muted-foreground")}>
+        <div key={opt} className="flex items-center gap-1.5 cursor-default shrink-0">
+          <div className={cn("flex size-3.5 items-center justify-center rounded-full border shrink-0", i === selectedIndex ? "border-foreground" : "border-muted-foreground")}>
             {i === selectedIndex && <div className="size-1.5 rounded-full bg-foreground" />}
           </div>
-          <span className={cn(i === selectedIndex ? "font-bold text-foreground" : "text-muted-foreground")}>{opt}</span>
+          <span className={cn("truncate", i === selectedIndex ? "font-bold text-foreground" : "text-muted-foreground")}>{opt}</span>
         </div>
       ))}
     </div>
@@ -1551,19 +1846,19 @@ export function WebRadioGroupPreview({ props = {} }: { props?: Props }) {
 }
 
 export function WebCheckboxGroupPreview({ props = {} }: { props?: Props }) {
-  const options = parseItems(val(props, "options", "站内信,企业微信,邮件通知,短信推送"), ["站内信", "企业微信", "邮件通知", "短信推送"]);
+  const options = parseItems(val(props, "options", "站内消息,企业通讯,邮件通知,短信推送"), ["站内消息", "企业通讯", "邮件通知", "短信推送"]);
   const checkedIndices = parseItems(val(props, "checkedIndices", "0,1"), ["0", "1"]).map(Number);
 
   return (
-    <div className="flex h-full w-full items-center gap-4 px-2 font-sans text-xs select-none">
+    <div className="flex h-full w-full items-center gap-4 px-2 font-sans text-xs select-none overflow-hidden">
       {options.map((opt, i) => {
         const isChecked = checkedIndices.includes(i);
         return (
-          <div key={opt} className="flex items-center gap-1.5 cursor-default">
-            <div className={cn("flex size-3.5 items-center justify-center rounded-xs border", isChecked ? "border-foreground bg-foreground text-background" : "border-muted-foreground")}>
+          <div key={opt} className="flex items-center gap-1.5 cursor-default shrink-0">
+            <div className={cn("flex size-3.5 items-center justify-center rounded-xs border shrink-0", isChecked ? "border-foreground bg-foreground text-background" : "border-muted-foreground")}>
               {isChecked && <Check className="size-2.5 stroke-[3]" />}
             </div>
-            <span className={cn(isChecked ? "font-bold text-foreground" : "text-muted-foreground")}>{opt}</span>
+            <span className={cn("truncate", isChecked ? "font-bold text-foreground" : "text-muted-foreground")}>{opt}</span>
           </div>
         );
       })}
@@ -1576,9 +1871,9 @@ export function WebSwitchPreview({ props = {} }: { props?: Props }) {
   const checked = props.checked !== false && props.checked !== "false";
 
   return (
-    <div className="flex h-full w-full items-center justify-between px-2 font-sans select-none">
-      <span className="text-xs font-medium text-foreground">{label}</span>
-      <div className={cn("flex h-5 w-9 items-center rounded-full p-0.5 transition-colors", checked ? "bg-foreground" : "bg-muted")}>
+    <div className="flex h-full w-full items-center justify-between px-2 font-sans select-none overflow-hidden">
+      <span className="text-xs font-medium text-foreground truncate">{label}</span>
+      <div className={cn("flex h-5 w-9 items-center rounded-full p-0.5 transition-colors shrink-0", checked ? "bg-foreground" : "bg-muted")}>
         <div className={cn("size-4 rounded-full bg-background transition-transform", checked && "translate-x-4")} />
       </div>
     </div>
@@ -1586,18 +1881,18 @@ export function WebSwitchPreview({ props = {} }: { props?: Props }) {
 }
 
 export function WebSliderPreview({ props = {} }: { props?: Props }) {
-  const label = String(val(props, "label", "带宽限制 (Mbps)"));
+  const label = String(val(props, "label", "带宽限制 (兆/秒)"));
   const value = Number(val(props, "value", 60));
 
   return (
-    <div className="flex h-full w-full flex-col justify-center gap-1.5 px-1 font-sans select-none">
+    <div className="flex h-full w-full flex-col justify-center gap-1.5 px-1 font-sans select-none overflow-hidden">
       {label && (
-        <div className="flex items-center justify-between text-xs">
-          <span className="text-muted-foreground">{label}</span>
-          <span className="font-mono font-bold text-foreground">{value}</span>
+        <div className="flex items-center justify-between text-xs shrink-0 leading-none">
+          <span className="text-muted-foreground truncate">{label}</span>
+          <span className="font-mono font-bold text-foreground shrink-0 ml-1">{value}</span>
         </div>
       )}
-      <div className="relative flex h-2 w-full items-center rounded-full bg-border-visible">
+      <div className="relative flex h-2 w-full items-center rounded-full bg-border-visible shrink-0">
         <div className="h-full rounded-full bg-foreground" style={{ width: `${value}%` }} />
         <div className="absolute size-4 -translate-x-1/2 rounded-full border-2 border-foreground bg-background shadow-xs" style={{ left: `${value}%` }} />
       </div>
@@ -1608,9 +1903,10 @@ export function WebSliderPreview({ props = {} }: { props?: Props }) {
 export function WebColorPickerPreview({ props = {} }: { props?: Props }) {
   const label = String(val(props, "label", "主题主色"));
   const color = String(val(props, "color", "#0052D9"));
+  const boxStyle = computeShapeStyle(props, { fill: "var(--background)", stroke: "var(--border-visible)", borderWidth: 1, radius: 6 });
 
   return (
-    <div className="flex h-full w-full items-center justify-between rounded-md border border-border-visible bg-background px-3 font-mono text-xs select-none">
+    <div className="flex h-full w-full items-center justify-between px-3 font-mono text-xs select-none" style={boxStyle}>
       <span className="font-sans text-muted-foreground">{label}</span>
       <div className="flex items-center gap-2">
         <div className="size-4.5 rounded-xs border border-border-visible" style={{ backgroundColor: color }} />
@@ -1620,8 +1916,361 @@ export function WebColorPickerPreview({ props = {} }: { props?: Props }) {
   );
 }
 
+export function WebButtonGroupPreview({ props = {} }: { props?: Props }) {
+  const buttonsStr = String(val(props, "buttons", "主要操作:primary,次要操作:secondary"));
+  const items = buttonsStr.split(",").map((s) => s.trim()).filter(Boolean);
+
+  return (
+    <div className="flex h-full w-full items-center gap-2 font-mono select-none">
+      {items.map((item, idx) => {
+        const [btnText, btnVariant = "secondary"] = item.split(":").map((s) => s.trim());
+        return (
+          <WebButtonPreview
+            key={idx}
+            props={{
+              text: btnText,
+              variant: btnVariant,
+              size: "md",
+              shape: "rectangle",
+              isGroupChild: true,
+            }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+export function WebCardPreview({ props = {} }: { props?: Props }) {
+  const title = String(val(props, "title", "核心服务集群"));
+  const tag = String(val(props, "tag", "精选"));
+  const text = String(val(props, "text", "提供高可用、弹性伸缩的微服务实例托管与自动化运维管控体系..."));
+  const cardStyle = computeShapeStyle(props, { fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1, radius: 8 });
+
+  return (
+    <div className="flex h-full w-full flex-col justify-between p-4 font-sans select-none" style={cardStyle}>
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-bold text-foreground truncate">{title}</span>
+        {tag && (
+          <span className="rounded-full border border-border-visible bg-surface-raised px-2 py-0.5 font-mono text-[9px] font-medium text-foreground">
+            {tag}
+          </span>
+        )}
+      </div>
+      <p className="line-clamp-3 text-xs leading-relaxed text-muted-foreground my-2">
+        {text}
+      </p>
+      <div className="flex items-center justify-between border-t border-border pt-2.5">
+        <span className="font-mono text-[10px] text-muted-foreground">状态：运行正常</span>
+        <span className="font-mono text-[10px] font-medium text-foreground underline underline-offset-2 cursor-pointer">
+          查看详情 →
+        </span>
+      </div>
+    </div>
+  );
+}
+
+export function WebChartPreview({ props = {} }: { props?: Props }) {
+  const title = String(val(props, "title", "周访问量分析趋势"));
+  const seriesStr = String(val(props, "series", "周一:320,周二:420,周三:580,周四:490,周五:720,周六:860,周日:950"));
+  const items = seriesStr.split(",").map((s) => s.trim()).filter(Boolean);
+  const chartStyle = computeShapeStyle(props, { fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1, radius: 8 });
+
+  const parsed = items.map((item) => {
+    const [name, valStr] = item.split(":").map((s) => s.trim());
+    return { name, value: Number(valStr) || 100 };
+  });
+
+  const maxVal = Math.max(...parsed.map((p) => p.value), 1000);
+
+  return (
+    <div className="flex h-full w-full flex-col justify-between p-3.5 font-sans select-none" style={chartStyle}>
+      <div className="flex items-center justify-between border-b border-border pb-2">
+        <span className="text-xs font-bold text-foreground">{title}</span>
+        <span className="font-mono text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
+          +18.4% 环比增长
+        </span>
+      </div>
+      <div className="flex flex-1 items-end gap-2 pt-4 pb-1">
+        {parsed.map((p, idx) => {
+          const heightPercent = Math.max(15, Math.round((p.value / maxVal) * 100));
+          return (
+            <div key={idx} className="flex flex-1 flex-col items-center gap-1.5 h-full justify-end">
+              <span className="font-mono text-[8px] text-muted-foreground">{p.value}</span>
+              <div className="w-full rounded-xs bg-surface-raised border border-border-visible overflow-hidden flex flex-col justify-end" style={{ height: "65%" }}>
+                <div
+                  className="w-full bg-foreground transition-all"
+                  style={{ height: `${heightPercent}%` }}
+                />
+              </div>
+              <span className="font-mono text-[8.5px] text-muted-foreground truncate">{p.name}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+export function WebKanbanPreview({ props = {} }: { props?: Props }) {
+  const title = String(val(props, "title", "需求迭代看板"));
+  const col1 = String(val(props, "col1", "待处理(3)"));
+  const col2 = String(val(props, "col2", "开发中(5)"));
+  const col3 = String(val(props, "col3", "已上线(8)"));
+  const kanbanStyle = computeShapeStyle(props, { fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1, radius: 8 });
+
+  return (
+    <div className="flex h-full w-full flex-col p-3 font-sans select-none" style={kanbanStyle}>
+      <div className="flex items-center justify-between border-b border-border pb-2 mb-2.5">
+        <span className="text-xs font-bold text-foreground">{title}</span>
+        <span className="font-mono text-[10px] text-muted-foreground">[ 敏捷看板 ]</span>
+      </div>
+      <div className="grid grid-cols-3 gap-2 flex-1 min-h-0">
+        {[
+          { label: col1, task: "用户鉴权流程重构", owner: "张三", tag: "高优" },
+          { label: col2, task: "高并发缓存层优化", owner: "李四", tag: "常规" },
+          { label: col3, task: "数据导出组件封装", owner: "王五", tag: "已结" },
+        ].map((col, idx) => (
+          <div key={idx} className="flex flex-col rounded-md border border-border bg-background p-2">
+            <div className="flex items-center justify-between border-b border-border pb-1.5 mb-1.5">
+              <span className="font-mono text-[10px] font-bold text-foreground truncate">{col.label}</span>
+              <span className="size-1.5 rounded-full bg-foreground" />
+            </div>
+            <div className="rounded border border-border-visible bg-surface p-2 shadow-2xs space-y-1.5">
+              <p className="text-[11px] font-medium text-foreground leading-snug">{col.task}</p>
+              <div className="flex items-center justify-between font-mono text-[9px] text-muted-foreground pt-1 border-t border-border/60">
+                <span>负责：{col.owner}</span>
+                <span className="rounded-xs border border-border px-1">{col.tag}</span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function WebCalendarPreview({ props = {} }: { props?: Props }) {
+  const month = String(val(props, "month", "2026年08月"));
+  const currentDay = Number(val(props, "currentDay", 31));
+  const calStyle = computeShapeStyle(props, { fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1, radius: 8 });
+
+  const days = ["一", "二", "三", "四", "五", "六", "日"];
+  const daysInMonth = Array.from({ length: 31 }, (_, i) => i + 1);
+
+  return (
+    <div className="flex h-full w-full flex-col justify-between p-3.5 font-sans select-none" style={calStyle}>
+      <div className="flex items-center justify-between border-b border-border pb-2">
+        <span className="font-mono text-xs font-bold text-foreground">{month}</span>
+        <div className="flex items-center gap-1">
+          <span className="font-mono text-[10px] text-muted-foreground">[ 8月排期 ]</span>
+        </div>
+      </div>
+      <div className="grid grid-cols-7 gap-1 text-center font-mono text-[10px] text-muted-foreground py-1">
+        {days.map((d) => (
+          <span key={d} className="font-semibold">{d}</span>
+        ))}
+      </div>
+      <div className="grid grid-cols-7 gap-1 text-center font-mono text-[10px] flex-1">
+        {daysInMonth.slice(0, 21).map((d) => {
+          const isToday = d === currentDay;
+          return (
+            <div
+              key={d}
+              className={cn(
+                "flex items-center justify-center rounded-xs transition-colors",
+                isToday
+                  ? "bg-foreground text-background font-bold"
+                  : "text-foreground hover:bg-surface-raised"
+              )}
+            >
+              {d}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+export function WebDashboardPagePreview({ props = {} }: { props?: Props }) {
+  const dashboardTitle = String(val(props, "dashboardTitle", "企业级运营监控总览"));
+
+  return (
+    <div className="flex h-full w-full flex-col rounded-lg border border-border-visible bg-surface p-4 font-sans select-none overflow-hidden space-y-3">
+      <div className="flex items-center justify-between border-b border-border pb-2.5">
+        <div>
+          <h2 className="text-xs font-bold text-foreground tracking-tight">{dashboardTitle}</h2>
+          <span className="font-mono text-[9px] text-muted-foreground">统计周期：实时汇聚中</span>
+        </div>
+        <div className="flex items-center gap-1.5 font-mono text-[10px]">
+          <span className="rounded-full border border-border-visible bg-surface-raised px-2.5 py-0.5 font-medium text-foreground">
+            导出报表
+          </span>
+        </div>
+      </div>
+
+      {/* 3 Metric Cards */}
+      <div className="grid grid-cols-3 gap-2.5">
+        {[
+          { label: "活跃用户总数", val: "148,290", change: "+18.4%", positive: true },
+          { label: "集群计算负载", val: "68.5%", change: "-2.1%", positive: true },
+          { label: "异常中断告警", val: "0 次", change: "正常", positive: true },
+        ].map((m, idx) => (
+          <div key={idx} className="rounded-md border border-border bg-background p-2.5">
+            <span className="font-mono text-[9.5px] uppercase text-muted-foreground">{m.label}</span>
+            <div className="mt-1 flex items-baseline justify-between font-mono">
+              <span className="text-sm font-bold text-foreground">{m.val}</span>
+              <span className="text-[9px] font-semibold text-emerald-600 dark:text-emerald-400">{m.change}</span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Mini Data Bar Chart */}
+      <div className="flex-1 rounded-md border border-border bg-background p-3 flex flex-col justify-between min-h-0">
+        <div className="flex items-center justify-between">
+          <span className="font-mono text-[10px] font-bold text-foreground">服务响应时延分布</span>
+          <span className="font-mono text-[9px] text-muted-foreground">单位：毫秒</span>
+        </div>
+        <div className="flex items-end gap-2 h-16 pt-2">
+          {[28, 42, 35, 60, 48, 75, 52, 85, 64, 90, 72, 95].map((v, i) => (
+            <div key={i} className="flex-1 bg-surface-raised border border-border-visible rounded-xs overflow-hidden h-full flex flex-col justify-end">
+              <div className="w-full bg-foreground" style={{ height: `${v}%` }} />
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function WebSettingsPagePreview({ props = {} }: { props?: Props }) {
+  const settingsTitle = String(val(props, "settingsTitle", "个人中心与安全配置"));
+
+  return (
+    <div className="flex h-full w-full rounded-lg border border-border-visible bg-surface font-sans select-none overflow-hidden">
+      <div className="w-1/3 border-r border-border p-3 space-y-1 bg-background">
+        <span className="font-mono text-[10px] font-bold uppercase text-muted-foreground px-2">设置目录</span>
+        {["个人资料", "账号安全", "团队成员", "消息通知", "审计日志"].map((tab, idx) => (
+          <div
+            key={tab}
+            className={cn(
+              "rounded-xs px-2.5 py-1.5 text-xs font-medium transition-colors cursor-pointer",
+              idx === 0 ? "bg-surface text-foreground font-bold border border-border-visible" : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {tab}
+          </div>
+        ))}
+      </div>
+      <div className="flex-1 p-4 space-y-3 overflow-y-auto">
+        <div className="border-b border-border pb-2">
+          <h3 className="text-xs font-bold text-foreground">{settingsTitle}</h3>
+          <span className="text-[10px] text-muted-foreground">维护您的账户基本资料与访问权限</span>
+        </div>
+        <div className="space-y-2 font-mono text-[11px]">
+          <div>
+            <span className="text-muted-foreground block text-[10px] mb-1">用户姓名</span>
+            <div className="rounded border border-border-visible bg-background px-2.5 py-1 text-foreground">系统管理员</div>
+          </div>
+          <div>
+            <span className="text-muted-foreground block text-[10px] mb-1">联系邮箱</span>
+            <div className="rounded border border-border-visible bg-background px-2.5 py-1 text-foreground">admin@system.local</div>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 pt-2 border-t border-border">
+          <span className="rounded-full border border-border-visible px-3 py-1 font-mono text-[10px] text-muted-foreground">取消</span>
+          <span className="rounded-full bg-foreground text-background px-3 py-1 font-mono text-[10px] font-semibold">保存更改</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function WebPricingTablePreview({ props = {} }: { props?: Props }) {
+  const title = String(val(props, "title", "服务版本规格与价格方案"));
+
+  return (
+    <div className="flex h-full w-full flex-col justify-between rounded-lg border border-border-visible bg-surface p-4 font-sans select-none">
+      <div className="text-center border-b border-border pb-2 mb-2">
+        <h2 className="text-xs font-bold text-foreground">{title}</h2>
+        <span className="font-mono text-[9px] text-muted-foreground">根据业务规模按需选择最合适方案</span>
+      </div>
+      <div className="grid grid-cols-3 gap-2.5 flex-1 min-h-0">
+        {[
+          { name: "基础版", price: "免费", desc: "适合个人与轻量测试", btn: "立即体验", primary: false },
+          { name: "专业版", price: "¥ 199/月", desc: "适合快速成长团队", btn: "选购方案", primary: true },
+          { name: "企业版", price: "定制方案", desc: "专属私有化集群部署", btn: "联系顾问", primary: false },
+        ].map((plan, idx) => (
+          <div
+            key={plan.name}
+            className={cn(
+              "flex flex-col justify-between rounded-md border p-3 bg-background",
+              plan.primary ? "border-foreground ring-1 ring-foreground" : "border-border"
+            )}
+          >
+            <div>
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-[11px] font-bold text-foreground">{plan.name}</span>
+                {plan.primary && <span className="rounded-xs bg-foreground text-background px-1 text-[8px] font-mono">推荐</span>}
+              </div>
+              <div className="font-mono text-sm font-bold text-foreground my-1.5">{plan.price}</div>
+              <p className="text-[9.5px] text-muted-foreground">{plan.desc}</p>
+            </div>
+            <button
+              type="button"
+              className={cn(
+                "w-full rounded-full py-1 font-mono text-[10px] font-medium tracking-wider transition-colors mt-2",
+                plan.primary ? "bg-foreground text-background font-semibold" : "border border-border-visible text-foreground"
+              )}
+            >
+              {plan.btn}
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function WebFaqSectionPreview({ props = {} }: { props?: Props }) {
+  const title = String(val(props, "title", "常见问题与技术支持解答"));
+
+  const faqs = [
+    { q: "支持哪些私有化部署架构？", a: "支持容器化云原生部署、物理服务器集群及私有云环境。" },
+    { q: "数据如何保证高可靠与灾备？", a: "内置多副本实时数据同步与自动化快照备份恢复能力。" },
+    { q: "是否支持多角色权限控制？", a: "全面支持 RBAC 细粒度权限控制与团队组织架构协同。" },
+  ];
+
+  return (
+    <div className="flex h-full w-full flex-col justify-between rounded-lg border border-border-visible bg-surface p-4 font-sans select-none space-y-2.5">
+      <div className="flex items-center justify-between border-b border-border pb-2">
+        <span className="text-xs font-bold text-foreground">{title}</span>
+        <span className="font-mono text-[9px] text-muted-foreground">[ 帮助指南 ]</span>
+      </div>
+      <div className="space-y-2 flex-1 min-h-0 overflow-y-auto">
+        {faqs.map((faq, idx) => (
+          <div key={idx} className="rounded-md border border-border bg-background p-2.5 space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold text-foreground">{faq.q}</span>
+              <ChevronDown className="size-3 text-muted-foreground" />
+            </div>
+            <p className="text-[10px] text-muted-foreground leading-relaxed">{faq.a}</p>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // Top-level dispatcher for Web Components
-export function renderWebLibraryComponent(type: ComponentType, props: Props, children?: React.ReactNode) {
+export function renderWebLibraryComponent(
+  type: ComponentType,
+  props: Props,
+  children?: React.ReactNode,
+  context?: ComponentRenderContext,
+) {
   switch (type) {
     case "web-dropdown": return <WebDropdownPreview props={props} />;
     case "web-top-nav": return <WebTopNavPreview props={props} />;
@@ -1630,6 +2279,8 @@ export function renderWebLibraryComponent(type: ComponentType, props: Props, chi
     case "web-breadcrumb": return <WebBreadcrumbPreview props={props} />;
     case "web-pagination": return <WebPaginationPreview props={props} />;
     case "web-steps": return <WebStepsPreview props={props} />;
+    case "web-button": return <WebButtonPreview props={props} />;
+    case "web-button-group": return <WebButtonGroupPreview props={props} />;
     case "web-input": return <WebInputPreview props={props} />;
     case "web-input-number": return <WebInputNumberPreview props={props} />;
     case "web-textarea": return <WebTextareaPreview props={props} />;
@@ -1648,7 +2299,7 @@ export function renderWebLibraryComponent(type: ComponentType, props: Props, chi
     case "web-transfer": return <WebTransferPreview props={props} />;
     case "web-upload": return <WebUploadPreview props={props} />;
     case "web-color-picker": return <WebColorPickerPreview props={props} />;
-    case "web-table": return <WebTablePreview props={props} />;
+    case "web-table": return <WebTablePreview props={props} context={context} />;
     case "web-descriptions": return <WebDescriptionsPreview props={props} />;
     case "web-tree": return <WebTreePreview props={props} />;
     case "web-collapse": return <WebCollapsePreview props={props} />;
@@ -1657,6 +2308,10 @@ export function renderWebLibraryComponent(type: ComponentType, props: Props, chi
     case "web-timeline": return <WebTimelinePreview props={props} />;
     case "web-badge": return <WebBadgePreview props={props} />;
     case "web-avatar-group": return <WebAvatarGroupPreview props={props} />;
+    case "web-card": return <WebCardPreview props={props} />;
+    case "web-chart": return <WebChartPreview props={props} />;
+    case "web-kanban": return <WebKanbanPreview props={props} />;
+    case "web-calendar": return <WebCalendarPreview props={props} />;
     case "web-modal": return <WebModalPreview props={props} />;
     case "web-drawer": return <WebDrawerPreview props={props} />;
     case "web-alert": return <WebAlertPreview props={props} />;
@@ -1672,8 +2327,13 @@ export function renderWebLibraryComponent(type: ComponentType, props: Props, chi
     case "web-form-layout": return <WebFormLayoutPreview props={props} />;
     case "web-login-card": return <WebLoginCardPreview props={props} />;
     case "web-steps-form": return <WebStepsFormPreview props={props} />;
+    case "web-dashboard-page": return <WebDashboardPagePreview props={props} />;
+    case "web-settings-page": return <WebSettingsPagePreview props={props} />;
+    case "web-pricing-table": return <WebPricingTablePreview props={props} />;
+    case "web-faq-section": return <WebFaqSectionPreview props={props} />;
     default:
       return null;
   }
 }
+
 

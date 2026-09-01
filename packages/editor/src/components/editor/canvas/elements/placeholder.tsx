@@ -12,10 +12,10 @@ const TEXT_HEIGHT: Record<TextVariant, string> = {
 };
 
 const TEXT_COLOR: Record<TextVariant, string> = {
-  title: "bg-neutral-300",
-  heading: "bg-neutral-300",
-  body: "bg-neutral-200",
-  caption: "bg-neutral-200",
+  title: "bg-muted-foreground/40",
+  heading: "bg-muted-foreground/30",
+  body: "bg-muted-foreground/20",
+  caption: "bg-muted-foreground/20",
 };
 
 export function SkeletonText({
@@ -36,7 +36,7 @@ export function SkeletonText({
 }
 
 export function SkeletonLine({ className }: { className?: string }) {
-  return <div className={cn("h-px w-full bg-neutral-200", className)} />;
+  return <div className={cn("h-px w-full bg-border", className)} />;
 }
 
 export function SkeletonButton({
@@ -52,7 +52,7 @@ export function SkeletonButton({
     return (
       <div
         className={cn(
-          "flex h-7 shrink-0 items-center justify-center rounded-md bg-neutral-900 px-3 text-[10px] font-semibold tracking-wide text-white",
+          "flex h-7 shrink-0 items-center justify-center rounded-md bg-foreground px-3 text-[10px] font-mono font-bold tracking-wider uppercase text-background",
           className,
         )}
       >
@@ -64,7 +64,7 @@ export function SkeletonButton({
     return (
       <div
         className={cn(
-          "flex h-7 shrink-0 items-center justify-center rounded-md border border-neutral-300 bg-white px-3 text-[10px] font-semibold tracking-wide text-neutral-600",
+          "flex h-7 shrink-0 items-center justify-center rounded-md border border-border-visible bg-surface px-3 text-[10px] font-mono font-medium tracking-wider uppercase text-foreground",
           className,
         )}
       >
@@ -75,7 +75,7 @@ export function SkeletonButton({
   return (
     <div
       className={cn(
-        "flex h-7 shrink-0 items-center justify-center px-2 text-[10px] font-semibold text-neutral-500",
+        "flex h-7 shrink-0 items-center justify-center px-2 text-[10px] font-mono font-medium uppercase text-muted-foreground",
         className,
       )}
     >
@@ -96,7 +96,7 @@ export function SkeletonInput({
   return (
     <div
       className={cn(
-        "flex h-8 w-full shrink-0 items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2.5 text-[10px] text-neutral-400",
+        "flex h-8 w-full shrink-0 items-center gap-1.5 rounded-md border border-border-visible bg-background px-2.5 text-[10px] text-muted-foreground",
         className,
       )}
     >
@@ -110,12 +110,12 @@ export function SkeletonImage({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        "relative flex shrink-0 items-center justify-center overflow-hidden rounded-md border border-dashed border-neutral-300 bg-neutral-50",
+        "relative flex shrink-0 items-center justify-center overflow-hidden rounded-md border border-dashed border-border-visible bg-surface-raised",
         className,
       )}
     >
-      <div className="absolute inset-0 bg-[repeating-linear-gradient(45deg,transparent,transparent_6px,rgb(0,0,0,0.025)_6px,rgb(0,0,0,0.025)_12px)]" />
-      <ImageIcon aria-hidden="true" className="relative size-4 text-neutral-300" />
+      <div className="absolute inset-0 opacity-40 bg-[repeating-linear-gradient(45deg,transparent,transparent_6px,currentColor_6px,currentColor_7px)] text-muted-foreground/10" />
+      <ImageIcon aria-hidden="true" className="relative size-4 text-muted-foreground" />
     </div>
   );
 }
@@ -138,7 +138,7 @@ export function SkeletonAvatar({
   return (
     <div
       className={cn(
-        "flex shrink-0 items-center justify-center rounded-full border border-neutral-200 bg-neutral-100 font-semibold text-neutral-500",
+        "flex shrink-0 items-center justify-center rounded-full border border-border-visible bg-surface-raised font-mono font-bold text-foreground",
         s,
         className,
       )}
@@ -158,7 +158,7 @@ export function SkeletonIcon({
   return (
     <Icon
       aria-hidden="true"
-      className={cn("size-3.5 shrink-0 text-neutral-400", className)}
+      className={cn("size-3.5 shrink-0 text-muted-foreground", className)}
     />
   );
 }
@@ -173,21 +173,21 @@ export function SkeletonChip({
   className?: string;
 }) {
   const dot = {
-    neutral: "bg-neutral-400",
+    neutral: "bg-muted-foreground",
     success: "bg-emerald-500",
     warning: "bg-amber-500",
     danger: "bg-rose-500",
   }[tone];
   const text = {
-    neutral: "text-neutral-500",
-    success: "text-emerald-600",
-    warning: "text-amber-600",
-    danger: "text-rose-600",
+    neutral: "text-muted-foreground",
+    success: "text-emerald-600 dark:text-emerald-400",
+    warning: "text-amber-600 dark:text-amber-400",
+    danger: "text-rose-600 dark:text-rose-400",
   }[tone];
   return (
     <div
       className={cn(
-        "flex h-4 shrink-0 items-center gap-1 rounded-full bg-neutral-100 px-1.5 text-[8px] font-semibold",
+        "flex h-4 shrink-0 items-center gap-1 rounded-full border border-border-visible bg-surface-raised px-1.5 text-[8px] font-mono font-semibold",
         text,
         className,
       )}
@@ -210,7 +210,7 @@ export function SkeletonBars({
       {values.map((v, i) => (
         <div
           key={i}
-          className="w-full rounded-sm bg-neutral-200 first:bg-neutral-300 last:bg-neutral-300"
+          className="w-full rounded-xs bg-muted-foreground/30 first:bg-foreground last:bg-foreground"
           style={{ height: `${v}%` }}
         />
       ))}

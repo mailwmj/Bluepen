@@ -20,14 +20,14 @@ export function confirmLocal(message: string): Promise<boolean> {
 }
 
 export interface DesktopFileApi {
-  openFile: () => void;
-  saveFile: () => Promise<boolean>;
-  saveFileAs: () => Promise<boolean>;
+  openFile: () => Promise<void>;
+  saveFile: (currentFilePath?: string | null) => Promise<{ ok: boolean; path?: string }>;
+  saveFileAs: () => Promise<{ ok: boolean; path?: string }>;
 }
 
 export function useDesktop(
   getProject: () => { pages: Page[]; name: string },
-  onLoadProject: (data: { pages: Page[]; name: string }) => void,
+  onLoadProject: (data: { pages: Page[]; name: string; filePath?: string }) => void,
 ) {
   const [isTauri, setIsTauri] = useState(false);
   const [windowMaximized, setWindowMaximized] = useState(false);
@@ -54,6 +54,39 @@ export function useDesktop(
 
       const appWindow = getCurrentWindow();
 
+      const saveFileAs = async (): Promise<{ ok: boolean; path?: string }> => {
+        try {
+          const data = getProjectRef.current();
+          const projectsDir = await getProjectsDir();
+          const path = await save({
+            defaultPath: `${projectsDir}/${projectFileName(data.name || "Untitled")}`,
+            filters: [{ name: "Bluepen Project", extensions: ["bluepen", "json"] }],
+          });
+          if (typeof path !== "string") return { ok: false };
+          await writeTextFile(path, JSON.stringify(data, null, 2));
+          return { ok: true, path };
+        } catch (e) {
+          console.error("Failed to save file as:", e);
+          showToast({ type: "error", title: "Could not save file", id: "save-file-error" });
+          return { ok: false };
+        }
+      };
+
+      const saveFile = async (currentFilePath?: string | null): Promise<{ ok: boolean; path?: string }> => {
+        if (!currentFilePath) {
+          return saveFileAs();
+        }
+        try {
+          const data = getProjectRef.current();
+          await writeTextFile(currentFilePath, JSON.stringify(data, null, 2));
+          return { ok: true, path: currentFilePath };
+        } catch (e) {
+          console.error("Failed to save file:", e);
+          showToast({ type: "error", title: "Could not save file", id: "save-file-error" });
+          return { ok: false };
+        }
+      };
+
       const openFile = async () => {
         try {
           const projectsDir = await getProjectsDir();
@@ -65,8 +98,12 @@ export function useDesktop(
           if (typeof path !== "string") return;
           const content = await readTextFile(path);
           const data = JSON.parse(content);
-          const baseName = path.split("/").pop()?.replace(/\.(bluepen|json)$/, "") || "Untitled";
-          onLoadProjectRef.current({ pages: data.pages ?? [], name: data.name ?? baseName });
+          const baseName = path.split(/[\\/]/).pop()?.replace(/\.(bluepen|json)$/, "") || "Untitled";
+          onLoadProjectRef.current({
+            pages: data.pages ?? [],
+            name: data.name ?? baseName,
+            filePath: path,
+          });
           showToast({ type: "success", title: "Project opened", description: baseName, id: "open-file" });
         } catch (e) {
           console.error("Failed to open file:", e);
@@ -74,26 +111,7 @@ export function useDesktop(
         }
       };
 
-      const saveFile = async (): Promise<boolean> => {
-        try {
-          const data = getProjectRef.current();
-          const projectsDir = await getProjectsDir();
-          const path = await save({
-            defaultPath: `${projectsDir}/${projectFileName(data.name || "Untitled")}`,
-            filters: [{ name: "Bluepen Project", extensions: ["bluepen", "json"] }],
-          });
-          if (typeof path !== "string") return false;
-          await writeTextFile(path, JSON.stringify(data, null, 2));
-          return true;
-        } catch (e) {
-          console.error("Failed to save file:", e);
-          return false;
-        }
-      };
-
-      const saveFileAs = saveFile;
-
-      setFileApi({ openFile: () => void openFile(), saveFile, saveFileAs });
+      setFileApi({ openFile, saveFile, saveFileAs });
 
       if (!cancelled) {
         setWindowMaximized(await appWindow.isMaximized());

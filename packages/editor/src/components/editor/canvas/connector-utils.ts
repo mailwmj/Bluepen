@@ -27,11 +27,11 @@ export const PORT_DIRECTIONS: Record<AnchorPort, Vector> = {
 };
 
 export const PORT_LABELS: Record<AnchorPort, string> = {
-  top: "上 (Top)",
-  right: "右 (Right)",
-  bottom: "下 (Bottom)",
-  left: "左 (Left)",
-  center: "居中 (Center)",
+  top: "上",
+  right: "右",
+  bottom: "下",
+  left: "左",
+  center: "居中",
 };
 
 /**

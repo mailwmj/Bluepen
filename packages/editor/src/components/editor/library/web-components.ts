@@ -5,11 +5,11 @@ export const webLibrary: LibraryComponent[] = [
   // ================= 1. Web 导航 (Navigation) =================
   {
     type: "web-dropdown",
-    label: "下拉菜单",
+    label: "下拉操作菜单",
     category: "Web导航",
     icon: "ChevronDown",
     defaultWidth: 180,
-    defaultHeight: 40,
+    defaultHeight: 36,
     defaultProps: {
       triggerText: "下拉操作菜单",
       items: "查看详情,编辑信息,权限设置,---,导出数据,删除项目:danger",
@@ -24,10 +24,10 @@ export const webLibrary: LibraryComponent[] = [
     defaultWidth: 1080,
     defaultHeight: 60,
     defaultProps: {
-      logoText: "BLUEPEN SaaS",
+      logoText: "后台管理系统",
       links: "概览仪表盘,项目管理,数据资产,团队协作,系统配置",
       activeIndex: 0,
-      userName: "Alex Morgan",
+      userName: "系统管理员",
     },
   },
   {
@@ -86,7 +86,7 @@ export const webLibrary: LibraryComponent[] = [
   },
   {
     type: "web-steps",
-    label: "步骤条",
+    label: "步骤条导航",
     category: "Web导航",
     icon: "ListOrdered",
     defaultWidth: 580,
@@ -99,12 +99,36 @@ export const webLibrary: LibraryComponent[] = [
 
   // ================= 2. Web 表单 (Form / Inputs) =================
   {
+    type: "web-button",
+    label: "操作按钮",
+    category: "Web表单",
+    icon: "RectangleHorizontal",
+    defaultWidth: 110,
+    defaultHeight: 36,
+    defaultProps: {
+      text: "主要操作",
+      variant: "primary",
+      size: "md",
+      shape: "pill",
+      icon: "Plus",
+    },
+  },
+  {
+    type: "web-button-group",
+    label: "操作按钮组",
+    category: "Web表单",
+    icon: "Columns2",
+    defaultWidth: 340,
+    defaultHeight: 36,
+    defaultProps: {},
+  },
+  {
     type: "web-input",
     label: "单行输入框",
     category: "Web表单",
     icon: "TextCursorInput",
     defaultWidth: 260,
-    defaultHeight: 40,
+    defaultHeight: 56,
     defaultProps: {
       label: "企业名称",
       placeholder: "请输入企业全称...",
@@ -119,13 +143,15 @@ export const webLibrary: LibraryComponent[] = [
     category: "Web表单",
     icon: "ListOrdered",
     defaultWidth: 160,
-    defaultHeight: 40,
+    defaultHeight: 56,
     defaultProps: {
       label: "购买配额",
       value: 5,
+      step: 1,
       min: 1,
       max: 99,
       unit: "台",
+      controlsPosition: "right-vertical",
     },
   },
   {
@@ -148,11 +174,11 @@ export const webLibrary: LibraryComponent[] = [
     category: "Web表单",
     icon: "ChevronsUpDown",
     defaultWidth: 260,
-    defaultHeight: 40,
+    defaultHeight: 56,
     defaultProps: {
       label: "所属部门",
       placeholder: "请选择部门组织",
-      selected: "用户体验设计部 (UED)",
+      selected: "用户体验设计部",
       mode: "single",
     },
   },
@@ -175,7 +201,7 @@ export const webLibrary: LibraryComponent[] = [
     category: "Web表单",
     icon: "GitBranch",
     defaultWidth: 260,
-    defaultHeight: 40,
+    defaultHeight: 56,
     defaultProps: {
       label: "组织树节点",
       value: "技术中台 / 架构组",
@@ -183,15 +209,15 @@ export const webLibrary: LibraryComponent[] = [
   },
   {
     type: "web-auto-complete",
-    label: "自动填充联想",
+    label: "搜索联想框",
     category: "Web表单",
     icon: "Search",
     defaultWidth: 260,
-    defaultHeight: 40,
+    defaultHeight: 36,
     defaultProps: {
       label: "搜索并联想",
-      value: "Tencent",
-      suggestions: "Tencent Cloud,Tencent Video,Tencent Meeting,Tencent Games",
+      value: "云原生",
+      suggestions: "云原生技术中台,云原生容器集群,云原生微服务网关,云原生持续交付",
       isOpen: false,
     },
   },
@@ -201,10 +227,10 @@ export const webLibrary: LibraryComponent[] = [
     category: "Web表单",
     icon: "Tag",
     defaultWidth: 320,
-    defaultHeight: 40,
+    defaultHeight: 36,
     defaultProps: {
       label: "关键词标签",
-      tags: "React 19,TDesign,Tauri 2",
+      tags: "前端框架,组件库,桌面端",
     },
   },
   {
@@ -213,7 +239,7 @@ export const webLibrary: LibraryComponent[] = [
     category: "Web表单",
     icon: "CalendarDays",
     defaultWidth: 240,
-    defaultHeight: 40,
+    defaultHeight: 56,
     defaultProps: {
       label: "截止日期",
       value: "2026-09-01",
@@ -225,7 +251,7 @@ export const webLibrary: LibraryComponent[] = [
     category: "Web表单",
     icon: "CalendarRange",
     defaultWidth: 340,
-    defaultHeight: 40,
+    defaultHeight: 56,
     defaultProps: {
       label: "统计周期",
       startDate: "2026-08-01",
@@ -239,7 +265,7 @@ export const webLibrary: LibraryComponent[] = [
     category: "Web表单",
     icon: "Clock",
     defaultWidth: 200,
-    defaultHeight: 40,
+    defaultHeight: 56,
     defaultProps: {
       label: "执行时间",
       value: "14:30:00",
@@ -247,14 +273,14 @@ export const webLibrary: LibraryComponent[] = [
   },
   {
     type: "web-radio-group",
-    label: "单选按钮组",
+    label: "单选框组",
     category: "Web表单",
     icon: "CircleDot",
     defaultWidth: 300,
-    defaultHeight: 38,
+    defaultHeight: 32,
     defaultProps: {
       label: "部署环境",
-      options: "开发环境 (Dev),测试环境 (Test),生产环境 (Prod)",
+      options: "开发环境,测试环境,生产环境",
       selectedIndex: 0,
       variant: "radio",
     },
@@ -265,10 +291,10 @@ export const webLibrary: LibraryComponent[] = [
     category: "Web表单",
     icon: "CheckSquare",
     defaultWidth: 320,
-    defaultHeight: 38,
+    defaultHeight: 32,
     defaultProps: {
       label: "通知渠道",
-      options: "站内信,企业微信,邮件通知,短信推送",
+      options: "站内消息,企业通讯,邮件通知,短信推送",
       checkedIndices: "0,1",
     },
   },
@@ -290,9 +316,9 @@ export const webLibrary: LibraryComponent[] = [
     category: "Web表单",
     icon: "SlidersHorizontal",
     defaultWidth: 260,
-    defaultHeight: 42,
+    defaultHeight: 36,
     defaultProps: {
-      label: "带宽限制 (Mbps)",
+      label: "带宽限制 (兆/秒)",
       value: 60,
       min: 0,
       max: 100,
@@ -308,8 +334,8 @@ export const webLibrary: LibraryComponent[] = [
     defaultProps: {
       sourceTitle: "可选字段 (4)",
       targetTitle: "已选导出字段 (2)",
-      sourceItems: "用户 ID,电子邮箱,注册时间,最后登录",
-      targetItems: "真实姓名,手机号码",
+      sourceItems: "用户编号,电子邮箱,注册时间,最后登录",
+      targetItems: "真实姓名,联系电话",
     },
   },
   {
@@ -321,7 +347,7 @@ export const webLibrary: LibraryComponent[] = [
     defaultHeight: 130,
     defaultProps: {
       title: "点击或将文件拖拽至此区域上传",
-      hint: "支持 PNG、JPG、PDF 或 ZIP 归档文件，单文件不超过 50MB",
+      hint: "支持各类文档与归档格式，单文件不超过 50兆",
     },
   },
   {
@@ -330,14 +356,28 @@ export const webLibrary: LibraryComponent[] = [
     category: "Web表单",
     icon: "Palette",
     defaultWidth: 220,
-    defaultHeight: 40,
+    defaultHeight: 36,
     defaultProps: {
       label: "主题主色",
-      color: "#0052D9",
+      color: "#000000",
     },
   },
 
   // ================= 3. Web 数据展示 (Data Display) =================
+  {
+    type: "table",
+    label: "基础表格",
+    category: "Web展示",
+    icon: "Table",
+    defaultWidth: 480,
+    defaultHeight: 200,
+    defaultProps: {
+      headers: "编号,用户名称,所属部门,状态",
+      rows: 4,
+      cols: 4,
+      headerBg: "",
+    },
+  },
   {
     type: "web-table",
     label: "高级数据表格",
@@ -346,7 +386,7 @@ export const webLibrary: LibraryComponent[] = [
     defaultWidth: 720,
     defaultHeight: 280,
     defaultProps: {
-      columns: "应用名称,版本号,所属集群,运行状态,最后更新,操作",
+      columns: "应用服务,版本号,所属集群,运行状态,最后更新,操作",
       rowCount: 4,
     },
   },
@@ -359,7 +399,7 @@ export const webLibrary: LibraryComponent[] = [
     defaultHeight: 140,
     defaultProps: {
       title: "服务实例基本详情",
-      items: "实例 ID:ins-982143;运行环境:生产集群-华南;公网 IP:119.29.29.29;创建时间:2026-08-30;计费模式:按量计费;到期状态:正常",
+      items: "实例编号:实例-982143;运行环境:华南生产集群;网络地址:119.29.29.29;创建时间:2026-08-30;计费模式:按量计费;到期状态:正常",
       cols: 3,
     },
   },
@@ -372,7 +412,7 @@ export const webLibrary: LibraryComponent[] = [
     defaultHeight: 240,
     defaultProps: {
       title: "资源文件目录",
-      nodes: "src 源代码:open,components 界面组件,assets 媒体资源,package.json 配置",
+      nodes: "源代码目录:open,界面组件,媒体资源,系统配置文件",
     },
   },
   {
@@ -383,7 +423,7 @@ export const webLibrary: LibraryComponent[] = [
     defaultWidth: 420,
     defaultHeight: 160,
     defaultProps: {
-      panels: "通用配置规则:支持自定义配置默认路由与访问策略;安全与防火墙:已开启 DDoS 基础防护与白名单拦截:open;日志归档策略:按日切分并保留最近 180 天",
+      panels: "通用配置规则:支持自定义配置默认路由与访问策略;网络安全防护:已开启基础防护与白名单拦截:open;日志归档策略:按日切分并保留最近 180 天",
     },
   },
   {
@@ -394,7 +434,7 @@ export const webLibrary: LibraryComponent[] = [
     defaultWidth: 240,
     defaultHeight: 110,
     defaultProps: {
-      title: "今日活跃用户数 (DAU)",
+      title: "今日活跃用户数",
       value: "148,290",
       delta: "+18.4%",
       isPositive: true,
@@ -420,7 +460,7 @@ export const webLibrary: LibraryComponent[] = [
     defaultWidth: 280,
     defaultHeight: 220,
     defaultProps: {
-      events: "14:32:45 提交发布单:done,14:35:10 自动化单元测试通过:done,14:40:00 灰度发布至50%流量:process,15:00:00 全量上线:pending",
+      events: "14:32 提交发布单:done,14:35 自动化单元测试通过:done,14:40 灰度发布至50%流量:process,15:00 全量上线:pending",
     },
   },
   {
@@ -429,9 +469,9 @@ export const webLibrary: LibraryComponent[] = [
     category: "Web展示",
     icon: "Badge",
     defaultWidth: 120,
-    defaultHeight: 36,
+    defaultHeight: 32,
     defaultProps: {
-      label: "未读消息",
+      label: "未读通知",
       count: "99+",
     },
   },
@@ -441,10 +481,61 @@ export const webLibrary: LibraryComponent[] = [
     category: "Web展示",
     icon: "Users",
     defaultWidth: 140,
-    defaultHeight: 38,
+    defaultHeight: 32,
     defaultProps: {
-      initials: "TX,BP,AL,WD",
+      initials: "张,李,王,赵",
       overflowText: "+6",
+    },
+  },
+  {
+    type: "web-card",
+    label: "信息卡片容器",
+    category: "Web展示",
+    icon: "Square",
+    defaultWidth: 320,
+    defaultHeight: 180,
+    defaultProps: {
+      title: "核心服务集群",
+      tag: "精选",
+      text: "提供高可用、弹性伸缩的微服务实例托管与自动化运维管控体系...",
+    },
+  },
+  {
+    type: "web-chart",
+    label: "统计图表分析",
+    category: "Web展示",
+    icon: "TrendingUp",
+    defaultWidth: 360,
+    defaultHeight: 200,
+    defaultProps: {
+      title: "周访问量分析趋势",
+      series: "周一:320,周二:420,周三:580,周四:490,周五:720,周六:860,周日:950",
+    },
+  },
+  {
+    type: "web-kanban",
+    label: "任务看板面板",
+    category: "Web展示",
+    icon: "LayoutDashboard",
+    defaultWidth: 480,
+    defaultHeight: 260,
+    defaultProps: {
+      title: "需求迭代看板",
+      col1: "待处理(3)",
+      col2: "开发中(5)",
+      col3: "已上线(8)",
+    },
+  },
+  {
+    type: "web-calendar",
+    label: "日历排程面板",
+    category: "Web展示",
+    icon: "CalendarDays",
+    defaultWidth: 320,
+    defaultHeight: 260,
+    defaultProps: {
+      month: "2026年08月",
+      currentDay: "31",
     },
   },
 
@@ -458,21 +549,21 @@ export const webLibrary: LibraryComponent[] = [
     defaultHeight: 220,
     defaultProps: {
       title: "新建集群节点配置",
-      content: "请确认节点分配的 CPU 与内存资源，配置提交后将触发自动化部署流水线。",
+      content: "请确认节点分配的算力与存储资源，配置提交后将触发自动化部署流水线。",
       confirmText: "立即创建",
       cancelText: "取消",
     },
   },
   {
     type: "web-tips",
-    label: "浮层Tips状态提示",
+    label: "浮层状态提示",
     category: "Web反馈",
     icon: "HelpCircle",
     defaultWidth: 280,
     defaultHeight: 96,
     defaultProps: {
       title: "系统状态提示",
-      content: "当前节点资源利用率正常，网络链路响应时延 12ms。",
+      content: "当前节点资源利用率正常，网络链路响应时延 12 毫秒。",
       tone: "info",
       placement: "top",
       showArrow: true,
@@ -480,11 +571,11 @@ export const webLibrary: LibraryComponent[] = [
   },
   {
     type: "web-message",
-    label: "全局浮层轻提示",
+    label: "全局轻提示",
     category: "Web反馈",
     icon: "MessageSquareCode",
     defaultWidth: 320,
-    defaultHeight: 42,
+    defaultHeight: 38,
     defaultProps: {
       content: "操作成功：业务数据已实时同步至集群",
       tone: "success",
@@ -510,7 +601,7 @@ export const webLibrary: LibraryComponent[] = [
     category: "Web反馈",
     icon: "AlertTriangle",
     defaultWidth: 480,
-    defaultHeight: 52,
+    defaultHeight: 44,
     defaultProps: {
       title: "系统维护升级通知",
       description: "底层网络将于今日 24:00 进行例行维护，请提前做好数据保存。",
@@ -571,23 +662,23 @@ export const webLibrary: LibraryComponent[] = [
   // ================= 5. Web 业务模版 (Page Blocks & Templates) =================
   {
     type: "web-admin-layout",
-    label: "经典中后台框架",
+    label: "中后台管理总览",
     category: "Web模版",
     icon: "LayoutDashboard",
     defaultWidth: 1080,
     defaultHeight: 640,
     defaultProps: {
-      systemTitle: "BLUEPEN 管理后台",
+      systemTitle: "后台管理控制中心",
       currentMenu: "用户与权限管理",
     },
   },
   {
     type: "web-filter-bar",
-    label: "查询筛选表单栏",
+    label: "复合查询筛选栏",
     category: "Web模版",
     icon: "SearchCode",
     defaultWidth: 920,
-    defaultHeight: 64,
+    defaultHeight: 56,
     defaultProps: {
       keyword: "搜索关键词...",
       dept: "全部部门",
@@ -596,7 +687,7 @@ export const webLibrary: LibraryComponent[] = [
   },
   {
     type: "web-crud-table",
-    label: "标准 CRUD 表格页",
+    label: "增删改查表格页",
     category: "Web模版",
     icon: "TableProperties",
     defaultWidth: 960,
@@ -607,13 +698,13 @@ export const webLibrary: LibraryComponent[] = [
   },
   {
     type: "web-form-layout",
-    label: "标准表单录入块",
+    label: "标准表单录入页",
     category: "Web模版",
     icon: "FormInput",
     defaultWidth: 640,
     defaultHeight: 460,
     defaultProps: {
-      formTitle: "新建企业级微服务实例",
+      formTitle: "新建企业微服务实例",
     },
   },
   {
@@ -624,7 +715,7 @@ export const webLibrary: LibraryComponent[] = [
     defaultWidth: 380,
     defaultHeight: 420,
     defaultProps: {
-      systemName: "BLUEPEN PROTOTYPE",
+      systemName: "用户认证与登录中心",
     },
   },
   {
@@ -635,7 +726,52 @@ export const webLibrary: LibraryComponent[] = [
     defaultWidth: 760,
     defaultHeight: 440,
     defaultProps: {
-      stepTitle: "第一步：填写基础集群参数",
+      stepTitle: "第一步：填写基础参数配置",
+    },
+  },
+  {
+    type: "web-dashboard-page",
+    label: "经营数据大屏看板",
+    category: "Web模版",
+    icon: "LayoutDashboard",
+    defaultWidth: 960,
+    defaultHeight: 560,
+    defaultProps: {
+      dashboardTitle: "企业级运营监控总览",
+    },
+  },
+  {
+    type: "web-settings-page",
+    label: "系统与个人配置",
+    category: "Web模版",
+    icon: "Settings",
+    defaultWidth: 840,
+    defaultHeight: 520,
+    defaultProps: {
+      settingsTitle: "个人中心与安全配置",
+    },
+  },
+  {
+    type: "web-pricing-table",
+    label: "产品版本对比矩阵",
+    category: "Web模版",
+    icon: "Table",
+    defaultWidth: 840,
+    defaultHeight: 460,
+    defaultProps: {
+      title: "服务版本规格与价格方案",
+    },
+  },
+  {
+    type: "web-faq-section",
+    label: "常见问题答疑模块",
+    category: "Web模版",
+    icon: "HelpCircle",
+    defaultWidth: 720,
+    defaultHeight: 380,
+    defaultProps: {
+      title: "常见问题与技术支持解答",
     },
   },
 ];
+

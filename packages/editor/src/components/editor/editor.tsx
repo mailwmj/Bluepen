@@ -19,6 +19,7 @@ import {
 import {
   Copy, Trash2, Lock, EyeOff, Square, Maximize2, ClipboardPaste,
   MousePointer2, Hand, Type, ArrowUp, ArrowDown, ArrowUpToLine, ArrowDownToLine,
+  Boxes, Ungroup,
 } from "lucide-react";
 import {
   Toolbar as CossToolbar,
@@ -28,6 +29,9 @@ import {
 } from "@bluepen/editor/components/ui/toolbar";
 import { useKeyboard } from "./hooks/use-keyboard";
 import { library } from "./library/index";
+import { webLibrary } from "./library/web-components";
+import { groupElements, ungroupElements, canGroupElements, canUngroupElements } from "./utils/grouping";
+import { isBlockTemplate, createBlockTemplateGroup } from "./library/block-templates";
 import { confirmLocal } from "./hooks/use-desktop";
 import { showToast } from "./hooks/use-toast";
 import { loadProjectLocal, saveProjectLocal, loadSettingsLocal, saveSettingsLocal } from "./hooks/local-store";
@@ -132,8 +136,10 @@ export function Editor() {
     setSelectedIds(id ? [id] : []);
   }, []);
   const [projectName, setProjectName] = useState("Untitled");
+  const [currentFilePath, setCurrentFilePath] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [theme, setTheme] = useState<"dark" | "light">("dark");
+  const [leftDrawerCollapsed, setLeftDrawerCollapsed] = useState(false);
 
   const toggleTheme = useCallback(() => {
     setTheme((prev) => {
@@ -141,6 +147,10 @@ export function Editor() {
       document.documentElement.classList.toggle("dark", next === "dark");
       return next;
     });
+  }, []);
+
+  const toggleLeftDrawer = useCallback(() => {
+    setLeftDrawerCollapsed((prev) => !prev);
   }, []);
 
   // Hydrate from local persistence on mount
@@ -156,6 +166,9 @@ export function Editor() {
         const uniquePages = ensureUniqueIds(project.pages);
         setPages(uniquePages);
         setProjectName(project.name || "Untitled");
+        if (project.filePath) {
+          setCurrentFilePath(project.filePath);
+        }
         const first = uniquePages[0];
         if (first) {
           setActivePageId(first.id);
@@ -166,6 +179,9 @@ export function Editor() {
       if (settings) {
         setZoom(settings.zoom ?? 1);
         setShowGrid(settings.showGrid ?? true);
+        if (typeof settings.leftDrawerCollapsed === "boolean") {
+          setLeftDrawerCollapsed(settings.leftDrawerCollapsed);
+        }
         if (settings.theme === "dark" || settings.theme === "light") {
           setTheme(settings.theme);
           document.documentElement.classList.toggle("dark", settings.theme === "dark");
@@ -192,19 +208,24 @@ export function Editor() {
         name: projectName,
         pages,
         savedAt: Date.now(),
-      }).then(() => setDirty(false));
+      }, currentFilePath).then(() => setDirty(false));
     }, 600);
     return () => clearTimeout(t);
-  }, [pages, projectName, hydrated]);
+  }, [pages, projectName, currentFilePath, hydrated]);
 
   // Auto-save settings (debounced)
   useEffect(() => {
     if (!hydrated) return;
     const t = setTimeout(() => {
-      void saveSettingsLocal({ zoom, showGrid, theme });
+      void saveSettingsLocal({
+        zoom,
+        showGrid,
+        theme,
+        leftDrawerCollapsed,
+      });
     }, 600);
     return () => clearTimeout(t);
-  }, [zoom, showGrid, theme, hydrated]);
+  }, [zoom, showGrid, theme, leftDrawerCollapsed, hydrated]);
 
   const latestElementsRef = useRef(elements);
   latestElementsRef.current = elements;
@@ -377,11 +398,27 @@ export function Editor() {
       rotation = 0,
       customProps?: Record<string, string | number | boolean>,
     ) => {
-      const lib = library.find((c) => c.type === type);
+      // 业务区块模版：生成由真实原子组件构成的 Group 组合
+      if (isBlockTemplate(type)) {
+        const groupEl = createBlockTemplateGroup(type, x, y, parentId);
+        if (groupEl) {
+          const next = parentId
+            ? elements.map((e) =>
+                e.id === parentId ? { ...e, children: [...e.children, groupEl] } : e,
+              )
+            : [...elements, groupEl];
+          commit(next);
+          setSelectedId(groupEl.id);
+          setSelectedIds([groupEl.id]);
+          return;
+        }
+      }
+
+      const lib = library.find((c) => c.type === type) || webLibrary.find((c) => c.type === type);
       const el: EditorElement = {
         id: genId(),
         type,
-        name: lib?.label || (type === "connector" ? "连接线" : type),
+        name: lib?.label || (type === "connector" ? "连接线" : type === "group" ? "组合" : type),
         x,
         y,
         width: width ?? (lib?.defaultWidth || (type === "connector" ? 160 : 200)),
@@ -406,6 +443,39 @@ export function Editor() {
     },
     [elements, commit],
   );
+
+  const groupSelected = useCallback(() => {
+    if (selectedIds.length < 2) return;
+    const { nextElements, groupId } = groupElements(selectedIds, elements);
+    if (groupId) {
+      commit(nextElements);
+      setSelectedId(groupId);
+      setSelectedIds([groupId]);
+      showToast({
+        type: "success",
+        title: "已创建组合",
+        description: `已将选中的 ${selectedIds.length} 个图层组合为一个整体`,
+        id: "group-success",
+      });
+    }
+  }, [selectedIds, elements, commit]);
+
+  const ungroupSelected = useCallback(() => {
+    const targetIds = contextElementId ? [contextElementId] : selectedIds;
+    if (targetIds.length === 0) return;
+    const { nextElements, releasedIds } = ungroupElements(targetIds, elements);
+    if (releasedIds.length > 0) {
+      commit(nextElements);
+      setSelectedIds(releasedIds);
+      if (releasedIds[0]) setSelectedId(releasedIds[0]);
+      showToast({
+        type: "success",
+        title: "已打散组合",
+        description: `已解组释放为 ${releasedIds.length} 个独立组件`,
+        id: "ungroup-success",
+      });
+    }
+  }, [contextElementId, selectedIds, elements, commit]);
 
   const deleteSelected = useCallback(() => {
     if (selectedIds.length === 0) return;
@@ -675,13 +745,39 @@ export function Editor() {
       const target = e.target as HTMLElement;
       const elTarget = target.closest("[data-element]");
       const elId = elTarget?.getAttribute("data-element-id");
+      const isMultiSelectionBox = Boolean(
+        target.closest("[data-multi-selection-box]") ||
+        target.closest("[data-selection-box]")
+      );
+
       if (elId) {
-        if (!selectedIds.includes(elId)) {
-          setSelectedId(elId);
-          setSelectedIds([elId]);
+        let targetId = elId;
+        const el = allElementsFlat.find((item) => item.id === elId);
+        if (el?.parentId && !e.metaKey && !e.ctrlKey) {
+          let curr = el;
+          let groupAncestor: EditorElement | null = null;
+          while (curr.parentId) {
+            const parent = allElementsFlat.find((p) => p.id === curr.parentId);
+            if (!parent) break;
+            if (parent.type === "group") {
+              groupAncestor = parent;
+            }
+            curr = parent;
+          }
+          if (groupAncestor && !selectedIds.includes(elId)) {
+            targetId = groupAncestor.id;
+          }
+        }
+
+        if (!selectedIds.includes(targetId) && !selectedIds.includes(elId)) {
+          setSelectedId(targetId);
+          setSelectedIds([targetId]);
         }
         setContextTarget("element");
-        setContextElementId(elId);
+        setContextElementId(targetId);
+      } else if (isMultiSelectionBox && selectedIds.length > 0) {
+        setContextTarget("element");
+        setContextElementId(selectedIds[0] ?? null);
       } else {
         setSelectedId(null);
         setSelectedIds([]);
@@ -690,7 +786,7 @@ export function Editor() {
       }
       setContextOpen(true);
     },
-    [previewing, selectedIds],
+    [previewing, selectedIds, allElementsFlat],
   );
 
   const nudgeMove = useCallback(
@@ -774,8 +870,8 @@ export function Editor() {
         setActiveTool("select");
       }
     },
-    "Ctrl+G": () => {},
-    "Ctrl+Shift+G": () => {},
+    "Ctrl+G": groupSelected,
+    "Ctrl+Shift+G": ungroupSelected,
     "Ctrl+A": () => {
       setSelectedIds(elements.filter((e) => e.visible).map((e) => e.id));
     },
@@ -866,10 +962,14 @@ export function Editor() {
   );
 
   const loadProject = useCallback(
-    (data: { pages: Page[]; name: string }) => {
-      const loadedPages = ensureUniqueIds(data.pages ?? []);
+    (data: { pages: Page[]; name: string; filePath?: string | null }) => {
+      const initialPages = data.pages && data.pages.length > 0
+        ? data.pages
+        : [{ id: genId(), name: "Page 1", elements: [] }];
+      const loadedPages = ensureUniqueIds(initialPages);
       setPages(loadedPages);
       setProjectName(data.name || "Untitled");
+      setCurrentFilePath(data.filePath ?? null);
       if (loadedPages[0]) {
         setActivePageId(loadedPages[0].id);
         setHistory([JSON.parse(JSON.stringify(loadedPages[0].elements))]);
@@ -879,17 +979,17 @@ export function Editor() {
       }
       setHistoryIndex(0);
       setSelectedId(null);
+      setSelectedIds([]);
       setDirty(false);
     },
     [],
   );
 
-
   const handleLoadTemplate = useCallback(() => {
     void confirmLocal("Replace the current project with the example template?").then(
       (ok) => {
         if (ok) {
-          loadProject({ pages: templatePages, name: projectName });
+          loadProject({ pages: templatePages, name: projectName, filePath: currentFilePath });
           showToast({
             type: "success",
             title: "Template inserted",
@@ -899,29 +999,26 @@ export function Editor() {
         }
       },
     );
-  }, [loadProject, projectName]);
-
-  const saveProjectRef = useRef<() => Promise<void>>(async () => {});
+  }, [loadProject, projectName, currentFilePath]);
 
   const { isTauri, fileApi, toggleFullscreen, windowControls, windowMaximized, windowFullscreen } = useDesktop(
     getProject,
     loadProject,
   );
 
-  const saveProject = useCallback(async () => {
-    if (!fileApi) return;
-    const ok = await fileApi.saveFile();
-    if (ok) {
-      setDirty(false);
-      showToast({ type: "success", title: "Project saved", id: "save-file" });
-    }
-  }, [fileApi]);
-
-  saveProjectRef.current = saveProject;
-
-  const handleSaveShortcut = useCallback(() => {
+  const handleSaveShortcut = useCallback(async () => {
     if (isTauri) {
-      void saveProject();
+      if (!fileApi) return;
+      const res = await fileApi.saveFile(currentFilePath);
+      if (res.ok) {
+        if (res.path) {
+          setCurrentFilePath(res.path);
+          const baseName = res.path.split(/[\\/]/).pop()?.replace(/\.(bluepen|json)$/, "");
+          if (baseName) setProjectName(baseName);
+        }
+        setDirty(false);
+        showToast({ type: "success", title: "Project saved", id: "save-file" });
+      }
     } else {
       const blob = new Blob([JSON.stringify(getProject(), null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
@@ -933,20 +1030,105 @@ export function Editor() {
       setDirty(false);
       showToast({ type: "success", title: "Project downloaded", id: "save-file" });
     }
-  }, [isTauri, saveProject, getProject, projectName]);
+  }, [isTauri, fileApi, currentFilePath, getProject, projectName]);
 
-  const handleNewShortcut = useCallback(() => {
-    loadProject({ pages: [], name: "Untitled" });
+  const handleSaveAsShortcut = useCallback(async () => {
+    if (isTauri) {
+      if (!fileApi) return;
+      const res = await fileApi.saveFileAs();
+      if (res.ok && res.path) {
+        setCurrentFilePath(res.path);
+        const baseName = res.path.split(/[\\/]/).pop()?.replace(/\.(bluepen|json)$/, "");
+        if (baseName) setProjectName(baseName);
+        setDirty(false);
+        showToast({ type: "success", title: "Project saved as", description: baseName, id: "save-file-as" });
+      }
+    } else {
+      void handleSaveShortcut();
+    }
+  }, [isTauri, fileApi, handleSaveShortcut]);
+
+  const handleNewShortcut = useCallback(async () => {
+    if (dirty) {
+      const ok = await confirmLocal("Current project has unsaved changes. Create a new project anyway?");
+      if (!ok) return;
+    }
+    loadProject({
+      pages: [{ id: genId(), name: "Page 1", elements: [] }],
+      name: "Untitled",
+      filePath: null,
+    });
     showToast({ title: "New project created", id: "new-project" });
-  }, [loadProject]);
+  }, [dirty, loadProject]);
 
-  const handleOpenShortcut = useCallback(() => {
-    if (isTauri) fileApi?.openFile();
-  }, [isTauri, fileApi]);
+  const handleOpenShortcut = useCallback(async () => {
+    if (dirty) {
+      const ok = await confirmLocal("Current project has unsaved changes. Open another project anyway?");
+      if (!ok) return;
+    }
+    if (isTauri) {
+      await fileApi?.openFile();
+    } else {
+      const input = document.createElement("input");
+      input.type = "file";
+      input.accept = ".bluepen,.json";
+      input.onchange = async (e) => {
+        const file = (e.target as HTMLInputElement).files?.[0];
+        if (!file) return;
+        try {
+          const text = await file.text();
+          const data = JSON.parse(text);
+          if (!data || !Array.isArray(data.pages)) {
+            showToast({ type: "error", title: "Invalid project file", id: "open-file-invalid" });
+            return;
+          }
+          const baseName = file.name.replace(/\.(bluepen|json)$/, "") || "Untitled";
+          loadProject({
+            pages: data.pages,
+            name: data.name ?? baseName,
+            filePath: null,
+          });
+          showToast({ type: "success", title: "Project opened", description: baseName, id: "open-file" });
+        } catch (err) {
+          console.error("Failed to parse project file:", err);
+          showToast({ type: "error", title: "Could not parse project file", id: "open-file-error" });
+        }
+      };
+      input.click();
+    }
+  }, [dirty, isTauri, fileApi, loadProject]);
 
-  const handleSaveAsShortcut = useCallback(() => {
-    if (isTauri) void fileApi?.saveFileAs();
-  }, [isTauri, fileApi]);
+  const handleDropFile = useCallback(
+    async (file: File, x?: number, y?: number) => {
+      const fileName = file.name.toLowerCase();
+      if (fileName.endsWith(".bluepen") || (fileName.endsWith(".json") && !file.type.startsWith("image/"))) {
+        try {
+          const text = await file.text();
+          const data = JSON.parse(text);
+          if (data && Array.isArray(data.pages)) {
+            if (dirty) {
+              const ok = await confirmLocal("Current project has unsaved changes. Open dropped project anyway?");
+              if (!ok) return;
+            }
+            const baseName = file.name.replace(/\.(bluepen|json)$/, "") || "Untitled";
+            loadProject({
+              pages: data.pages,
+              name: data.name ?? baseName,
+              filePath: null,
+            });
+            showToast({ type: "success", title: "Project opened", description: baseName, id: "open-file" });
+            return;
+          }
+        } catch (err) {
+          console.error("Failed to parse dropped project:", err);
+          showToast({ type: "error", title: "Could not parse project file", id: "open-file-error" });
+          return;
+        }
+      }
+      await insertImageFile(file, x, y);
+    },
+    [dirty, loadProject, insertImageFile],
+  );
 
   const exportPng = useCallback(async () => {
     const flat: { el: EditorElement; x: number; y: number }[] = [];
@@ -1063,6 +1245,7 @@ export function Editor() {
     "Ctrl+Shift+S": handleSaveAsShortcut,
     "Ctrl+O": handleOpenShortcut,
     "Ctrl+N": handleNewShortcut,
+    "Ctrl+B": toggleLeftDrawer,
     "F11": toggleFullscreen,
     "V": () => setActiveTool("select"),
     "H": () => setActiveTool("hand"),
@@ -1104,7 +1287,7 @@ export function Editor() {
         onZoomIn={() => setZoom((z) => Math.min(4, z + 0.1))}
         onZoomOut={() => setZoom((z) => Math.max(0.1, z - 0.1))}
         onZoomTo={(z) => setZoom(Math.min(4, Math.max(0.1, z)))}
-        onSave={isTauri ? () => void saveProject() : handleSaveShortcut}
+        onSave={handleSaveShortcut}
         onNew={handleNewShortcut}
         onOpen={handleOpenShortcut}
         onTemplate={handleLoadTemplate}
@@ -1136,23 +1319,25 @@ export function Editor() {
         </div>
       ) : (
         <div className="flex flex-1 overflow-hidden">
-        <LeftSidebar
-          pages={pages}
-          activePageId={activePageId}
-          onPageSelect={handlePageSelect}
-          onPageAdd={handlePageAdd}
-          onPageDelete={handlePageDelete}
-          elements={elements}
-          selectedId={selectedId}
-          selectedIds={selectedIds}
-          activeTool={activeTool}
-          onSelectTool={setActiveTool}
-          onSelect={setSelectedId}
-          onSelectIds={setSelectedIds}
-          onUpdateElement={updateElement}
-          onDeleteElement={deleteElement}
-          onAddAsset={handleSidebarAdd}
-        />
+          <LeftSidebar
+            pages={pages}
+            activePageId={activePageId}
+            onPageSelect={handlePageSelect}
+            onPageAdd={handlePageAdd}
+            onPageDelete={handlePageDelete}
+            elements={elements}
+            selectedId={selectedId}
+            selectedIds={selectedIds}
+            activeTool={activeTool}
+            onSelectTool={setActiveTool}
+            onSelect={setSelectedId}
+            onSelectIds={setSelectedIds}
+            onUpdateElement={updateElement}
+            onDeleteElement={deleteElement}
+            onAddAsset={handleSidebarAdd}
+            drawerCollapsed={leftDrawerCollapsed}
+            onToggleDrawer={toggleLeftDrawer}
+          />
 
         <div className="relative flex flex-1 min-w-0 overflow-hidden">
           <ContextMenu open={contextOpen} onOpenChange={setContextOpen}>
@@ -1178,17 +1363,31 @@ export function Editor() {
                 onDelete={deleteSelected}
                 onCanvasClick={handleCanvasClick}
                 onDropAsset={(type, x, y) => addElement(type, x, y)}
-                onDropFile={(file, x, y) => void insertImageFile(file, x, y)}
+                onDropFile={(file, x, y) => void handleDropFile(file, x, y)}
               />
             </ContextMenuTrigger>
             <ContextMenuPopup>
-              {contextTarget === "element" && contextElementId && elements.find(e => e.id === contextElementId) ? (
+              {contextTarget === "element" && ((contextElementId && allElementsFlat.some((e: EditorElement) => e.id === contextElementId)) || selectedIds.length > 0) ? (
                 <>
                   <ContextMenuItem closeOnClick onClick={duplicate}>
                     <Copy aria-hidden="true" className="opacity-80" />
-                    克隆 (Duplicate)
+                    克隆
                     <ContextMenuShortcut>Ctrl+D</ContextMenuShortcut>
                   </ContextMenuItem>
+                  {canGroupElements(selectedIds, elements) && (
+                    <ContextMenuItem closeOnClick onClick={groupSelected}>
+                      <Boxes aria-hidden="true" className="opacity-80" />
+                      组合
+                      <ContextMenuShortcut>Ctrl+G</ContextMenuShortcut>
+                    </ContextMenuItem>
+                  )}
+                  {canUngroupElements(contextElementId ? [contextElementId] : selectedIds, elements) && (
+                    <ContextMenuItem closeOnClick onClick={ungroupSelected}>
+                      <Ungroup aria-hidden="true" className="opacity-80" />
+                      打散
+                      <ContextMenuShortcut>Ctrl+Shift+G</ContextMenuShortcut>
+                    </ContextMenuItem>
+                  )}
                   <ContextMenuSeparator />
                   <ContextMenuItem closeOnClick onClick={bringForward}>
                     <ArrowUp aria-hidden="true" className="opacity-80" />
@@ -1217,20 +1416,44 @@ export function Editor() {
                     <ContextMenuShortcut>Del</ContextMenuShortcut>
                   </ContextMenuItem>
                   <ContextMenuSeparator />
-                  <ContextMenuItem closeOnClick onClick={() => updateElement(contextElementId, { locked: true })}>
+                  <ContextMenuItem
+                    closeOnClick
+                    onClick={() => {
+                      const ids = selectedIds.length > 0 ? selectedIds : (contextElementId ? [contextElementId] : []);
+                      ids.forEach((id) => updateElement(id, { locked: true }));
+                    }}
+                  >
                     <Lock aria-hidden="true" className="opacity-80" />
                     锁定
                   </ContextMenuItem>
-                  <ContextMenuItem closeOnClick onClick={() => updateElement(contextElementId, { visible: false })}>
+                  <ContextMenuItem
+                    closeOnClick
+                    onClick={() => {
+                      const ids = selectedIds.length > 0 ? selectedIds : (contextElementId ? [contextElementId] : []);
+                      ids.forEach((id) => updateElement(id, { visible: false }));
+                    }}
+                  >
                     <EyeOff aria-hidden="true" className="opacity-80" />
                     隐藏
                   </ContextMenuItem>
                 </>
               ) : (
                 <>
-                  <ContextMenuItem closeOnClick onClick={handlePasteAtContextPos}>
+                  <ContextMenuItem closeOnClick onClick={() => addElement("rectangle", lastCanvasPointerPosRef.current.x, lastCanvasPointerPosRef.current.y)}>
+                    <Square aria-hidden="true" className="opacity-80" />
+                    新建矩形
+                    <ContextMenuShortcut>R</ContextMenuShortcut>
+                  </ContextMenuItem>
+                  <ContextMenuItem closeOnClick onClick={() => addElement("text", lastCanvasPointerPosRef.current.x, lastCanvasPointerPosRef.current.y)}>
+                    <Type aria-hidden="true" className="opacity-80" />
+                    新建文本
+                    <ContextMenuShortcut>T</ContextMenuShortcut>
+                  </ContextMenuItem>
+                  <ContextMenuSeparator />
+                  <ContextMenuItem closeOnClick onClick={() => void handlePasteAtContextPos()}>
                     <ClipboardPaste aria-hidden="true" className="opacity-80" />
                     粘贴到此处
+                    <ContextMenuShortcut>Ctrl+V</ContextMenuShortcut>
                   </ContextMenuItem>
                   <ContextMenuSeparator />
                   <ContextMenuItem closeOnClick onClick={() => setZoom(1)}>
@@ -1256,6 +1479,8 @@ export function Editor() {
           onBringForward={bringForward}
           onSendBackward={sendBackward}
           onDuplicate={duplicate}
+          onGroup={groupSelected}
+          onUngroup={ungroupSelected}
         />
       </div>
       )}

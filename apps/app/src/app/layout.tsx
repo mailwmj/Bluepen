@@ -57,7 +57,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={cn("h-full antialiased dark", spaceGrotesk.variable, spaceMono.variable)}
+      className={cn("h-full antialiased dark overscroll-none", spaceGrotesk.variable, spaceMono.variable)}
     >
       <head>
         <script
@@ -66,13 +66,13 @@ export default function RootLayout({
           }}
         />
       </head>
-      <body className="relative min-h-full bg-background text-foreground font-sans">
+      <body className="relative h-full overflow-hidden bg-background text-foreground font-sans overscroll-none">
         <script
           dangerouslySetInnerHTML={{
             __html: `if ("__TAURI_INTERNALS__" in window) { var s=document.documentElement.style; s.background="transparent"; document.body.style.background="transparent"; }`,
           }}
         />
-        <div className="isolate relative flex min-h-svh flex-col">
+        <div className="isolate relative flex h-full min-h-0 flex-col overflow-hidden">
           {children}
         </div>
       </body>

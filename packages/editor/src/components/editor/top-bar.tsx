@@ -152,8 +152,8 @@ export function TopBar({
           variant={previewing ? "default" : "ghost"}
           size="icon-xs"
           onClick={onPreview}
-          aria-label={previewing ? "退出原型预览 (Esc)" : "原型预览 (Prototype)"}
-          title={previewing ? "退出原型预览 (Esc)" : "原型预览 (Prototype)"}
+          aria-label={previewing ? "退出原型预览 (Esc)" : "原型预览"}
+          title={previewing ? "退出原型预览 (Esc)" : "原型预览"}
           className={cn(
             "relative",
             previewing && "bg-primary text-primary-foreground font-mono",

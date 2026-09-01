@@ -157,6 +157,11 @@
     border-color: var(--border);
     outline-color: var(--ring);
   }
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+  }
   html {
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
