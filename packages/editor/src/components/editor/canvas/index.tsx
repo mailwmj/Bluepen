@@ -2876,10 +2876,28 @@ export function Canvas({
               y={((pan.y % (GRID_SIZE * zoom)) + (GRID_SIZE * zoom)) % (GRID_SIZE * zoom)}
             >
               <circle
-                cx={1}
-                cy={1}
-                r={Math.max(0.75, 0.75 * Math.min(1.25, zoom))}
-                className="fill-border-visible"
+                cx={0}
+                cy={0}
+                r={Math.max(1, 1 * Math.min(1.5, zoom))}
+                fill="var(--border-visible)"
+              />
+              <circle
+                cx={GRID_SIZE * zoom}
+                cy={0}
+                r={Math.max(1, 1 * Math.min(1.5, zoom))}
+                fill="var(--border-visible)"
+              />
+              <circle
+                cx={0}
+                cy={GRID_SIZE * zoom}
+                r={Math.max(1, 1 * Math.min(1.5, zoom))}
+                fill="var(--border-visible)"
+              />
+              <circle
+                cx={GRID_SIZE * zoom}
+                cy={GRID_SIZE * zoom}
+                r={Math.max(1, 1 * Math.min(1.5, zoom))}
+                fill="var(--border-visible)"
               />
             </pattern>
           </defs>

@@ -1267,7 +1267,7 @@ export function Editor() {
     }`;
 
   const content = (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden bg-background text-foreground">
+    <div className="flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden bg-background text-foreground">
       <TopBar
         projectName={projectName}
         dirty={dirty}
@@ -1301,7 +1301,7 @@ export function Editor() {
       />
 
       {previewing ? (
-        <div className="flex min-h-0 flex-1 overflow-hidden">
+        <div className="flex min-h-0 w-full flex-1 overflow-hidden">
           <Canvas
             elements={elements}
             selectedId={null}
@@ -1318,7 +1318,7 @@ export function Editor() {
           />
         </div>
       ) : (
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex min-h-0 w-full flex-1 overflow-hidden">
           <LeftSidebar
             pages={pages}
             activePageId={activePageId}
@@ -1341,7 +1341,7 @@ export function Editor() {
 
         <div className="relative flex flex-1 min-w-0 overflow-hidden">
           <ContextMenu open={contextOpen} onOpenChange={setContextOpen}>
-            <ContextMenuTrigger className="flex flex-1 overflow-hidden" onContextMenu={handleContextMenu}>
+            <ContextMenuTrigger className="flex flex-1 min-w-0 overflow-hidden" onContextMenu={handleContextMenu}>
               <Canvas
                 elements={elements}
                 selectedId={selectedId}
@@ -1527,28 +1527,19 @@ export function Editor() {
     );
 
   if (!isTauri) {
-    return <div className="h-svh overflow-hidden bg-background text-foreground">{content}</div>;
+    return <div className="h-svh w-full overflow-hidden bg-background text-foreground">{content}</div>;
   }
 
-  const framed = !windowMaximized && !windowFullscreen;
-
   return (
-    <div className={cn("h-svh bg-background text-foreground", framed && "p-1.5")}>
-      <div
-        className={cn(
-          "flex h-full flex-col overflow-hidden bg-surface text-foreground border border-border",
-          framed && "rounded-lg shadow-2xs",
-        )}
-      >
-        <TitleBar
-          maximized={windowMaximized}
-          onMinimize={() => windowControls("minimize")}
-          onMaximize={() => windowControls("maximize")}
-          onClose={() => windowControls("close")}
-        />
-        <div className={cn("flex min-h-0 flex-1 overflow-hidden bg-background", framed && "mx-1 mb-1 rounded-md")}>
-          {content}
-        </div>
+    <div className="flex h-svh w-full flex-col overflow-hidden bg-background text-foreground">
+      <TitleBar
+        maximized={windowMaximized}
+        onMinimize={() => windowControls("minimize")}
+        onMaximize={() => windowControls("maximize")}
+        onClose={() => windowControls("close")}
+      />
+      <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
+        {content}
       </div>
     </div>
   );
