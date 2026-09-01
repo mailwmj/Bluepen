@@ -13,7 +13,7 @@ Only the latest release is supported with security updates.
 
 Please report security vulnerabilities by opening a private advisory on GitHub:
 
-https://github.com/bluepen/bluepen/security/advisories/new
+https://github.com/mailwmj/Bluepen/security/advisories/new
 
 Alternatively, email `dev@bluepen.app`. Do not open public issues for
 security vulnerabilities.

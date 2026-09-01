@@ -1,15 +1,19 @@
-# Next.js
+# Next.js & Node
 .next/
 node_modules/
 *.tsbuildinfo
 next-env.d.ts
 out/
+dist/
+build/
 
 # Rust / Tauri
+target/
+**/target/
 src-tauri/target/
 
-# Marketing site (synced to the bluepen-web repo via `pnpm web:publish`)
-apps/web/
-
-# macOS
+# System & Editor
+.codex*
 .DS_Store
+Thumbs.db
+*.log

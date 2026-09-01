@@ -2696,6 +2696,10 @@ export function Canvas({
     [screenToCanvas, onSelect, onSelectIds, onCanvasClick],
   );
 
+  const handleDragEnter = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+  }, []);
+
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = "copy";
@@ -2722,12 +2726,28 @@ export function Canvas({
       // 2. Check for library asset drag & drop
       if (!onDropAsset) return;
       try {
-        const raw = e.dataTransfer.getData("application/json");
+        const raw =
+          e.dataTransfer.getData("application/json") ||
+          e.dataTransfer.getData("text/plain") ||
+          e.dataTransfer.getData("text");
         if (!raw) return;
-        const parsed = JSON.parse(raw);
-        if (parsed && parsed.type) {
+
+        let compType: ComponentType | null = null;
+        try {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === "object" && parsed.type) {
+            compType = parsed.type as ComponentType;
+          } else if (typeof parsed === "string") {
+            compType = parsed as ComponentType;
+          }
+        } catch {
+          // If not valid JSON, treat raw string directly as component type
+          compType = raw.trim() as ComponentType;
+        }
+
+        if (compType) {
           const pos = screenToCanvas(e.clientX, e.clientY);
-          onDropAsset(parsed.type as ComponentType, snap(pos.x), snap(pos.y));
+          onDropAsset(compType, snap(pos.x), snap(pos.y));
         }
       } catch {
         // Ignore parsing errors
@@ -2855,6 +2875,7 @@ export function Canvas({
       }}
       onMouseDown={handleMouseDown}
       onClick={handleClick}
+      onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
       tabIndex={0}

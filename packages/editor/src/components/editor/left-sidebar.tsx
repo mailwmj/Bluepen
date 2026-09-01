@@ -916,7 +916,9 @@ export const LeftSidebar = memo(function LeftSidebar({
                                 key={item.type}
                                 draggable
                                 onDragStart={(e) => {
-                                  e.dataTransfer.setData("application/json", JSON.stringify({ type: item.type }));
+                                  const data = JSON.stringify({ type: item.type });
+                                  e.dataTransfer.setData("application/json", data);
+                                  e.dataTransfer.setData("text/plain", data);
                                   e.dataTransfer.effectAllowed = "copy";
                                 }}
                                 onClick={() => {
@@ -1042,7 +1044,9 @@ export const LeftSidebar = memo(function LeftSidebar({
                                 key={item.type}
                                 draggable
                                 onDragStart={(e) => {
-                                  e.dataTransfer.setData("application/json", JSON.stringify({ type: item.type }));
+                                  const data = JSON.stringify({ type: item.type });
+                                  e.dataTransfer.setData("application/json", data);
+                                  e.dataTransfer.setData("text/plain", data);
                                   e.dataTransfer.effectAllowed = "copy";
                                 }}
                                 onClick={() => {
@@ -1163,7 +1167,9 @@ export const LeftSidebar = memo(function LeftSidebar({
                                 key={item.type}
                                 draggable
                                 onDragStart={(e) => {
-                                  e.dataTransfer.setData("application/json", JSON.stringify({ type: item.type }));
+                                  const data = JSON.stringify({ type: item.type });
+                                  e.dataTransfer.setData("application/json", data);
+                                  e.dataTransfer.setData("text/plain", data);
                                   e.dataTransfer.effectAllowed = "copy";
                                 }}
                                 onClick={() => {

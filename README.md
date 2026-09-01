@@ -14,7 +14,7 @@
   <a href="https://bluepen.app">Website</a> ·
   <a href="https://bluepen.app/demo">Live demo</a> ·
   <a href="https://bluepen.app/download">Download</a> ·
-  <a href="https://github.com/bluepen/bluepen/releases">Releases</a>
+  <a href="https://github.com/mailwmj/Bluepen/releases">Releases</a>
 </p>
 
 <p align="center">
@@ -64,14 +64,41 @@ scripts/          release tooling
 
 ```bash
 pnpm install
-pnpm dev        # runs the app with hot reload
+pnpm app:dev    # runs the desktop app with hot reload
 ```
 
-## Build a release bundle
+## Build a local bundle
 
 ```bash
-pnpm build      # produces .deb and .rpm bundles in apps/app/src-tauri/target/release/bundle/
+pnpm app:build
 ```
+
+The command builds for the current host platform. The bundles are written below
+`apps/app/src-tauri/target/release/bundle/`.
+
+## Publish installers with GitHub Actions
+
+Installers are built and published from this repository. There is no separate
+web repository or synchronization step.
+
+1. Push the commit to release and confirm it is available on GitHub.
+2. Open the repository's **Actions** tab and select **Build Release**.
+3. Select **Run workflow**, enter a release tag such as `v0.1.1`, and enter
+   the Git ref to build, such as `main` or a commit SHA.
+4. Wait for the Linux, macOS, and Windows build jobs to finish. A successful
+   run publishes or updates the GitHub Release for the chosen tag.
+
+The workflow creates the following installer types:
+
+| Platform | Installer formats |
+| --- | --- |
+| Linux | `.deb`, `.rpm` |
+| macOS | `.dmg` |
+| Windows | NSIS `.exe` |
+
+If a build fails, open the failed job in the same workflow run. Each platform's
+unpublished build outputs are retained as workflow artifacts for seven days,
+which allows inspection without creating a partial GitHub Release.
 
 ## Contributing
 

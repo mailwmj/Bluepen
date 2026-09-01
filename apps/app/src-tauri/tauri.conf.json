@@ -22,7 +22,8 @@
         "center": true,
         "decorations": false,
         "transparent": false,
-        "url": "index.html"
+        "url": "index.html",
+        "dragDropEnabled": false
       }
     ],
     "security": {

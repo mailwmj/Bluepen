@@ -3,12 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "web:dev": "pnpm --filter web dev",
-    "web:build": "pnpm --filter web exec cross-env NEXT_EXPORT=true next build",
-    "web:sync": "pnpm --filter web sync:downloads",
     "app:dev": "pnpm --filter app desktop:dev",
     "app:build": "pnpm --filter app desktop:build",
-    "build": "pnpm --filter app build",
-    "web:publish": "node scripts/sync-web.mjs"
+    "build": "pnpm --filter app build"
   }
 }
