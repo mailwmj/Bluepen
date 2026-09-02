@@ -30,6 +30,22 @@ export function isWindows(): boolean {
   return getPlatform() === "windows";
 }
 
+export function usePlatform(): Platform {
+  const [platform, setPlatform] = useState<Platform>("web");
+  useEffect(() => {
+    setPlatform(getPlatform());
+  }, []);
+  return platform;
+}
+
+export function useIsMac(): boolean {
+  const [isMacPlatform, setIsMacPlatform] = useState(false);
+  useEffect(() => {
+    setIsMacPlatform(isMac());
+  }, []);
+  return isMacPlatform;
+}
+
 export function confirmLocal(message: string): Promise<boolean> {
   if (isDesktop()) {
     return import("@tauri-apps/plugin-dialog").then(({ ask }) =>
@@ -50,6 +66,7 @@ export function useDesktop(
   onLoadProject: (data: { pages: Page[]; name: string; filePath?: string }) => void,
 ) {
   const [isTauri, setIsTauri] = useState(false);
+  const [platform, setPlatform] = useState<Platform>("web");
   const [windowMaximized, setWindowMaximized] = useState(false);
   const [windowFullscreen, setWindowFullscreen] = useState(false);
   const getProjectRef = useRef(getProject);
@@ -60,6 +77,7 @@ export function useDesktop(
   const [fileApi, setFileApi] = useState<DesktopFileApi | null>(null);
 
   useEffect(() => {
+    setPlatform(getPlatform());
     if (!isDesktop()) return;
     setIsTauri(true);
 
@@ -172,7 +190,6 @@ export function useDesktop(
     })();
   }, []);
 
-  const platform = getPlatform();
   const isMacOS = platform === "macos";
   const isWin = platform === "windows";
 

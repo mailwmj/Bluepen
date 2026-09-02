@@ -199,3 +199,99 @@ test("Ungroup action restores absolute coordinates seamlessly and releases child
   assert.equal(r2.y, 380); // 300 + 80
   assert.equal(r2.parentId, null);
 });
+
+test("Cross-hierarchy grouping calculates world coordinates and avoids coordinate zeroing", () => {
+  function computeWorldBounds(element, allElementsFlat) {
+    let curX = element.x;
+    let curY = element.y;
+    let parentId = element.parentId;
+
+    if (parentId) {
+      const visited = new Set([element.id]);
+      while (parentId) {
+        if (visited.has(parentId)) break;
+        visited.add(parentId);
+        const parent = allElementsFlat.find((p) => p.id === parentId);
+        if (!parent) break;
+        curX += parent.x;
+        curY += parent.y;
+        parentId = parent.parentId;
+      }
+    }
+
+    return {
+      x: curX,
+      y: curY,
+      width: element.width,
+      height: element.height,
+    };
+  }
+
+  function flattenElements(list) {
+    const result = [];
+    for (const el of list) {
+      result.push(el);
+      if (el.children && el.children.length > 0) {
+        result.push(...flattenElements(el.children));
+      }
+    }
+    return result;
+  }
+
+  const rootGroup = {
+    id: "root-group",
+    type: "group",
+    name: "外层组合",
+    x: 200,
+    y: 500,
+    width: 800,
+    height: 400,
+    rotation: 0,
+    opacity: 1,
+    visible: true,
+    locked: false,
+    autoLayout: null,
+    parentId: null,
+    props: {},
+    children: [
+      {
+        id: "inner-btn",
+        type: "button",
+        name: "内部按钮",
+        x: 50,
+        y: 60,
+        width: 100,
+        height: 40,
+        parentId: "root-group",
+        children: [],
+      },
+    ],
+  };
+
+  const standaloneElement = {
+    id: "standalone-txt",
+    type: "text",
+    name: "独立文本",
+    x: 400,
+    y: 600,
+    width: 120,
+    height: 30,
+    parentId: null,
+    children: [],
+  };
+
+  const allElements = [rootGroup, standaloneElement];
+  const flat = flattenElements(allElements);
+
+  const selectedTargets = [
+    flat.find((e) => e.id === "inner-btn"),
+    flat.find((e) => e.id === "standalone-txt"),
+  ];
+
+  const worldBoundsList = selectedTargets.map((el) => computeWorldBounds(el, flat));
+  const minX = Math.min(...worldBoundsList.map((b) => b.x));
+  const minY = Math.min(...worldBoundsList.map((b) => b.y));
+
+  assert.equal(minX, 250, "World minX should be 200 + 50 = 250");
+  assert.equal(minY, 560, "World minY should be 500 + 60 = 560");
+});

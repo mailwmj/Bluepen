@@ -88,6 +88,10 @@ web repository or synchronization step.
 4. Wait for the Linux, macOS, and Windows build jobs to finish. A successful
    run publishes or updates the GitHub Release for the chosen tag.
 
+Release tags must use `vMAJOR.MINOR.PATCH`. The workflow derives the installer
+version from the tag, so `v0.1.1` produces installers and bundle metadata at
+version `0.1.1`.
+
 The workflow creates the following installer types:
 
 | Platform | Installer formats |

@@ -278,7 +278,7 @@ export function WebMenuPreview({ props = {} }: { props?: Props }) {
     );
   };
 
-  const menuStyle = computeShapeStyle(props, { fill: "var(--surface)", stroke: "var(--border)", borderWidth: 1, radius: 0 });
+  const menuStyle = computeShapeStyle(props, { fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1, radius: 0 });
 
   let globalItemIndex = 0;
 
@@ -499,7 +499,7 @@ export function WebStepsPreview({ props = {} }: { props?: Props }) {
 // 2. Web 表单输入与操作组件 (Web Form & Action)
 // =========================================================================
 
-export function WebButtonPreview({ props = {} }: { props?: Props }) {
+export function WebButtonPreview({ props = {}, isEditing }: { props?: Props; isEditing?: boolean }) {
   const text = String(val(props, "text", "主要操作"));
   const variant = String(val(props, "variant", "primary"));
   const size = String(val(props, "size", "md"));
@@ -559,6 +559,27 @@ export function WebButtonPreview({ props = {} }: { props?: Props }) {
   if (props.fontWeight) {
     customStyle.fontWeight = Number(props.fontWeight);
   }
+  if (props.fontFamily) {
+    customStyle.fontFamily = String(props.fontFamily);
+  }
+  if (props.letterSpacing !== undefined) {
+    customStyle.letterSpacing =
+      typeof props.letterSpacing === "number" ? `${props.letterSpacing}px` : String(props.letterSpacing);
+  }
+  if (props.lineHeight) {
+    customStyle.lineHeight = `${props.lineHeight}px`;
+  }
+  if (props.italic) {
+    customStyle.fontStyle = "italic";
+  }
+  if (props.underline || props.strikethrough) {
+    customStyle.textDecoration =
+      props.underline && props.strikethrough
+        ? "underline line-through"
+        : props.underline
+        ? "underline"
+        : "line-through";
+  }
 
   // Icon mapping
   const renderIcon = () => {
@@ -599,7 +620,7 @@ export function WebButtonPreview({ props = {} }: { props?: Props }) {
       )}
     >
       {renderIcon()}
-      {!isIconOnly && <span className="whitespace-nowrap truncate">{loading ? "处理中..." : text}</span>}
+      {!isEditing && !isIconOnly && <span className="whitespace-nowrap truncate">{loading ? "处理中..." : text}</span>}
     </button>
   );
 }
@@ -887,7 +908,7 @@ export function WebTransferPreview({ props = {} }: { props?: Props }) {
 export function WebUploadPreview({ props = {} }: { props?: Props }) {
   const title = String(val(props, "title", "点击或将文件拖拽至此区域上传"));
   const hint = String(val(props, "hint", "支持 PNG、JPG、PDF 或 ZIP 归档文件，单文件不超过 50MB"));
-  const boxStyle = computeShapeStyle(props, { fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 2, radius: 8 });
+  const boxStyle = computeShapeStyle(props, { fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1, radius: 8 });
 
   return (
     <div className="flex h-full w-full flex-col items-center justify-center border-dashed p-4 text-center select-none font-sans" style={boxStyle}>
@@ -2322,7 +2343,7 @@ export function renderWebLibraryComponent(
     case "web-breadcrumb": return <WebBreadcrumbPreview props={props} />;
     case "web-pagination": return <WebPaginationPreview props={props} />;
     case "web-steps": return <WebStepsPreview props={props} />;
-    case "web-button": return <WebButtonPreview props={props} />;
+    case "web-button": return <WebButtonPreview props={props} isEditing={context?.isEditing} />;
     case "web-button-group": return <WebButtonGroupPreview props={props} />;
     case "web-input": return <WebInputPreview props={props} />;
     case "web-input-number": return <WebInputNumberPreview props={props} />;

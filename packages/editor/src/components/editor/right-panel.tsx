@@ -57,6 +57,7 @@ import {
   Ungroup,
 } from "lucide-react";
 import type { EditorElement, Page } from "./types";
+import { useIsMac } from "./hooks/use-desktop";
 import { showToast } from "./hooks/use-toast";
 import { parseItems, parseMenuCategories } from "./library/web-renderers";
 import { processImageFile } from "./utils/image";
@@ -87,13 +88,13 @@ interface RightPanelProps {
 
 
 const FONT_FAMILIES = [
-  { label: "系统默认", value: "var(--font-sans)" },
+  { label: "无衬线 (Space Grotesk)", value: "var(--font-sans)" },
+  { label: "等宽代码 (Space Mono)", value: "var(--font-mono)" },
   { label: "微软雅黑", value: "'Microsoft YaHei UI', 'Microsoft YaHei', sans-serif" },
   { label: "苹方", value: "'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei UI', sans-serif" },
   { label: "思源黑体", value: "'Source Han Sans SC', 'Noto Sans SC', sans-serif" },
   { label: "Inter", value: "Inter, 'Microsoft YaHei UI', 'PingFang SC', sans-serif" },
   { label: "Roboto", value: "Roboto, 'Microsoft YaHei UI', 'PingFang SC', sans-serif" },
-  { label: "等宽代码", value: "var(--font-mono)" },
 ];
 
 const WEIGHT_OPTIONS = [
@@ -113,12 +114,12 @@ const FLOWCHART_TYPES = [
 ];
 
 const TEXT_TYPES = new Set([
-  "text", "button", "button-primary", "badge", "chip", "link", "sticky-note", "connector",
+  "text", "button", "button-primary", "web-button", "badge", "chip", "link", "sticky-note", "connector",
   ...FLOWCHART_TYPES,
 ]);
 
 const SHAPE_TYPES_WITH_TEXT = new Set([
-  "rectangle", "circle", "card", "placeholder", "button", "button-primary",
+  "rectangle", "circle", "card", "placeholder", "button", "button-primary", "web-button",
   "modal-dialog", "alert", "badge", "chip", "hotspot", "connector",
   ...FLOWCHART_TYPES,
 ]);
@@ -213,7 +214,7 @@ const RADIUS_SUPPORTED_TYPES = new Set([
 function Section({
   title,
   action,
-  collapsible = false,
+  collapsible = true,
   defaultOpen = true,
   children,
 }: {
@@ -1025,6 +1026,8 @@ export const RightPanel = memo(function RightPanel({
   const allVisible = effectiveSelectedElements.length > 0 && effectiveSelectedElements.every((el: EditorElement) => el.visible);
   const allLocked = effectiveSelectedElements.length > 0 && effectiveSelectedElements.every((el: EditorElement) => el.locked);
 
+  const isMac = useIsMac();
+
   if (effectiveSelectedElements.length === 0 || !element) {
     return (
       <aside className="flex w-64 shrink-0 flex-col overflow-hidden border-l border-border bg-surface text-foreground">
@@ -1041,15 +1044,19 @@ export const RightPanel = memo(function RightPanel({
               </div>
               <div className="flex items-center justify-between">
                 <span>ZOOM</span>
-                <kbd className="rounded-xs border border-border-visible bg-background px-1.5 py-0.5 text-[10px]">CTRL + SCROLL</kbd>
+                <kbd className="rounded-xs border border-border-visible bg-background px-1.5 py-0.5 text-[10px]">{isMac ? "⌘ + SCROLL" : "CTRL + SCROLL"}</kbd>
+              </div>
+              <div className="flex items-center justify-between">
+                <span>COPY / PASTE</span>
+                <kbd className="rounded-xs border border-border-visible bg-background px-1.5 py-0.5 text-[10px]">{isMac ? "⌘C / ⌘V" : "CTRL+C / V"}</kbd>
               </div>
               <div className="flex items-center justify-between">
                 <span>DUPLICATE</span>
-                <kbd className="rounded-xs border border-border-visible bg-background px-1.5 py-0.5 text-[10px]">CTRL + D</kbd>
+                <kbd className="rounded-xs border border-border-visible bg-background px-1.5 py-0.5 text-[10px]">{isMac ? "⌘D" : "CTRL+D"}</kbd>
               </div>
               <div className="flex items-center justify-between">
                 <span>UNDO / REDO</span>
-                <kbd className="rounded-xs border border-border-visible bg-background px-1.5 py-0.5 text-[10px]">CTRL+Z / CTRL+Y</kbd>
+                <kbd className="rounded-xs border border-border-visible bg-background px-1.5 py-0.5 text-[10px]">{isMac ? "⌘Z / ⌘⇧Z" : "CTRL+Z / Y"}</kbd>
               </div>
             </div>
           </div>
@@ -1232,7 +1239,7 @@ export const RightPanel = memo(function RightPanel({
   const gradientEnd = String(prop("gradientEnd", "#9333EA"));
 
   const strokeEnabled = element.props.strokeEnabled !== false && element.props.strokeEnabled !== "false";
-  const stroke = String(prop("stroke", "#D4D4D8"));
+  const stroke = String(prop("stroke", "var(--border-visible)"));
   const strokeOpacity = Number(prop("strokeOpacity", 100));
   const borderWidth = Number(prop("borderWidth", element.type === "connector" || isLineLike ? 1.5 : 1));
   const strokeStyle = String(prop("strokeStyle", "solid"));
@@ -1248,12 +1255,32 @@ export const RightPanel = memo(function RightPanel({
   const radiusBottomLeft = Number(prop("radiusBottomLeft", radius));
 
   // Text Properties
-  const textContent = String(prop("text", isTextLike ? "请输入文字" : ""));
+  const isButton =
+    element.type === "button" ||
+    element.type === "button-primary" ||
+    element.type === "web-button";
+  const defaultText =
+    element.type === "button"
+      ? "次要操作"
+      : element.type === "button-primary" || element.type === "web-button"
+      ? "主要操作"
+      : isTextLike
+      ? "请输入文字"
+      : "";
+  const textContent = String(prop("text", defaultText));
   const hasText = isTextLike || Boolean(element.props.hasText) || textContent.length > 0;
-  const fontSize = Number(prop("fontSize", 14));
-  const fontWeight = Number(prop("fontWeight", 400));
-  const fontFamily = String(prop("fontFamily", "var(--font-sans)"));
-  const textColor = String(prop("textColor", "#18181B"));
+  const fontSize = Number(prop("fontSize", isButton ? 12 : 14));
+  const fontWeight = Number(
+    prop("fontWeight", element.type === "button-primary" ? 600 : isButton ? 500 : 400)
+  );
+  const fontFamily = String(prop("fontFamily", isButton ? "var(--font-mono)" : "var(--font-sans)"));
+  const defaultTextColor =
+    element.type === "button-primary"
+      ? "var(--primary-foreground)"
+      : isButton
+      ? "var(--foreground)"
+      : "#18181B";
+  const textColor = String(prop("textColor", defaultTextColor));
   const textOpacity = Number(prop("textOpacity", 100));
   const textAlign = String(prop("textAlign", prop("align", "center")));
   const lineHeight = Number(prop("lineHeight", 20));
@@ -1448,7 +1475,7 @@ export const RightPanel = memo(function RightPanel({
           <Button
             variant="ghost"
             size="icon-xs"
-            title="复制 (Ctrl+D)"
+            title={isMac ? "克隆 (⌘D)" : "克隆 (Ctrl+D)"}
             onClick={onDuplicate}
             disabled={!onDuplicate}
           >
@@ -1460,7 +1487,7 @@ export const RightPanel = memo(function RightPanel({
               <Button
                 variant="ghost"
                 size="icon-xs"
-                title="创建组合 (Ctrl+G)"
+                title={isMac ? "创建组合 (⌘G)" : "创建组合 (Ctrl+G)"}
                 onClick={onGroup}
                 className="text-foreground hover:bg-surface-raised"
               >
@@ -1474,7 +1501,7 @@ export const RightPanel = memo(function RightPanel({
               <Button
                 variant="ghost"
                 size="icon-xs"
-                title="打散组合 (Ctrl+Shift+G)"
+                title={isMac ? "打散组合 (⌘⇧G)" : "打散组合 (Ctrl+Shift+G)"}
                 onClick={onUngroup}
                 className="text-foreground hover:bg-surface-raised"
               >
@@ -1515,7 +1542,7 @@ export const RightPanel = memo(function RightPanel({
                   className="mt-2 flex h-6 w-full items-center justify-center gap-1.5 rounded-xs bg-foreground px-2 font-mono text-[10px] font-bold uppercase tracking-wider text-background hover:bg-neutral-200 transition-colors cursor-pointer"
                 >
                   <Boxes className="size-3" />
-                  <span>组合为整体 (Ctrl+G)</span>
+                  <span>{isMac ? "组合为整体 (⌘G)" : "组合为整体 (Ctrl+G)"}</span>
                 </button>
               )}
             </div>
@@ -1539,7 +1566,7 @@ export const RightPanel = memo(function RightPanel({
                   className="mt-2 flex h-6 w-full items-center justify-center gap-1.5 rounded-xs border border-border-visible bg-background px-2 font-mono text-[10px] font-medium uppercase tracking-wider text-foreground hover:bg-surface-raised transition-colors cursor-pointer"
                 >
                   <Ungroup className="size-3" />
-                  <span>打散为独立组件 (Ctrl+Shift+G)</span>
+                  <span>{isMac ? "打散为独立组件 (⌘⇧G)" : "打散为独立组件 (Ctrl+Shift+G)"}</span>
                 </button>
               )}
             </div>
@@ -1863,7 +1890,7 @@ export const RightPanel = memo(function RightPanel({
           )}
 
           {/* Content & Text Section - 内容与文案 */}
-          {element.type !== "line" && element.type !== "arrow" && element.type !== "connector" && (
+          {element.type !== "line" && element.type !== "arrow" && element.type !== "connector" && element.type !== "text" && (
             <Section title="内容与文案" collapsible defaultOpen={true}>
               <div className="flex flex-col gap-2.5 text-xs">
                 {/* 1. Switches */}
@@ -2660,14 +2687,14 @@ export const RightPanel = memo(function RightPanel({
                   </>
                 )}
 
-                {/* 30. Text / Button / Document / General Text */}
-                {(element.type === "text" || element.type === "button" || element.type === "button-primary" || element.type === "document") && (
+                {/* 30. Button / Document / General Text */}
+                {(element.type === "button" || element.type === "button-primary" || element.type === "document") && (
                   <div className="flex flex-col gap-1">
                     <span className="text-[10px] text-muted-foreground">文本内容</span>
                     <textarea
                       value={String(prop(element.type === "document" ? "title" : "text", element.type.startsWith("button") ? "按钮" : "文本内容"))}
                       onChange={(e) => setProp(element.type === "document" ? "title" : "text", e.target.value)}
-                      rows={element.type === "text" ? 3 : 1}
+                      rows={1}
                       className="w-full resize-y rounded-md border border-input bg-background p-1.5 text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring"
                     />
                   </div>

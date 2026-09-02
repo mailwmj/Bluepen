@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import { Space_Grotesk, Space_Mono } from "next/font/google";
 import "./globals.css";
 import { cn } from "@bluepen/editor/lib/utils";
@@ -59,14 +60,14 @@ export default function RootLayout({
       suppressHydrationWarning
       className={cn("h-full antialiased dark overscroll-none", spaceGrotesk.variable, spaceMono.variable)}
     >
-      <head>
-        <script
+      <body className="relative h-full overflow-hidden bg-background text-foreground font-sans overscroll-none">
+        <Script
+          id="theme-init"
+          strategy="beforeInteractive"
           dangerouslySetInnerHTML={{
             __html: `(function(){try{var t=localStorage.getItem("bluepen:settings");var m="dark";if(t){var s=JSON.parse(t);if(s.theme)m=s.theme;}if(m==="dark"||(m==="system"&&window.matchMedia("(prefers-color-scheme: dark)").matches)){document.documentElement.classList.add("dark");}else if(m==="light"){document.documentElement.classList.remove("dark");}}catch(e){}})();`,
           }}
         />
-      </head>
-      <body className="relative h-full overflow-hidden bg-background text-foreground font-sans overscroll-none">
         <div className="isolate relative flex h-full w-full min-h-0 flex-col overflow-hidden">
           {children}
         </div>

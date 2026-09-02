@@ -12,6 +12,7 @@ export interface ComponentRenderContext {
   onUpdateElement?: (id: string, patch: Partial<EditorElement>) => void;
   previewing?: boolean;
   isSelected?: boolean;
+  isEditing?: boolean;
 }
 import {
   SkeletonText,
@@ -127,16 +128,16 @@ export function renderLibraryComponent(
       return <div className="relative size-full overflow-visible pointer-events-none">{children}</div>;
 
     // Basic Wireframe
-    case "text": return <TextPreview props={props} />;
-    case "rectangle": return <RectanglePreview props={props} />;
-    case "circle": return <CirclePreview props={props} />;
+    case "text": return <TextPreview props={props} isEditing={context?.isEditing} />;
+    case "rectangle": return <RectanglePreview props={props} isEditing={context?.isEditing} />;
+    case "circle": return <CirclePreview props={props} isEditing={context?.isEditing} />;
     case "line": return <LinePreview props={props} />;
     case "arrow": return <ArrowPreview props={props} />;
     case "image": return <ImagePreview props={props} />;
     case "hotspot": return <HotspotPreview props={props} />;
-    case "button": return <ButtonPreview props={props} />;
-    case "button-primary": return <ButtonPrimaryPreview props={props} />;
-    case "placeholder": return <PlaceholderPreview props={props} />;
+    case "button": return <ButtonPreview props={props} isEditing={context?.isEditing} />;
+    case "button-primary": return <ButtonPrimaryPreview props={props} isEditing={context?.isEditing} />;
+    case "placeholder": return <PlaceholderPreview props={props} isEditing={context?.isEditing} />;
     case "table": return <TablePreview props={props} context={context} />;
     case "sticky-note": return <StickyNotePreview props={props} />;
     case "pin-note": return <PinNotePreview props={props} />;
@@ -166,7 +167,7 @@ export function renderLibraryComponent(
     case "flow-manual-op":
     case "flow-preparation":
     case "flow-loop-limit":
-      return <FlowchartShapePreview type={type} props={props} />;
+      return <FlowchartShapePreview type={type} props={props} isEditing={context?.isEditing} />;
 
     // Form
     case "input": return <InputPreview props={props} />;
@@ -368,8 +369,8 @@ function FooterPreview() {
           </div>
         ))}
       </div>
-      <div className="flex items-center justify-between border-t border-neutral-200 px-10 py-3">
-        <span className="text-[8px] text-neutral-400">© 2026 Acme Inc.</span>
+      <div className="flex items-center justify-between border-t border-border px-10 py-3">
+        <span className="text-[8px] text-muted-foreground">© 2026 Acme Inc.</span>
         <div className="flex gap-3">
           <SkeletonIcon icon={Globe} className="size-3" />
           <SkeletonIcon icon={Megaphone} className="size-3" />
@@ -387,10 +388,10 @@ function TabsPreview({ props }: { props?: Props }) {
   const activeIndex = Number(val(p, "activeIndex", 0));
 
   return (
-    <div className="flex h-full w-full items-center justify-center gap-1 rounded-lg border border-neutral-200 bg-neutral-100 p-1.5">
+    <div className="flex h-full w-full items-center justify-center gap-1 rounded-lg border border-border-visible bg-surface-raised p-1.5">
       {tabs.map((t, i) => (
-        <div key={`${t}-${i}`} className={`flex h-6 flex-1 items-center justify-center rounded-md transition-all ${i === activeIndex ? "bg-white shadow-xs" : ""}`}>
-          <span className={`text-[9px] font-medium truncate px-1.5 ${i === activeIndex ? "text-neutral-900 font-semibold" : "text-neutral-500"}`}>{t}</span>
+        <div key={`${t}-${i}`} className={`flex h-6 flex-1 items-center justify-center rounded-md transition-all ${i === activeIndex ? "bg-surface border border-border-visible shadow-xs" : ""}`}>
+          <span className={`text-[9px] font-medium truncate px-1.5 ${i === activeIndex ? "text-foreground font-semibold" : "text-muted-foreground"}`}>{t}</span>
         </div>
       ))}
     </div>
@@ -406,11 +407,11 @@ function BreadcrumbPreview({ props }: { props?: Props }) {
     <div className="flex h-full w-full items-center gap-1.5 px-3">
       {items.map((it, idx) => (
         <div key={`${it}-${idx}`} className="flex items-center gap-1.5">
-          <span className={`text-[9px] truncate ${idx === items.length - 1 ? "font-semibold text-neutral-800" : "text-neutral-400"}`}>
+          <span className={`text-[9px] truncate ${idx === items.length - 1 ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
             {it}
           </span>
           {idx < items.length - 1 && (
-            <ChevronsRight aria-hidden="true" className="size-2.5 text-neutral-300" />
+            <ChevronsRight aria-hidden="true" className="size-2.5 text-muted-foreground/60" />
           )}
         </div>
       ))}
@@ -432,16 +433,16 @@ function PaginationPreview({ props }: { props?: Props }) {
 
   return (
     <div className="flex h-full w-full items-center justify-center gap-1">
-      <div className="flex size-6 items-center justify-center rounded-md border border-neutral-200 bg-white cursor-default">
-        <ChevronsRight aria-hidden="true" className="size-3 rotate-180 text-neutral-400" />
+      <div className="flex size-6 items-center justify-center rounded-md border border-border-visible bg-surface cursor-default">
+        <ChevronsRight aria-hidden="true" className="size-3 rotate-180 text-muted-foreground" />
       </div>
       {pagesToShow.map((n, i) => (
-        <div key={`${n}-${i}`} className={`flex size-6 items-center justify-center rounded-md text-[9px] font-medium ${n === String(current) ? "bg-neutral-900 text-white" : "text-neutral-500"}`}>
+        <div key={`${n}-${i}`} className={`flex size-6 items-center justify-center rounded-md text-[9px] font-medium ${n === String(current) ? "bg-primary text-primary-foreground font-bold" : "text-muted-foreground hover:text-foreground"}`}>
           {n}
         </div>
       ))}
-      <div className="flex size-6 items-center justify-center rounded-md border border-neutral-200 bg-white cursor-default">
-        <ChevronsRight aria-hidden="true" className="size-3 text-neutral-400" />
+      <div className="flex size-6 items-center justify-center rounded-md border border-border-visible bg-surface cursor-default">
+        <ChevronsRight aria-hidden="true" className="size-3 text-muted-foreground" />
       </div>
     </div>
   );
@@ -473,10 +474,10 @@ function LinkPreview({ props }: { props?: Props }) {
 
 function HeroPreview() {
   return (
-    <div className="flex h-full w-full flex-col items-center justify-center gap-4 bg-gradient-to-b from-neutral-50 to-white px-10 text-center">
-      <div className="flex items-center gap-1.5 rounded-full border border-neutral-200 bg-white px-2.5 py-1 shadow-xs">
-        <Sparkles aria-hidden="true" className="size-2.5 text-neutral-500" />
-        <span className="text-[8px] font-semibold text-neutral-600">New: version 2.0</span>
+    <div className="flex h-full w-full flex-col items-center justify-center gap-4 bg-background px-10 text-center">
+      <div className="flex items-center gap-1.5 rounded-full border border-border-visible bg-surface px-2.5 py-1 shadow-xs">
+        <Sparkles aria-hidden="true" className="size-2.5 text-muted-foreground" />
+        <span className="text-[8px] font-semibold text-foreground">New: version 2.0</span>
       </div>
       <SkeletonText variant="title" width="55%" className="h-4" />
       <SkeletonText variant="title" width="35%" className="h-4" />
@@ -1356,14 +1357,14 @@ function FormPreview() {
 
 function AvatarPreview({ props }: { props?: Props }) {
   const initials = props ? String(val(props, "initials", "PM")) : "PM";
-  const fill = props ? String(val(props, "fill", "#E2E8F0")) : "#E2E8F0";
-  const stroke = props ? String(val(props, "stroke", "#CBD5E1")) : "#CBD5E1";
-  const strokeEnabled = props ? Boolean(props.strokeEnabled) : false;
+  const fill = props ? String(val(props, "fill", "var(--surface-raised)")) : "var(--surface-raised)";
+  const stroke = props ? String(val(props, "stroke", "var(--border-visible)")) : "var(--border-visible)";
+  const strokeEnabled = props ? Boolean(props.strokeEnabled) : true;
   const borderWidth = props ? Number(val(props, "borderWidth", 1)) : 1;
   return (
-    <div className="flex h-full w-full items-center justify-center">
+    <div className="flex h-full w-full items-center justify-center font-mono select-none">
       <div
-        className="flex size-full items-center justify-center rounded-full text-xs font-bold text-neutral-700 shadow-xs"
+        className="flex size-full items-center justify-center rounded-full text-xs font-bold text-foreground border border-border-visible shadow-xs"
         style={{
           backgroundColor: fill,
           border: strokeEnabled ? `${borderWidth}px solid ${stroke}` : "none",
@@ -1457,7 +1458,7 @@ function ProgressPreview({ props }: { props?: Props }) {
 function SpinnerPreview() {
   return (
     <div className="flex h-full w-full items-center justify-center">
-      <div className="size-6 animate-spin rounded-full border-2 border-neutral-200 border-t-neutral-900" />
+      <div className="size-6 animate-spin rounded-full border-2 border-border-visible border-t-foreground" />
     </div>
   );
 }
@@ -1522,8 +1523,8 @@ function ImagePreview({ props }: { props: Props }) {
   const label = String(val(props, "label", "图片占位"));
   const fit = String(val(props, "fit", "cover")) as "cover" | "contain" | "fill" | "none" | "scale-down";
   const radius = Number(val(props, "radius", 6));
-  const fill = String(val(props, "fill", "#F4F4F5"));
-  const stroke = String(val(props, "stroke", "#D4D4D8"));
+  const fill = String(val(props, "fill", "var(--surface-raised)"));
+  const stroke = String(val(props, "stroke", "var(--border-visible)"));
   const strokeEnabled = Boolean(props.strokeEnabled);
   const strokeStyle = String(val(props, "strokeStyle", "solid"));
   const borderWidth = Number(val(props, "borderWidth", 1));
@@ -1571,16 +1572,16 @@ function ImagePreview({ props }: { props: Props }) {
 
 function VideoPreview() {
   return (
-    <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-lg border border-neutral-200 bg-neutral-900">
+    <div className="relative flex h-full w-full items-center justify-center overflow-hidden rounded-lg border border-border-visible bg-surface">
       <div className="absolute inset-0 flex items-center justify-center">
-        <Camera aria-hidden="true" className="size-6 text-neutral-600" />
+        <Camera aria-hidden="true" className="size-6 text-muted-foreground" />
       </div>
-      <div className="relative flex h-10 w-14 items-center justify-center rounded-xl bg-white/90 shadow-lg">
-        <Play aria-hidden="true" className="ml-0.5 size-4 fill-neutral-900 text-neutral-900" />
+      <div className="relative flex h-10 w-14 items-center justify-center rounded-xl bg-surface-raised border border-border-visible shadow-lg">
+        <Play aria-hidden="true" className="ml-0.5 size-4 fill-foreground text-foreground" />
       </div>
-      <span className="absolute bottom-2 right-2 rounded bg-black/50 px-1.5 py-0.5 text-[7px] font-semibold text-white">0:42</span>
-      <div className="absolute left-2 top-2 flex items-center gap-1 rounded bg-black/50 px-1.5 py-0.5 text-[7px] font-semibold text-white">
-        <span className="size-1.5 rounded-full bg-rose-500" /> LIVE
+      <span className="absolute bottom-2 right-2 rounded bg-black/60 px-1.5 py-0.5 text-[7px] font-semibold text-white">0:42</span>
+      <div className="absolute left-2 top-2 flex items-center gap-1 rounded bg-black/60 px-1.5 py-0.5 text-[7px] font-semibold text-white">
+        <span className="size-1.5 rounded-full bg-accent" /> LIVE
       </div>
     </div>
   );
@@ -1595,37 +1596,37 @@ function DashboardPreview() {
     { icon: ShoppingBag, label: "Orders", value: "1,204", delta: "−0.8%", up: false },
   ];
   return (
-    <div className="flex h-full w-full flex-col gap-3 bg-neutral-50 p-4">
+    <div className="flex h-full w-full flex-col gap-3 bg-background p-4 font-sans select-none">
       <div className="flex shrink-0 items-center justify-between">
         <div>
-          <div className="text-[11px] font-semibold text-neutral-900">Overview</div>
-          <div className="text-[8px] text-neutral-400">March 2026 · last 30 days</div>
+          <div className="text-[11px] font-semibold text-foreground">Overview</div>
+          <div className="text-[8px] text-muted-foreground">March 2026 · last 30 days</div>
         </div>
         <div className="flex items-center gap-2">
-          <div className="flex h-6 w-20 items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2">
-            <Search aria-hidden="true" className="size-2.5 text-neutral-400" />
-            <span className="text-[8px] text-neutral-400">Search…</span>
+          <div className="flex h-6 w-20 items-center gap-1.5 rounded-md border border-border-visible bg-surface px-2">
+            <Search aria-hidden="true" className="size-2.5 text-muted-foreground" />
+            <span className="text-[8px] text-muted-foreground">Search…</span>
           </div>
           <SkeletonAvatar initials="JD" size="sm" />
         </div>
       </div>
       <div className="grid shrink-0 grid-cols-3 gap-3">
         {stats.map((s) => (
-          <div key={s.label} className="rounded-lg border border-neutral-200 bg-white p-3">
+          <div key={s.label} className="rounded-lg border border-border-visible bg-surface p-3">
             <div className="flex items-center justify-between">
-              <SkeletonIcon icon={s.icon} className="size-3 text-neutral-500" />
+              <SkeletonIcon icon={s.icon} className="size-3 text-muted-foreground" />
               <SkeletonChip label={s.delta} tone={s.up ? "success" : "danger"} />
             </div>
-            <div className="mt-2 text-[12px] font-bold tracking-tight text-neutral-900">{s.value}</div>
-            <div className="text-[8px] text-neutral-400">{s.label}</div>
+            <div className="mt-2 text-[12px] font-bold tracking-tight text-foreground">{s.value}</div>
+            <div className="text-[8px] text-muted-foreground">{s.label}</div>
           </div>
         ))}
       </div>
       <div className="grid min-h-0 flex-1 grid-cols-5 gap-3">
-        <div className="col-span-3 flex flex-col rounded-lg border border-neutral-200 bg-white p-3">
+        <div className="col-span-3 flex flex-col rounded-lg border border-border-visible bg-surface p-3">
           <div className="flex shrink-0 items-center justify-between">
-            <span className="text-[9px] font-semibold text-neutral-800">Revenue</span>
-            <div className="flex items-center gap-1 text-[8px] text-emerald-600">
+            <span className="text-[9px] font-semibold text-foreground">Revenue</span>
+            <div className="flex items-center gap-1 text-[8px] text-[#4A9E5C]">
               <TrendingUp aria-hidden="true" className="size-2.5" />
               <span className="font-semibold">+12.4%</span>
             </div>
@@ -1634,8 +1635,8 @@ function DashboardPreview() {
             <SkeletonBars values={[35, 48, 42, 58, 52, 66, 61, 74, 68, 82, 76, 88, 72, 80, 92]} />
           </div>
         </div>
-        <div className="col-span-2 flex flex-col rounded-lg border border-neutral-200 bg-white p-3">
-          <span className="shrink-0 text-[9px] font-semibold text-neutral-800">Top pages</span>
+        <div className="col-span-2 flex flex-col rounded-lg border border-border-visible bg-surface p-3">
+          <span className="shrink-0 text-[9px] font-semibold text-foreground">Top pages</span>
           <div className="mt-2 flex min-h-0 flex-1 flex-col justify-between">
             {[
               { label: "landing", value: "34%", w: "w-[86%]" },
@@ -1644,11 +1645,11 @@ function DashboardPreview() {
               { label: "blog", value: "9%", w: "w-[28%]" },
             ].map((r) => (
               <div key={r.label} className="flex items-center gap-2">
-                <span className="w-10 truncate text-[8px] text-neutral-500">{r.label}</span>
-                <div className="h-2 flex-1 overflow-hidden rounded-full bg-neutral-100">
-                  <div className={`h-full rounded-full bg-neutral-300 ${r.w}`} />
+                <span className="w-10 truncate text-[8px] text-muted-foreground">{r.label}</span>
+                <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-raised">
+                  <div className={`h-full rounded-full bg-muted-foreground/40 ${r.w}`} />
                 </div>
-                <span className="w-7 text-right text-[8px] font-semibold text-neutral-600">{r.value}</span>
+                <span className="w-7 text-right text-[8px] font-semibold text-foreground">{r.value}</span>
               </div>
             ))}
           </div>
@@ -1661,47 +1662,47 @@ function DashboardPreview() {
 function SettingsPagePreview() {
   const sections = ["Profile", "Account", "Billing", "Team", "Notifications"];
   return (
-    <div className="flex h-full w-full bg-neutral-50">
-      <div className="flex w-[30%] shrink-0 flex-col gap-0.5 border-r border-neutral-200 bg-white p-3">
+    <div className="flex h-full w-full bg-background font-sans select-none">
+      <div className="flex w-[30%] shrink-0 flex-col gap-0.5 border-r border-border bg-surface p-3">
         {sections.map((s, i) => (
-          <div key={s} className={`flex items-center gap-2 rounded-md px-2.5 py-2 ${i === 0 ? "bg-neutral-100" : ""}`}>
-            <Settings aria-hidden="true" className={`size-3 ${i === 0 ? "text-neutral-900" : "text-neutral-400"}`} />
-            <span className={`text-[9px] ${i === 0 ? "font-semibold text-neutral-900" : "text-neutral-500"}`}>{s}</span>
+          <div key={s} className={`flex items-center gap-2 rounded-md px-2.5 py-2 ${i === 0 ? "bg-surface-raised border border-border-visible font-semibold text-foreground" : "text-muted-foreground"}`}>
+            <Settings aria-hidden="true" className={`size-3 ${i === 0 ? "text-foreground" : "text-muted-foreground"}`} />
+            <span className={`text-[9px] ${i === 0 ? "font-semibold text-foreground" : "text-muted-foreground"}`}>{s}</span>
           </div>
         ))}
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-3 overflow-y-auto p-5">
         <div>
-          <div className="text-[11px] font-semibold text-neutral-900">Profile</div>
-          <div className="text-[8px] text-neutral-400">Update your personal information</div>
+          <div className="text-[11px] font-semibold text-foreground">Profile</div>
+          <div className="text-[8px] text-muted-foreground">Update your personal information</div>
         </div>
         <div className="flex items-center gap-3">
           <SkeletonAvatar initials="JD" size="lg" />
           <div>
             <SkeletonButton variant="secondary" label="Change photo" className="h-6 px-2.5" />
-            <div className="mt-1 text-[8px] text-neutral-400">JPG, PNG — max 2 MB</div>
+            <div className="mt-1 text-[8px] text-muted-foreground">JPG, PNG — max 2 MB</div>
           </div>
         </div>
         <div className="grid grid-cols-2 gap-2.5">
           <div className="flex flex-col gap-1">
-            <span className="text-[8px] font-semibold uppercase tracking-wide text-neutral-400">Name</span>
+            <span className="text-[8px] font-semibold uppercase tracking-wide text-muted-foreground">Name</span>
             <SkeletonInput placeholder="Jane Doe" />
           </div>
           <div className="flex flex-col gap-1">
-            <span className="text-[8px] font-semibold uppercase tracking-wide text-neutral-400">Email</span>
+            <span className="text-[8px] font-semibold uppercase tracking-wide text-muted-foreground">Email</span>
             <SkeletonInput icon={<SkeletonIcon icon={Mail} className="size-3" />} placeholder="jane@acme.com" />
           </div>
         </div>
-        <div className="flex items-center justify-between rounded-lg border border-neutral-200 bg-white p-3">
+        <div className="flex items-center justify-between rounded-lg border border-border-visible bg-surface p-3">
           <div>
-            <div className="text-[9px] font-semibold text-neutral-800">Two-factor auth</div>
-            <div className="text-[8px] text-neutral-400">Protect your account with an extra layer</div>
+            <div className="text-[9px] font-semibold text-foreground">Two-factor auth</div>
+            <div className="text-[8px] text-muted-foreground">Protect your account with an extra layer</div>
           </div>
-          <div className="flex w-9 items-center rounded-full bg-neutral-900 p-0.5">
-            <span className="ml-auto size-3.5 rounded-full bg-white shadow-xs" />
+          <div className="flex w-9 items-center rounded-full bg-primary p-0.5">
+            <span className="ml-auto size-3.5 rounded-full bg-primary-foreground shadow-xs" />
           </div>
         </div>
-        <div className="flex justify-end gap-2 border-t border-neutral-200 pt-3">
+        <div className="flex justify-end gap-2 border-t border-border pt-3">
           <SkeletonButton variant="secondary" label="Cancel" />
           <SkeletonButton label="Save changes" />
         </div>
@@ -1712,39 +1713,39 @@ function SettingsPagePreview() {
 
 function ProfilePagePreview() {
   return (
-    <div className="flex h-full w-full flex-col bg-neutral-50">
-      <div className="relative h-[30%] shrink-0 bg-gradient-to-br from-neutral-900 to-neutral-600">
+    <div className="flex h-full w-full flex-col bg-background font-sans select-none">
+      <div className="relative h-[30%] shrink-0 bg-surface-raised border-b border-border">
         <div className="absolute bottom-3 left-5 flex items-end gap-3">
-          <SkeletonAvatar initials="JD" size="lg" className="size-14 rounded-xl ring-4 ring-white" />
+          <SkeletonAvatar initials="JD" size="lg" className="size-14 rounded-xl ring-2 ring-border-visible" />
           <div className="pb-1">
-            <div className="text-[12px] font-bold text-white">Jane Doe</div>
-            <div className="text-[8px] text-neutral-200">Product Designer · @janedoe</div>
+            <div className="text-[12px] font-bold text-foreground">Jane Doe</div>
+            <div className="text-[8px] text-muted-foreground">Product Designer · @janedoe</div>
           </div>
         </div>
       </div>
       <div className="grid min-h-0 flex-1 grid-cols-3 gap-3 overflow-y-auto p-4">
         <div className="col-span-2 flex flex-col gap-3">
-          <div className="rounded-lg border border-neutral-200 bg-white p-4">
-            <span className="text-[9px] font-semibold text-neutral-800">About</span>
+          <div className="rounded-lg border border-border-visible bg-surface p-4">
+            <span className="text-[9px] font-semibold text-foreground">About</span>
             <SkeletonText variant="body" width="95%" className="mt-2" />
             <SkeletonText variant="body" width="80%" className="mt-1.5" />
           </div>
-          <div className="flex-1 rounded-lg border border-neutral-200 bg-white p-4">
-            <span className="text-[9px] font-semibold text-neutral-800">Recent activity</span>
+          <div className="flex-1 rounded-lg border border-border-visible bg-surface p-4">
+            <span className="text-[9px] font-semibold text-foreground">Recent activity</span>
             <div className="mt-2 flex flex-col gap-2">
               {["Commented on Landing page", "Approved Hero section", "Shared wireframe v3"].map((a, i) => (
                 <div key={a} className="flex items-center gap-2">
-                  <span className={`size-1.5 shrink-0 rounded-full ${i === 0 ? "bg-emerald-500" : "bg-neutral-300"}`} />
-                  <span className="truncate text-[8px] text-neutral-600">{a}</span>
-                  <span className="ml-auto shrink-0 text-[7px] text-neutral-400">{["2h", "1d", "3d"][i]}</span>
+                  <span className={`size-1.5 shrink-0 rounded-full ${i === 0 ? "bg-[#4A9E5C]" : "bg-muted-foreground"}`} />
+                  <span className="truncate text-[8px] text-muted-foreground">{a}</span>
+                  <span className="ml-auto shrink-0 text-[7px] text-muted-foreground">{["2h", "1d", "3d"][i]}</span>
                 </div>
               ))}
             </div>
           </div>
         </div>
         <div className="flex flex-col gap-3">
-          <div className="rounded-lg border border-neutral-200 bg-white p-4">
-            <span className="text-[9px] font-semibold text-neutral-800">Details</span>
+          <div className="rounded-lg border border-border-visible bg-surface p-4">
+            <span className="text-[9px] font-semibold text-foreground">Details</span>
             <div className="mt-2 flex flex-col gap-2">
               {[
                 { icon: Mail, v: "jane@acme.com" },
@@ -1752,16 +1753,16 @@ function ProfilePagePreview() {
                 { icon: CalendarDays, v: "Joined Jan 2024" },
               ].map((r) => (
                 <div key={r.v} className="flex items-center gap-2">
-                  <r.icon aria-hidden="true" className="size-3 text-neutral-400" />
-                  <span className="truncate text-[8px] text-neutral-600">{r.v}</span>
+                  <r.icon aria-hidden="true" className="size-3 text-muted-foreground" />
+                  <span className="truncate text-[8px] text-muted-foreground">{r.v}</span>
                 </div>
               ))}
             </div>
           </div>
-          <div className="rounded-lg border border-neutral-200 bg-white p-4">
+          <div className="rounded-lg border border-border-visible bg-surface p-4">
             <div className="flex items-center justify-between">
-              <span className="text-[9px] font-semibold text-neutral-800">Projects</span>
-              <span className="text-[8px] font-semibold text-neutral-400">12</span>
+              <span className="text-[9px] font-semibold text-foreground">Projects</span>
+              <span className="text-[8px] font-semibold text-muted-foreground">12</span>
             </div>
             <div className="mt-2 flex flex-col gap-1.5">
               <SkeletonText variant="caption" width="80%" />
@@ -1784,16 +1785,16 @@ function FaqPreview() {
     { q: "Is there a free plan?", w: "44%" },
   ];
   return (
-    <div className="flex h-full w-full flex-col items-center gap-3 overflow-y-auto bg-white px-8 py-5">
+    <div className="flex h-full w-full flex-col items-center gap-3 overflow-y-auto bg-surface border border-border-visible rounded-xl px-8 py-5 font-sans select-none">
       <SkeletonText variant="heading" width="38%" />
       <SkeletonText variant="caption" width="52%" />
       <div className="mt-1 flex w-full flex-col">
         {items.map((it, i) => (
-          <div key={it.q} className={`flex flex-col gap-2 py-3 ${i !== items.length - 1 ? "border-b border-neutral-200" : ""}`}>
+          <div key={it.q} className={`flex flex-col gap-2 py-3 ${i !== items.length - 1 ? "border-b border-border" : ""}`}>
             <div className="flex items-center justify-between gap-3">
-              <span className="truncate text-[10px] font-medium text-neutral-800">{it.q}</span>
-              <div className="flex size-4 shrink-0 items-center justify-center rounded border border-neutral-200">
-                <Plus aria-hidden="true" className="size-2.5 text-neutral-500" />
+              <span className="truncate text-[10px] font-medium text-foreground">{it.q}</span>
+              <div className="flex size-4 shrink-0 items-center justify-center rounded border border-border-visible bg-surface-raised">
+                <Plus aria-hidden="true" className="size-2.5 text-muted-foreground" />
               </div>
             </div>
             <SkeletonText variant="body" width={it.w} />
@@ -1809,44 +1810,85 @@ export { hexToRgba, computeShapeStyle, ShapeTextRenderer } from "../utils/shape-
 import { hexToRgba, computeShapeStyle, ShapeTextRenderer } from "../utils/shape-styles";
 
 
-function RectanglePreview({ props }: { props: Props }) {
+function RectanglePreview({ props, isEditing }: { props: Props; isEditing?: boolean }) {
   const style = computeShapeStyle(props, { fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1, radius: 8 });
   return (
     <div className="relative h-full w-full overflow-hidden" style={style}>
-      <ShapeTextRenderer props={props} />
+      <ShapeTextRenderer props={props} isEditing={isEditing} />
     </div>
   );
 }
 
-function TextPreview({ props }: { props: Props }) {
+function TextPreview({ props, isEditing }: { props: Props; isEditing?: boolean }) {
+  if (isEditing) {
+    return <div className="h-full w-full" />;
+  }
   const text = String(val(props, "text", ""));
+  const textColor = String(val(props, "textColor", "var(--foreground)"));
+  const textOpacity = Number(val(props, "textOpacity", 100));
+  const color = textColor.startsWith("#") ? hexToRgba(textColor, textOpacity) : textColor;
+  const fontSize = Number(val(props, "fontSize", 14));
+  const fontWeight = Number(val(props, "fontWeight", 400));
+  const fontFamily = props.fontFamily ? String(props.fontFamily) : undefined;
+  const align = String(val(props, "textAlign", val(props, "align", "left"))) as "left" | "center" | "right" | "justify";
+  const textVerticalAlign = String(val(props, "textVerticalAlign", "top"));
+  const lineHeight = props.lineHeight ? `${props.lineHeight}px` : "1.4";
+  const letterSpacing = props.letterSpacing ? `${props.letterSpacing}px` : undefined;
+  const fontStyle = props.italic ? "italic" : undefined;
+  const isUnderline = Boolean(props.underline);
+  const isStrikethrough = Boolean(props.strikethrough);
+  const textDecoration =
+    isUnderline && isStrikethrough
+      ? "underline line-through"
+      : isUnderline
+      ? "underline"
+      : isStrikethrough
+      ? "line-through"
+      : undefined;
+
+  const justifyClass =
+    align === "left" ? "justify-start" : align === "right" ? "justify-end" : align === "center" ? "justify-center" : "justify-start";
+  const itemsClass =
+    textVerticalAlign === "middle" || textVerticalAlign === "center"
+      ? "items-center"
+      : textVerticalAlign === "bottom"
+      ? "items-end"
+      : "items-start";
+
   if (text) {
-    const color = String(val(props, "textColor", "var(--foreground)"));
-    const fontSize = Number(val(props, "fontSize", 14));
-    const fontWeight = Number(val(props, "fontWeight", 400));
-    const align = String(val(props, "align", "left"));
     return (
-      <div
-        className="flex h-full w-full items-center px-1 font-sans"
-        style={{ color, fontSize, fontWeight, textAlign: align as "left" | "center" | "right", justifyContent: align === "center" ? "center" : align === "right" ? "flex-end" : "flex-start" }}
-      >
-        <span className="truncate">{text}</span>
+      <div className={cn("flex h-full w-full px-1 overflow-hidden", justifyClass, itemsClass)}>
+        <span
+          className="w-full whitespace-pre-wrap break-words"
+          style={{
+            color,
+            fontSize,
+            fontWeight,
+            fontFamily,
+            textAlign: align,
+            lineHeight,
+            letterSpacing,
+            fontStyle,
+            textDecoration,
+          }}
+        >
+          {text}
+        </span>
       </div>
     );
   }
   return (
-    <div className="flex h-full w-full flex-col justify-center gap-1.5 overflow-hidden px-2">
-      <SkeletonText variant="heading" width="78%" />
-      <SkeletonText variant="body" width="58%" />
+    <div className="flex h-full w-full items-center px-1 text-muted-foreground/60 italic text-xs select-none">
+      双击输入文本内容...
     </div>
   );
 }
 
-function CirclePreview({ props }: { props: Props }) {
+function CirclePreview({ props, isEditing }: { props: Props; isEditing?: boolean }) {
   const style = computeShapeStyle(props, { fill: "var(--surface-raised)", stroke: "var(--border-visible)", borderWidth: 1, isCircle: true });
   return (
     <div className="relative h-full w-full overflow-hidden" style={style}>
-      <ShapeTextRenderer props={props} />
+      <ShapeTextRenderer props={props} isEditing={isEditing} />
     </div>
   );
 }
@@ -1939,7 +1981,7 @@ function HotspotPreview({ props }: { props: Props }) {
   );
 }
 
-function ButtonPreview({ props }: { props: Props }) {
+function ButtonPreview({ props, isEditing }: { props: Props; isEditing?: boolean }) {
   const text = String(val(props, "text", "次要操作"));
   const textColor = String(val(props, "textColor", "var(--foreground)"));
   const textOpacity = Number(val(props, "textOpacity", 100));
@@ -1949,23 +1991,57 @@ function ButtonPreview({ props }: { props: Props }) {
     borderWidth: 1,
     radius: 999,
   });
+  const fontSize = Number(val(props, "fontSize", 12));
+  const fontWeight = Number(val(props, "fontWeight", 500));
+  const fontFamily = props.fontFamily ? String(props.fontFamily) : "var(--font-mono)";
+  const textAlign = String(val(props, "textAlign", "center"));
+  const letterSpacing =
+    props.letterSpacing !== undefined
+      ? typeof props.letterSpacing === "number"
+        ? `${props.letterSpacing}px`
+        : String(props.letterSpacing)
+      : "0.06em";
+  const lineHeight = props.lineHeight ? `${props.lineHeight}px` : undefined;
+  const italic = Boolean(props.italic);
+  const underline = Boolean(props.underline);
+  const strikethrough = Boolean(props.strikethrough);
+  const textDecoration =
+    underline && strikethrough
+      ? "underline line-through"
+      : underline
+      ? "underline"
+      : strikethrough
+      ? "line-through"
+      : undefined;
+
+  const justifyClass =
+    textAlign === "left"
+      ? "justify-start"
+      : textAlign === "right"
+      ? "justify-end"
+      : "justify-center";
+
   return (
     <div
-      className="flex h-full w-full items-center justify-center px-4 font-mono select-none"
+      className={cn("flex h-full w-full items-center px-4 select-none", justifyClass)}
       style={{
         ...style,
         color: hexToRgba(textColor, textOpacity),
-        fontSize: `${Number(val(props, "fontSize", 12))}px`,
-        fontWeight: Number(val(props, "fontWeight", 500)),
-        letterSpacing: "0.06em",
+        fontSize: `${fontSize}px`,
+        fontWeight,
+        fontFamily,
+        letterSpacing,
+        lineHeight,
+        fontStyle: italic ? "italic" : undefined,
+        textDecoration,
       }}
     >
-      <span className="truncate uppercase">{text}</span>
+      {!isEditing && <span className="truncate uppercase">{text}</span>}
     </div>
   );
 }
 
-function ButtonPrimaryPreview({ props }: { props: Props }) {
+function ButtonPrimaryPreview({ props, isEditing }: { props: Props; isEditing?: boolean }) {
   const text = String(val(props, "text", "主要操作"));
   const textColor = String(val(props, "textColor", "var(--primary-foreground)"));
   const textOpacity = Number(val(props, "textOpacity", 100));
@@ -1975,23 +2051,57 @@ function ButtonPrimaryPreview({ props }: { props: Props }) {
     borderWidth: 1,
     radius: 999,
   });
+  const fontSize = Number(val(props, "fontSize", 12));
+  const fontWeight = Number(val(props, "fontWeight", 600));
+  const fontFamily = props.fontFamily ? String(props.fontFamily) : "var(--font-mono)";
+  const textAlign = String(val(props, "textAlign", "center"));
+  const letterSpacing =
+    props.letterSpacing !== undefined
+      ? typeof props.letterSpacing === "number"
+        ? `${props.letterSpacing}px`
+        : String(props.letterSpacing)
+      : "0.06em";
+  const lineHeight = props.lineHeight ? `${props.lineHeight}px` : undefined;
+  const italic = Boolean(props.italic);
+  const underline = Boolean(props.underline);
+  const strikethrough = Boolean(props.strikethrough);
+  const textDecoration =
+    underline && strikethrough
+      ? "underline line-through"
+      : underline
+      ? "underline"
+      : strikethrough
+      ? "line-through"
+      : undefined;
+
+  const justifyClass =
+    textAlign === "left"
+      ? "justify-start"
+      : textAlign === "right"
+      ? "justify-end"
+      : "justify-center";
+
   return (
     <div
-      className="flex h-full w-full items-center justify-center px-4 font-mono select-none"
+      className={cn("flex h-full w-full items-center px-4 select-none", justifyClass)}
       style={{
         ...style,
         color: hexToRgba(textColor, textOpacity),
-        fontSize: `${Number(val(props, "fontSize", 12))}px`,
-        fontWeight: Number(val(props, "fontWeight", 600)),
-        letterSpacing: "0.06em",
+        fontSize: `${fontSize}px`,
+        fontWeight,
+        fontFamily,
+        letterSpacing,
+        lineHeight,
+        fontStyle: italic ? "italic" : undefined,
+        textDecoration,
       }}
     >
-      <span className="truncate uppercase">{text}</span>
+      {!isEditing && <span className="truncate uppercase">{text}</span>}
     </div>
   );
 }
 
-function PlaceholderPreview({ props }: { props: Props }) {
+function PlaceholderPreview({ props, isEditing }: { props: Props; isEditing?: boolean }) {
   const label = String(val(props, "label", "内容结构占位"));
   const fill = String(val(props, "fill", "var(--surface-raised)"));
   const stroke = String(val(props, "stroke", "var(--border-visible)"));
@@ -2012,9 +2122,11 @@ function PlaceholderPreview({ props }: { props: Props }) {
         <line x1="0" y1="0" x2="100%" y2="100%" stroke={strokeEnabled ? stroke : "#CCCCCC"} strokeWidth={strokeEnabled ? borderWidth : 1} />
         <line x1="0" y1="100%" x2="100%" y2="0" stroke={strokeEnabled ? stroke : "#CCCCCC"} strokeWidth={strokeEnabled ? borderWidth : 1} />
       </svg>
-      <div className="relative rounded-xs border border-border-visible bg-surface px-2.5 py-1 text-[10px] font-mono font-medium text-foreground tracking-wider uppercase">
-        [ {label} ]
-      </div>
+      {!isEditing && (
+        <div className="relative rounded-xs border border-border-visible bg-surface px-2.5 py-1 text-[10px] font-mono font-medium text-foreground tracking-wider uppercase">
+          [ {label} ]
+        </div>
+      )}
     </div>
   );
 }
@@ -2665,7 +2777,7 @@ function FileUploadPreview({ props }: { props?: Props }) {
   const p = props || {};
   const text = String(val(p, "text", "点击或将文件拖拽到这里上传"));
   const hint = String(val(p, "hint", "支持 png, jpg, pdf 格式"));
-  const style = computeShapeStyle(p, { fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 2, radius: 8 });
+  const style = computeShapeStyle(p, { fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1, radius: 8 });
   return (
     <div
       className="flex h-full w-full flex-col items-center justify-center gap-1.5 border-dashed p-3 text-center font-sans select-none"
@@ -2685,15 +2797,15 @@ function RadioPreview({ props }: { props?: Props }) {
   const selectedIndex = Number(val(p, "selectedIndex", 0));
 
   return (
-    <div className="flex h-full w-full flex-col justify-center gap-2 text-xs text-neutral-700 py-1">
+    <div className="flex h-full w-full flex-col justify-center gap-2 text-xs text-foreground py-1 font-sans select-none">
       {options.map((opt, i) => {
         const isChecked = i === selectedIndex;
         return (
           <div key={`${opt}-${i}`} className="flex items-center gap-2 min-w-0">
-            <div className={`flex size-4 shrink-0 items-center justify-center rounded-full border-2 ${isChecked ? "border-blue-600" : "border-neutral-300"}`}>
-              {isChecked && <div className="size-2 rounded-full bg-blue-600" />}
+            <div className={`flex size-4 shrink-0 items-center justify-center rounded-full border ${isChecked ? "border-foreground bg-surface-raised" : "border-border-visible bg-surface"}`}>
+              {isChecked && <div className="size-2 rounded-full bg-foreground" />}
             </div>
-            <span className={`truncate ${isChecked ? "font-medium text-neutral-900" : "text-neutral-700"}`}>{opt}</span>
+            <span className={`truncate ${isChecked ? "font-semibold text-foreground" : "text-muted-foreground"}`}>{opt}</span>
           </div>
         );
       })}
@@ -2708,15 +2820,15 @@ function CheckboxPreview({ props }: { props?: Props }) {
   const checkedIndices = String(val(p, "checkedIndices", "0")).split(",").map((n) => Number(n.trim()));
 
   return (
-    <div className="flex h-full w-full flex-col justify-center gap-2 text-xs text-neutral-700 py-1">
+    <div className="flex h-full w-full flex-col justify-center gap-2 text-xs text-foreground py-1 font-sans select-none">
       {options.map((opt, i) => {
         const isChecked = checkedIndices.includes(i);
         return (
           <div key={`${opt}-${i}`} className="flex items-center gap-2 min-w-0">
-            <div className={`flex size-4 shrink-0 items-center justify-center rounded border ${isChecked ? "border-blue-600 bg-blue-600 text-white" : "border-neutral-300 bg-white"}`}>
+            <div className={`flex size-4 shrink-0 items-center justify-center rounded border ${isChecked ? "border-foreground bg-foreground text-background" : "border-border-visible bg-surface"}`}>
               {isChecked && <Check aria-hidden="true" className="size-3 stroke-[3]" />}
             </div>
-            <span className={`truncate ${isChecked ? "font-medium text-neutral-900" : "text-neutral-700"}`}>{opt}</span>
+            <span className={`truncate ${isChecked ? "font-semibold text-foreground" : "text-muted-foreground"}`}>{opt}</span>
           </div>
         );
       })}
@@ -2728,10 +2840,10 @@ function SwitchAndroidPreview({ props }: { props?: Props }) {
   const label = props ? String(val(props, "label", "开启通知")) : "开启通知";
   const checked = props ? (props.checked !== false && props.checked !== "false") : true;
   return (
-    <div className="flex h-full w-full items-center justify-between px-2 text-xs text-neutral-700 gap-2">
+    <div className="flex h-full w-full items-center justify-between px-2 text-xs text-foreground gap-2 font-sans select-none">
       <span className="truncate">{label}</span>
-      <div className={`relative h-4 w-8 shrink-0 rounded-full transition-colors ${checked ? "bg-blue-300" : "bg-neutral-300"}`}>
-        <div className={`absolute top-1/2 size-5 -translate-y-1/2 rounded-full shadow-md transition-all ${checked ? "right-0 bg-blue-600" : "left-0 bg-white"}`} />
+      <div className={`relative h-4 w-8 shrink-0 rounded-full border border-border-visible transition-colors ${checked ? "bg-surface-raised" : "bg-surface"}`}>
+        <div className={`absolute top-1/2 size-3.5 -translate-y-1/2 rounded-full shadow-xs transition-all ${checked ? "right-0.5 bg-foreground" : "left-0.5 bg-muted-foreground"}`} />
       </div>
     </div>
   );
@@ -2741,10 +2853,10 @@ function SwitchIosPreview({ props }: { props?: Props }) {
   const label = props ? String(val(props, "label", "自动同步")) : "自动同步";
   const checked = props ? (props.checked !== false && props.checked !== "false") : true;
   return (
-    <div className="flex h-full w-full items-center justify-between px-2 text-xs text-neutral-700 gap-2">
+    <div className="flex h-full w-full items-center justify-between px-2 text-xs text-foreground gap-2 font-sans select-none">
       <span className="truncate">{label}</span>
-      <div className={`relative h-6 w-11 shrink-0 rounded-full p-0.5 transition-colors ${checked ? "bg-emerald-500" : "bg-neutral-300"}`}>
-        <div className={`size-5 rounded-full bg-white shadow-md transition-all ${checked ? "translate-x-5" : "translate-x-0"}`} />
+      <div className={`relative h-6 w-11 shrink-0 rounded-full p-0.5 border border-border-visible transition-colors ${checked ? "bg-foreground" : "bg-surface-raised"}`}>
+        <div className={`size-4.5 rounded-full shadow-xs transition-all ${checked ? "translate-x-5 bg-background" : "translate-x-0 bg-foreground"}`} />
       </div>
     </div>
   );
@@ -2753,11 +2865,11 @@ function SwitchIosPreview({ props }: { props?: Props }) {
 function SliderPreview({ props }: { props?: Props }) {
   const value = props ? Number(val(props, "value", 65)) : 65;
   return (
-    <div className="flex h-full w-full items-center px-2">
-      <div className="relative h-1.5 w-full rounded-full bg-neutral-200">
-        <div className="h-full rounded-full bg-blue-600" style={{ width: `${value}%` }} />
+    <div className="flex h-full w-full items-center px-2 font-sans select-none">
+      <div className="relative h-1.5 w-full rounded-full bg-surface-raised border border-border">
+        <div className="h-full rounded-full bg-foreground" style={{ width: `${value}%` }} />
         <div
-          className="absolute top-1/2 size-4 -translate-y-1/2 -translate-x-1/2 rounded-full border-2 border-blue-600 bg-white shadow-md"
+          className="absolute top-1/2 size-3.5 -translate-y-1/2 -translate-x-1/2 rounded-full border border-border-visible bg-surface shadow-xs"
           style={{ left: `${value}%` }}
         />
       </div>
@@ -2768,14 +2880,14 @@ function SliderPreview({ props }: { props?: Props }) {
 function StepperPreview({ props }: { props?: Props }) {
   const value = props ? String(val(props, "value", "1")) : "1";
   return (
-    <div className="flex h-full w-full items-center overflow-hidden rounded border border-neutral-300 bg-white text-xs">
-      <div className="flex size-8 items-center justify-center border-r border-neutral-200 bg-neutral-50 text-neutral-600 select-none">
+    <div className="flex h-full w-full items-center overflow-hidden rounded-md border border-border-visible bg-surface text-xs font-mono select-none">
+      <div className="flex size-8 items-center justify-center border-r border-border bg-surface-raised text-foreground hover:bg-surface transition-colors cursor-default">
         <Minus aria-hidden="true" className="size-3" />
       </div>
-      <div className="flex flex-1 items-center justify-center font-medium text-neutral-800">
+      <div className="flex flex-1 items-center justify-center font-bold text-foreground">
         {value}
       </div>
-      <div className="flex size-8 items-center justify-center border-l border-neutral-200 bg-neutral-50 text-neutral-600 select-none">
+      <div className="flex size-8 items-center justify-center border-l border-border bg-surface-raised text-foreground hover:bg-surface transition-colors cursor-default">
         <Plus aria-hidden="true" className="size-3" />
       </div>
     </div>
@@ -2865,20 +2977,20 @@ function StepperNavPreview({ props }: { props?: Props }) {
         return (
           <div key={`${s}-${i}`} className="flex items-center gap-2 min-w-0">
             <div
-              className={`flex size-6 shrink-0 items-center justify-center rounded-full text-[11px] font-bold ${
+              className={`flex size-6 shrink-0 items-center justify-center rounded-full text-[11px] font-mono font-bold ${
                 isDone
-                  ? "bg-blue-600 text-white"
+                  ? "bg-primary text-primary-foreground"
                   : isCurrent
-                  ? "border-2 border-blue-600 text-blue-600 font-bold"
-                  : "border border-neutral-300 text-neutral-400"
+                  ? "border border-foreground bg-surface-raised text-foreground font-bold"
+                  : "border border-border-visible bg-surface text-muted-foreground"
               }`}
             >
               {isDone ? <Check className="size-3 stroke-[3]" /> : stepNum}
             </div>
-            <span className={`truncate font-medium ${isCurrent ? "text-blue-600 font-semibold" : isDone ? "text-neutral-800" : "text-neutral-400"}`}>
+            <span className={`truncate font-medium ${isCurrent ? "text-foreground font-bold" : isDone ? "text-foreground" : "text-muted-foreground"}`}>
               {s}
             </span>
-            {i < steps.length - 1 && <div className="mx-2 h-0.5 w-8 shrink-0 bg-neutral-200" />}
+            {i < steps.length - 1 && <div className="mx-2 h-0.5 w-8 shrink-0 bg-border" />}
           </div>
         );
       })}
@@ -2889,10 +3001,10 @@ function StepperNavPreview({ props }: { props?: Props }) {
 function MobileFramePreview({ props, children }: { props: Props; children?: React.ReactNode }) {
   const time = String(val(props, "time", "9:41"));
   const title = String(val(props, "title", "iPhone 16"));
-  const fill = String(val(props, "fill", "#FFFFFF"));
-  const stroke = String(val(props, "stroke", "#D4D4D8"));
+  const fill = String(val(props, "fill", "var(--surface)"));
+  const stroke = String(val(props, "stroke", "var(--border-visible)"));
   const strokeEnabled = props.strokeEnabled !== false && props.strokeEnabled !== "false";
-  const borderWidth = Number(val(props, "borderWidth", 3));
+  const borderWidth = Number(val(props, "borderWidth", 1));
   const radius = Number(val(props, "radius", 44));
   return (
     <div
@@ -2905,13 +3017,13 @@ function MobileFramePreview({ props, children }: { props: Props; children?: Reac
     >
       {/* Top Status Bar & Dynamic Island */}
       <div className="flex h-10 w-full shrink-0 items-center justify-between px-6 pt-1 select-none">
-        <span className="text-[11px] font-bold text-neutral-800">{time}</span>
-        <div className="h-4 w-20 rounded-full bg-neutral-900 flex items-center justify-center">
-          <span className="text-[8px] text-white/60 truncate px-1">{title !== "iPhone 16" ? title : ""}</span>
+        <span className="font-mono text-[11px] font-bold text-foreground">{time}</span>
+        <div className="h-4 w-20 rounded-full bg-foreground flex items-center justify-center">
+          <span className="font-mono text-[8px] text-background truncate px-1">{title !== "iPhone 16" ? title : ""}</span>
         </div>
-        <div className="flex items-center gap-1.5 text-neutral-800">
+        <div className="flex items-center gap-1.5 font-mono text-foreground">
           <span className="text-[10px] font-bold">5G</span>
-          <div className="h-2.5 w-4 rounded-xs border border-neutral-800 bg-neutral-800" />
+          <div className="h-2.5 w-4 rounded-xs border border-border-visible bg-foreground" />
         </div>
       </div>
       {/* Viewport Content */}
@@ -2920,7 +3032,7 @@ function MobileFramePreview({ props, children }: { props: Props; children?: Reac
       </div>
       {/* Bottom Home Indicator */}
       <div className="flex h-6 w-full shrink-0 items-center justify-center pb-1">
-        <div className="h-1 w-28 rounded-full bg-neutral-800/40" />
+        <div className="h-1 w-28 rounded-full bg-foreground/40" />
       </div>
     </div>
   );
@@ -2943,13 +3055,13 @@ function BrowserFramePreview({ props, children }: { props: Props; children?: Rea
       }}
     >
       {/* Window Title Bar */}
-      <div className="flex h-10 w-full shrink-0 items-center gap-3 border-b border-neutral-200 bg-neutral-100/90 px-3.5">
+      <div className="flex h-10 w-full shrink-0 items-center gap-3 border-b border-border bg-surface-raised px-3.5">
         <div className="flex items-center gap-1.5">
-          <div className="size-2.5 rounded-full bg-red-400" />
-          <div className="size-2.5 rounded-full bg-amber-400" />
-          <div className="size-2.5 rounded-full bg-emerald-400" />
+          <div className="size-2.5 rounded-full bg-border-visible" />
+          <div className="size-2.5 rounded-full bg-border-visible" />
+          <div className="size-2.5 rounded-full bg-border-visible" />
         </div>
-        <div className="flex h-6 max-w-sm flex-1 items-center rounded-md border border-neutral-200 bg-white px-2.5 text-[10px] text-neutral-500 shadow-xs">
+        <div className="flex h-6 max-w-sm flex-1 items-center rounded-md border border-border-visible bg-background px-2.5 font-mono text-[10px] text-muted-foreground shadow-xs">
           <span className="truncate">{url}</span>
         </div>
       </div>
@@ -3032,7 +3144,7 @@ function getFlowchartNormalizedPath(type: ComponentType): string {
   }
 }
 
-function FlowchartShapePreview({ type, props }: { type: ComponentType; props: Props }) {
+function FlowchartShapePreview({ type, props, isEditing }: { type: ComponentType; props: Props; isEditing?: boolean }) {
   const p = props || {};
   const fillEnabled = p.fillEnabled !== false && p.fillEnabled !== "false";
   const strokeEnabled = p.strokeEnabled !== false && p.strokeEnabled !== "false";
@@ -3081,7 +3193,7 @@ function FlowchartShapePreview({ type, props }: { type: ComponentType; props: Pr
           <path d="M 0 0 A 15 50 0 0 1 0 100" fill="none" stroke={stroke} strokeWidth={borderWidth} strokeDasharray={strokeDasharray} vectorEffect="non-scaling-stroke" />
         )}
       </svg>
-      <ShapeTextRenderer props={p} />
+      <ShapeTextRenderer props={p} isEditing={isEditing} />
     </div>
   );
 }
@@ -3127,7 +3239,7 @@ function ConnectorPreview({ props }: { props: Props }) {
         />
       </svg>
       {text && (
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded bg-white px-1.5 py-0.5 text-[10px] text-neutral-700 shadow-xs border border-neutral-200">
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded bg-surface px-1.5 py-0.5 text-[10px] font-mono font-medium text-foreground shadow-xs border border-border-visible">
           {text}
         </div>
       )}

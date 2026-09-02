@@ -10,8 +10,9 @@ interface Props {
   onUpdateElement?: (id: string, patch: Partial<EditorElement>) => void;
   previewing?: boolean;
   isSelected?: boolean;
+  isEditing?: boolean;
 }
 
-export function ElementRenderer({ element, children, zoom, onSelect, onUpdateProps, onUpdateElement, previewing, isSelected }: Props) {
-  return <>{renderLibraryComponent(element.type, element.props, children, { elementId: element.id, zoom, onSelect, onUpdateProps, onUpdateElement, previewing, isSelected })}</>;
+export function ElementRenderer({ element, children, zoom, onSelect, onUpdateProps, onUpdateElement, previewing, isSelected, isEditing }: Props) {
+  return <>{renderLibraryComponent(element.type, element.props, children, { elementId: element.id, zoom, onSelect, onUpdateProps, onUpdateElement, previewing, isSelected, isEditing })}</>;
 }

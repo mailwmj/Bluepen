@@ -79,7 +79,7 @@ export function computeShapeStyle(
 
   if (rawStroke !== undefined || rawBorderWidth !== undefined) {
     const borderWidth = Number(rawBorderWidth ?? 1);
-    const stroke = String(rawStroke ?? "#D4D4D8");
+    const stroke = String(rawStroke ?? "var(--border-visible)");
     const strokeOpacity = Number(props.strokeOpacity ?? 100);
     const strokeColor = hexToRgba(stroke, strokeOpacity);
 
@@ -174,7 +174,8 @@ export function computeShapeStyle(
   return style;
 }
 
-export function ShapeTextRenderer({ props }: { props: Props }) {
+export function ShapeTextRenderer({ props, isEditing }: { props: Props; isEditing?: boolean }) {
+  if (isEditing) return null;
   const text = String(props.text || "");
   if (!text) return null;
 

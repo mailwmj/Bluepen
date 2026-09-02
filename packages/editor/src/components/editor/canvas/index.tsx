@@ -3,6 +3,7 @@
 import { useRef, useCallback, useState, useEffect, useMemo, memo } from "react";
 import type { AnchorPort, ComponentType, EditorElement } from "../types";
 import { cn } from "@bluepen/editor/lib/utils";
+import { Lock } from "lucide-react";
 import { ElementRenderer } from "./elements/index";
 import {
   calculateSnapping,
@@ -13,6 +14,7 @@ import {
   type SnapGuideLine,
   type SnapIndicatorPoint,
 } from "./snap-engine";
+import { hexToRgba } from "../utils/shape-styles";
 import {
   getElementAnchor,
   getClosestAnchorOnElement,
@@ -62,6 +64,8 @@ interface CanvasProps {
   onCommitMove: () => void;
   onDelete: () => void;
   onCanvasClick: (e: React.MouseEvent, canvasX: number, canvasY: number) => void;
+  onCanvasPointerMove?: (pos: { x: number; y: number }) => void;
+  onContextMenu?: (e: React.MouseEvent, canvasPos: { x: number; y: number }) => void;
   onDropAsset?: (type: ComponentType, x: number, y: number) => void;
   onDropFile?: (file: File, x: number, y: number) => void;
 }
@@ -114,6 +118,8 @@ type Interaction =
       currentY: number;
       shiftHeld: boolean;
       initialSelected: string[];
+      containerClickTargetId?: string;
+      lockedClickTargetId?: string;
     }
   | {
       type: "resize";
@@ -219,6 +225,190 @@ function rectsIntersect(
     r2.y > r1.y + r1.height ||
     r2.y + r2.height < r1.y
   );
+}
+
+const CONTAINER_TYPES: Set<ComponentType> = new Set([
+  "group",
+  "card",
+  "web-card",
+  "mobile-frame",
+  "browser-frame",
+  "rectangle",
+  "scroll-panel",
+  "modal-dialog",
+  "web-admin-layout",
+  "web-dashboard-page",
+  "web-settings-page",
+  "web-form-layout",
+  "agent-home-layout",
+  "agent-chat-stream-layout",
+  "agent-split-workspace-layout",
+  "agent-employee-workspace-layout",
+  "agent-employee-market-layout",
+  "agent-employee-card",
+  "agent-template-card",
+  "sidebar",
+  "header",
+  "footer",
+]);
+
+export function isElementLocked(el: EditorElement, allElementsFlat?: EditorElement[]): boolean {
+  if (el.locked) return true;
+  if (!allElementsFlat || !el.parentId) return false;
+  let curr = el;
+  const visited = new Set<string>();
+  while (curr.parentId) {
+    if (visited.has(curr.parentId)) break;
+    visited.add(curr.parentId);
+    const parent = allElementsFlat.find((p) => p.id === curr.parentId);
+    if (!parent) break;
+    if (parent.locked) return true;
+    curr = parent;
+  }
+  return false;
+}
+
+export function isContainerElement(el: EditorElement): boolean {
+  return (
+    CONTAINER_TYPES.has(el.type) ||
+    (Boolean(el.children) && el.children.length > 0)
+  );
+}
+
+function isRectEnclosedIn(
+  inner: { x: number; y: number; width: number; height: number },
+  outer: { x: number; y: number; width: number; height: number },
+  tolerance = 6,
+): boolean {
+  return (
+    inner.x >= outer.x - tolerance &&
+    inner.y >= outer.y - tolerance &&
+    inner.x + inner.width <= outer.x + outer.width + tolerance &&
+    inner.y + inner.height <= outer.y + outer.height + tolerance
+  );
+}
+
+/**
+ * Filters out any element IDs whose ancestors are also present in the given ID list.
+ * This guarantees that selecting a container never simultaneously selects its internal children.
+ */
+export function filterOutDescendantIds(
+  ids: string[],
+  allElementsFlat: EditorElement[],
+): string[] {
+  if (!ids || ids.length <= 1) return ids;
+  const idSet = new Set(ids);
+  const elementMap = new Map(allElementsFlat.map((el) => [el.id, el]));
+
+  return ids.filter((id) => {
+    let curr = elementMap.get(id);
+    if (!curr) return true;
+    const visited = new Set<string>([id]);
+    while (curr && curr.parentId) {
+      if (visited.has(curr.parentId)) break;
+      visited.add(curr.parentId);
+      if (idSet.has(curr.parentId)) {
+        return false;
+      }
+      curr = elementMap.get(curr.parentId);
+    }
+    return true;
+  });
+}
+
+/**
+ * Filters out any elements whose ancestors are also present in the given element list.
+ */
+export function filterOutDescendantElements(
+  elementsList: EditorElement[],
+  allElementsFlat: EditorElement[],
+): EditorElement[] {
+  if (!elementsList || elementsList.length <= 1) return elementsList;
+  const idSet = new Set(elementsList.map((el) => el.id));
+  const elementMap = new Map(allElementsFlat.map((el) => [el.id, el]));
+
+  return elementsList.filter((el) => {
+    let curr = el;
+    const visited = new Set<string>([el.id]);
+    while (curr && curr.parentId) {
+      if (visited.has(curr.parentId)) break;
+      visited.add(curr.parentId);
+      if (idSet.has(curr.parentId)) {
+        return false;
+      }
+      curr = elementMap.get(curr.parentId)!;
+    }
+    return true;
+  });
+}
+
+export function getMarqueeHitElementIds(
+  marqueeBox: { x: number; y: number; width: number; height: number },
+  allElementsFlat: EditorElement[],
+  options?: {
+    containerClickTargetId?: string | null;
+    isDeepSelect?: boolean;
+  },
+): string[] {
+  // 1. First find all candidate visible, non-locked elements that intersect the marquee
+  const candidates = allElementsFlat.filter((el) => {
+    if (!el.visible || isElementLocked(el, allElementsFlat)) return false;
+    const bounds = getElementDynamicBounds(el, allElementsFlat);
+    return rectsIntersect(marqueeBox, bounds);
+  });
+
+  if (candidates.length === 0) return [];
+
+  // 2. Identify enclosing background containers (containers that completely enclose the marqueeBox or inside which drag started)
+  const marqueeArea = marqueeBox.width * marqueeBox.height;
+  const enclosingContainerIds = new Set<string>();
+
+  if (options?.containerClickTargetId) {
+    enclosingContainerIds.add(options.containerClickTargetId);
+  }
+
+  for (const el of candidates) {
+    if (isContainerElement(el)) {
+      const bounds = getElementDynamicBounds(el, allElementsFlat);
+      const containerArea = bounds.width * bounds.height;
+      if (
+        isRectEnclosedIn(marqueeBox, bounds, 8) &&
+        marqueeArea < containerArea * 0.95
+      ) {
+        enclosingContainerIds.add(el.id);
+      }
+    }
+  }
+
+  // 3. Filter out enclosing background containers
+  const activeCandidates = candidates.filter((el) => !enclosingContainerIds.has(el.id));
+  if (activeCandidates.length === 0) return [];
+
+  // 4. Deep Select Mode (Cmd / Ctrl held): Prefer leaf components over their container groups
+  if (options?.isDeepSelect) {
+    const leafOnly = activeCandidates.filter((el) => {
+      if (isContainerElement(el)) {
+        // If any hit candidate has this container as an ancestor, drop the container in favor of the inner child
+        return !activeCandidates.some((other) => {
+          let curr = other;
+          const visited = new Set<string>([other.id]);
+          while (curr && curr.parentId) {
+            if (visited.has(curr.parentId)) break;
+            visited.add(curr.parentId);
+            if (curr.parentId === el.id) return true;
+            curr = allElementsFlat.find((p) => p.id === curr.parentId)!;
+          }
+          return false;
+        });
+      }
+      return true;
+    });
+    return leafOnly.map((el) => el.id);
+  }
+
+  // 5. Standard Mode: Hierarchy-aware top-level selection (never select both a container and its children)
+  const candidateIds = activeCandidates.map((el) => el.id);
+  return filterOutDescendantIds(candidateIds, allElementsFlat);
 }
 
 function flattenElements(list: EditorElement[]): EditorElement[] {
@@ -687,7 +877,7 @@ const ConnectorLinesLayer = memo(function ConnectorLinesLayer({
         const text = String(c.props.text || "");
 
         const handleSelectConnector = (e: React.MouseEvent) => {
-          if (previewing || c.locked) return;
+          if (previewing) return;
           e.stopPropagation();
           if (e.shiftKey && onSelectIds) {
             const next = selectedIds.includes(c.id)
@@ -934,9 +1124,13 @@ const MultiSelectionBoundingBox = memo(function MultiSelectionBoundingBox({
   selectedElements: EditorElement[];
   allElementsFlat: EditorElement[];
 }) {
-  if (selectedElements.length <= 1) return null;
+  const topLevelSelected = useMemo(() => {
+    return filterOutDescendantElements(selectedElements, allElementsFlat);
+  }, [selectedElements, allElementsFlat]);
 
-  const boundsList = selectedElements.map((e) => getElementDynamicBounds(e, allElementsFlat));
+  if (topLevelSelected.length <= 1) return null;
+
+  const boundsList = topLevelSelected.map((e) => getElementDynamicBounds(e, allElementsFlat));
   const minX = Math.min(...boundsList.map((b) => b.x));
   const minY = Math.min(...boundsList.map((b) => b.y));
   const maxX = Math.max(...boundsList.map((b) => b.x + b.width));
@@ -956,11 +1150,200 @@ const MultiSelectionBoundingBox = memo(function MultiSelectionBoundingBox({
       }}
     >
       <div className="pointer-events-none absolute -bottom-5 right-0 flex items-center gap-1 rounded bg-blue-600 px-1.5 py-0.5 text-[9px] font-semibold text-white shadow-xs select-none">
-        <span>{selectedElements.length} 项已选中</span>
+        <span>{topLevelSelected.length} 项已选中</span>
       </div>
     </div>
   );
 });
+
+interface InlineTextEditorProps {
+  element: EditorElement;
+  zoom: number;
+  onUpdateText: (newText: string) => void;
+  onFinish: () => void;
+}
+
+function InlineTextEditor({ element, zoom, onUpdateText, onFinish }: InlineTextEditorProps) {
+  const isButton =
+    element.type === "button" ||
+    element.type === "button-primary" ||
+    element.type === "web-button";
+  const defaultText =
+    element.type === "button"
+      ? "次要操作"
+      : element.type === "button-primary" || element.type === "web-button"
+      ? "主要操作"
+      : "";
+  const textProp = String(element.props.text ?? (element.type === "text" ? "" : defaultText));
+  const [localText, setLocalText] = useState(textProp);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const finishCalledRef = useRef(false);
+
+  const handleFinish = useCallback(() => {
+    if (finishCalledRef.current) return;
+    finishCalledRef.current = true;
+    onFinish();
+  }, [onFinish]);
+
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      textarea.focus();
+      // Select all text on double click edit
+      const len = textarea.value.length;
+      textarea.setSelectionRange(0, len);
+    }
+  }, []);
+
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const nextVal = e.target.value;
+    setLocalText(nextVal);
+    onUpdateText(nextVal);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    e.stopPropagation();
+    if (e.key === "Escape") {
+      e.preventDefault();
+      handleFinish();
+    } else if (isButton && e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleFinish();
+    } else if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      e.preventDefault();
+      handleFinish();
+    }
+  };
+
+  const defaultTextColor =
+    element.type === "button-primary"
+      ? "var(--primary-foreground)"
+      : "var(--foreground)";
+  const textColor = String(element.props.textColor || defaultTextColor);
+  const textOpacity = Number(element.props.textOpacity ?? 100);
+  const color = textColor.startsWith("#") ? hexToRgba(textColor, textOpacity) : textColor;
+  const fontSize = Number(element.props.fontSize || (isButton ? 12 : 14));
+  const fontWeight = Number(
+    element.props.fontWeight || (element.type === "button-primary" ? 600 : isButton ? 500 : 400)
+  );
+  const fontFamily = element.props.fontFamily
+    ? String(element.props.fontFamily)
+    : isButton
+    ? "var(--font-mono)"
+    : undefined;
+  const align = String(
+    element.props.textAlign || element.props.align || (element.type === "text" ? "left" : "center")
+  ) as "left" | "center" | "right" | "justify";
+  const textVerticalAlign = String(element.props.textVerticalAlign || (element.type === "text" ? "top" : "middle"));
+  const lineHeight = element.props.lineHeight ? `${element.props.lineHeight}px` : "1.4";
+  const letterSpacing =
+    element.props.letterSpacing !== undefined
+      ? typeof element.props.letterSpacing === "number"
+        ? `${element.props.letterSpacing}px`
+        : String(element.props.letterSpacing)
+      : isButton
+      ? "0.06em"
+      : undefined;
+  const fontStyle = element.props.italic ? "italic" : undefined;
+  const isUnderline = Boolean(element.props.underline);
+  const isStrikethrough = Boolean(element.props.strikethrough);
+  const textDecoration =
+    isUnderline && isStrikethrough
+      ? "underline line-through"
+      : isUnderline
+      ? "underline"
+      : isStrikethrough
+      ? "line-through"
+      : undefined;
+
+  const isShape = element.type !== "text";
+
+  // Auto-fit height when vertically centered or bottom-aligned so flex positioning matches TextPreview / ShapeTextRenderer
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+    if (textVerticalAlign === "middle" || textVerticalAlign === "center" || textVerticalAlign === "bottom") {
+      textarea.style.height = "auto";
+      textarea.style.height = `${Math.min(textarea.scrollHeight, element.height)}px`;
+    }
+  }, [localText, textVerticalAlign, element.height]);
+
+  const buttonRadius =
+    element.props.radius !== undefined
+      ? `${element.props.radius}px`
+      : undefined;
+
+  return (
+    <div
+      className={cn(
+        "absolute inset-0 z-50 flex size-full border border-dashed border-blue-500 select-text bg-transparent",
+        isButton && !buttonRadius ? "rounded-full" : "rounded-xs",
+        textVerticalAlign === "middle" || textVerticalAlign === "center"
+          ? "items-center"
+          : textVerticalAlign === "bottom"
+          ? "items-end"
+          : "items-start"
+      )}
+      style={{
+        borderRadius: buttonRadius,
+      }}
+      onMouseDown={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+      onDoubleClick={(e) => e.stopPropagation()}
+    >
+      <textarea
+        ref={textareaRef}
+        value={localText}
+        onChange={handleChange}
+        onKeyDown={handleKeyDown}
+        onBlur={handleFinish}
+        rows={isButton ? 1 : undefined}
+        className={cn(
+          "w-full resize-none border-0 bg-transparent outline-none whitespace-pre-wrap break-words overflow-hidden",
+          isButton ? "px-4 py-0 text-center uppercase" : isShape ? "p-2 text-center" : "p-0 px-1"
+        )}
+        style={{
+          color,
+          fontSize,
+          fontWeight,
+          fontFamily,
+          textAlign: align,
+          lineHeight: isButton ? "normal" : lineHeight,
+          letterSpacing,
+          fontStyle,
+          textDecoration,
+          caretColor: color.startsWith("var(--primary-foreground)") ? "var(--primary-foreground)" : "currentColor",
+          height:
+            textVerticalAlign === "middle" || textVerticalAlign === "center" || textVerticalAlign === "bottom"
+              ? undefined
+              : "100%",
+          maxHeight: "100%",
+        }}
+        placeholder={element.type === "text" ? "输入文本内容…" : "输入内容…"}
+      />
+    </div>
+  );
+}
+
+function isTextCapable(type: ComponentType, props?: Record<string, string | number | boolean>): boolean {
+  return (
+    type === "text" ||
+    type === "button" ||
+    type === "button-primary" ||
+    type === "web-button" ||
+    type === "sticky-note" ||
+    type === "pin-note" ||
+    type === "rectangle" ||
+    type === "circle" ||
+    type.startsWith("flow-") ||
+    type === "card" ||
+    type === "placeholder" ||
+    type === "badge" ||
+    type === "chip" ||
+    Boolean(props?.text !== undefined || props?.hasText)
+  );
+}
 
 interface ElementNodeProps {
   el: EditorElement;
@@ -973,6 +1356,9 @@ interface ElementNodeProps {
   previewing: boolean;
   activeTool: string;
   zoom: number;
+  editingElementId?: string | null;
+  onStartEditing?: (id: string) => void;
+  onStopEditing?: () => void;
   onElementMouseDown: (e: React.MouseEvent, elId: string) => void;
   onResizeMouseDown: (e: React.MouseEvent, elId: string, handle: string) => void;
   onRotateMouseDown: (e: React.MouseEvent, el: EditorElement, corner?: "nw" | "ne" | "se" | "sw") => void;
@@ -994,6 +1380,9 @@ const ElementNode = memo(function ElementNode({
   previewing,
   activeTool,
   zoom,
+  editingElementId,
+  onStartEditing,
+  onStopEditing,
   onElementMouseDown,
   onResizeMouseDown,
   onRotateMouseDown,
@@ -1006,6 +1395,7 @@ const ElementNode = memo(function ElementNode({
   const [isHovered, setIsHovered] = useState(false);
   const isSelected = effectiveSelectedIds.includes(el.id);
   const isSingleSelected = effectiveSelectedIds.length === 1 && isSelected;
+  const isEditing = editingElementId === el.id;
   if (!el.visible) return null;
   const locked = el.locked || ancestorLocked;
   const isLineLike = el.type === "line" || el.type === "arrow";
@@ -1034,6 +1424,7 @@ const ElementNode = memo(function ElementNode({
   const showAnchors =
     !previewing &&
     !locked &&
+    !isEditing &&
     el.type !== "connector" &&
     (isConnectorMode
       ? (isConnecting
@@ -1049,16 +1440,16 @@ const ElementNode = memo(function ElementNode({
       key={el.id}
       data-element
       data-element-id={el.id}
+      data-locked={locked ? "true" : undefined}
       className={cn(
-        "absolute select-none z-10 pointer-events-auto",
+        "absolute select-none z-10",
         previewing && "pointer-events-none",
-        locked && "cursor-default opacity-60",
-        !locked &&
-          (!interaction || ("id" in interaction && interaction.id !== el.id)) &&
+        "pointer-events-auto",
+        (!interaction || ("id" in interaction && interaction.id !== el.id)) &&
           (activeTool === "select"
-            ? "cursor-move"
+            ? (locked ? "cursor-default" : isEditing ? "cursor-text" : "cursor-move")
             : activeTool === "connector"
-            ? "cursor-crosshair"
+            ? (locked ? "cursor-not-allowed" : "cursor-crosshair")
             : "cursor-default"),
       )}
       style={{
@@ -1070,23 +1461,22 @@ const ElementNode = memo(function ElementNode({
         transform: `rotate(${el.rotation}deg)`,
         transformOrigin: isLineLike ? "0 50%" : "center center",
       }}
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      onMouseDown={(e) => onElementMouseDown(e, el.id)}
+      onMouseEnter={() => {
+        setIsHovered(true);
+      }}
+      onMouseLeave={() => {
+        setIsHovered(false);
+      }}
+      onMouseDown={(e) => {
+        onElementMouseDown(e, el.id);
+      }}
       onDoubleClick={(e) => {
         e.stopPropagation();
+        if (previewing) return;
         onSelect(el.id);
-        setTimeout(() => {
-          const input =
-            document.querySelector<HTMLInputElement | HTMLTextAreaElement>("[data-slot='element-text-input']") ||
-            document.querySelector<HTMLInputElement | HTMLTextAreaElement>(
-              "aside textarea, aside input:not([type='color']):not([type='checkbox'])"
-            );
-          if (input) {
-            input.focus();
-            input.select?.();
-          }
-        }, 60);
+        if (!locked && isTextCapable(el.type, el.props)) {
+          onStartEditing?.(el.id);
+        }
       }}
     >
       <ElementRenderer
@@ -1101,6 +1491,7 @@ const ElementNode = memo(function ElementNode({
           });
         }}
         onUpdateElement={onUpdateElement}
+        isEditing={isEditing}
       >
         {el.children &&
           el.children.length > 0 &&
@@ -1117,6 +1508,9 @@ const ElementNode = memo(function ElementNode({
               previewing={previewing}
               activeTool={activeTool}
               zoom={zoom}
+              editingElementId={editingElementId}
+              onStartEditing={onStartEditing}
+              onStopEditing={onStopEditing}
               onElementMouseDown={onElementMouseDown}
               onResizeMouseDown={onResizeMouseDown}
               onRotateMouseDown={onRotateMouseDown}
@@ -1128,6 +1522,19 @@ const ElementNode = memo(function ElementNode({
             />
           ))}
       </ElementRenderer>
+
+      {isEditing && (
+        <InlineTextEditor
+          element={el}
+          zoom={zoom}
+          onUpdateText={(newText) => {
+            onUpdateElement?.(el.id, {
+              props: { ...el.props, text: newText, hasText: true },
+            });
+          }}
+          onFinish={onStopEditing ?? (() => {})}
+        />
+      )}
 
       {/* Anchor Ports (Top, Right, Bottom, Left) for Connecting Elements */}
       {showAnchors && (
@@ -1176,7 +1583,33 @@ const ElementNode = memo(function ElementNode({
         </>
       )}
 
-      {isSelected && !locked && !previewing && (
+      {/* Locked selection outline & quick unlock action */}
+      {isSelected && locked && !previewing && (
+        <>
+          <div
+            className={cn(
+              "pointer-events-none absolute inset-0 border border-dashed border-accent/80 z-10",
+              isLineLike && "hidden",
+            )}
+            data-handle
+          />
+          <button
+            type="button"
+            className="absolute -top-7 right-0 z-30 flex items-center gap-1.5 rounded-full bg-surface border border-border-visible px-2 py-0.5 font-mono text-[10px] text-foreground tracking-wider hover:border-foreground transition-colors cursor-pointer pointer-events-auto select-none shadow-xs"
+            onClick={(e) => {
+              e.stopPropagation();
+              onUpdateElement?.(el.id, { locked: false });
+            }}
+            title="点击解锁图层 (⌘⇧L)"
+          >
+            <Lock className="size-3 text-accent" />
+            <span className="text-[9px] font-mono uppercase text-muted-foreground">LOCKED</span>
+            <span className="text-[9px] font-mono uppercase text-foreground underline ml-0.5">解锁</span>
+          </button>
+        </>
+      )}
+
+      {isSelected && !locked && !previewing && !isEditing && (
         <>
           {isLineLike ? (
             /* Line endpoint handles with stable hit target containers */
@@ -1401,6 +1834,8 @@ export function Canvas({
   onCommitMove,
   onDelete,
   onCanvasClick,
+  onCanvasPointerMove,
+  onContextMenu,
   onDropAsset,
   onDropFile,
 }: CanvasProps) {
@@ -1411,6 +1846,7 @@ export function Canvas({
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [spaceHeld, setSpaceHeld] = useState(false);
   const [altHeld, setAltHeld] = useState(false);
+  const [editingElementId, setEditingElementId] = useState<string | null>(null);
   const [interaction, setInteraction] = useState<Interaction | null>(null);
   const interactionRef = useRef<Interaction | null>(null);
   const [activeGuides, setActiveGuides] = useState<SnapGuideLine[]>([]);
@@ -1456,6 +1892,15 @@ export function Canvas({
       if (e.key === "Alt" && !e.repeat) {
         setAltHeld(true);
       }
+      if (e.key === "F2" || (e.key === "Enter" && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey)) {
+        if (effectiveSelectedIds.length === 1 && !editingElementId) {
+          const selectedEl = allElementsFlat.find((item) => item.id === effectiveSelectedIds[0]);
+          if (selectedEl && !selectedEl.locked && isTextCapable(selectedEl.type, selectedEl.props)) {
+            e.preventDefault();
+            setEditingElementId(selectedEl.id);
+          }
+        }
+      }
     };
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.code === "Space") setSpaceHeld(false);
@@ -1470,7 +1915,7 @@ export function Canvas({
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("keyup", handleKeyUp);
     };
-  }, []);
+  }, [effectiveSelectedIds, editingElementId, allElementsFlat]);
 
   // Native Non-Passive Wheel Event Listener for Trackpad/Wheel Canvas Panning and Ctrl + Wheel Zooming
   useEffect(() => {
@@ -1507,6 +1952,10 @@ export function Canvas({
   const handleMouseDown = useCallback(
     (e: React.MouseEvent) => {
       dragOccurred.current = false;
+
+      if (editingElementId) {
+        setEditingElementId(null);
+      }
 
       if (e.button === 1 || (e.button === 0 && (spaceHeld || activeTool === "hand"))) {
         e.preventDefault();
@@ -1593,8 +2042,9 @@ export function Canvas({
 
       // Marquee selection on canvas
       if (activeTool === "select" && e.button === 0) {
+        const closestEl = target.closest("[data-element]");
         if (
-          !target.closest("[data-element]") &&
+          (!closestEl || e.metaKey || e.ctrlKey) &&
           !target.closest("[data-handle]") &&
           !target.closest("[data-multi-selection-box]")
         ) {
@@ -1646,16 +2096,16 @@ export function Canvas({
           height: Math.abs(pos.y - curInter.startY),
         };
 
-        const hitIds = allElementsFlat
-          .filter(
-            (el) =>
-              el.visible &&
-              rectsIntersect(marqueeBox, getElementDynamicBounds(el, allElementsFlat)),
-          )
-          .map((el) => el.id);
+        const hitIds = getMarqueeHitElementIds(marqueeBox, allElementsFlat, {
+          containerClickTargetId: curInter.containerClickTargetId,
+          isDeepSelect: e.ctrlKey || e.metaKey,
+        });
 
         if (curInter.shiftHeld) {
-          const merged = Array.from(new Set([...curInter.initialSelected, ...hitIds]));
+          const merged = filterOutDescendantIds(
+            Array.from(new Set([...curInter.initialSelected, ...hitIds])),
+            allElementsFlat,
+          );
           if (onSelectIds) {
             onSelectIds(merged);
           } else {
@@ -2181,7 +2631,7 @@ export function Canvas({
       const curInter = interactionRef.current;
 
       if (curInter?.type === "marquee") {
-        const { startX, startY, currentX, currentY, shiftHeld, initialSelected } = curInter;
+        const { startX, startY, currentX, currentY, shiftHeld, initialSelected, containerClickTargetId, lockedClickTargetId } = curInter;
         const w = Math.abs(currentX - startX);
         const h = Math.abs(currentY - startY);
 
@@ -2193,21 +2643,15 @@ export function Canvas({
             height: h,
           };
 
-          const hitIds = allElementsFlat
-            .filter(
-              (el) =>
-                el.visible &&
-                rectsIntersect(marqueeBox, {
-                  x: el.x,
-                  y: el.y,
-                  width: el.width,
-                  height: el.height,
-                }),
-            )
-            .map((el) => el.id);
+          const hitIds = getMarqueeHitElementIds(marqueeBox, allElementsFlat, {
+            containerClickTargetId,
+          });
 
           if (shiftHeld) {
-            const merged = Array.from(new Set([...initialSelected, ...hitIds]));
+            const merged = filterOutDescendantIds(
+              Array.from(new Set([...initialSelected, ...hitIds])),
+              allElementsFlat,
+            );
             if (onSelectIds) {
               onSelectIds(merged);
             } else {
@@ -2222,7 +2666,35 @@ export function Canvas({
           }
           dragOccurred.current = true;
         } else {
-          if (!shiftHeld) {
+          if (lockedClickTargetId) {
+            if (shiftHeld) {
+              const nextSelected = initialSelected.includes(lockedClickTargetId)
+                ? initialSelected.filter((id) => id !== lockedClickTargetId)
+                : [...initialSelected, lockedClickTargetId];
+              if (onSelectIds) {
+                onSelectIds(nextSelected);
+              } else {
+                onSelect(nextSelected[nextSelected.length - 1] ?? null);
+              }
+            } else {
+              onSelect(lockedClickTargetId);
+              onSelectIds?.([lockedClickTargetId]);
+            }
+          } else if (containerClickTargetId) {
+            if (shiftHeld) {
+              const nextSelected = initialSelected.includes(containerClickTargetId)
+                ? initialSelected.filter((id) => id !== containerClickTargetId)
+                : [...initialSelected, containerClickTargetId];
+              if (onSelectIds) {
+                onSelectIds(nextSelected);
+              } else {
+                onSelect(nextSelected[nextSelected.length - 1] ?? null);
+              }
+            } else {
+              onSelect(containerClickTargetId);
+              onSelectIds?.([containerClickTargetId]);
+            }
+          } else if (!shiftHeld) {
             if (onSelectIds) {
               onSelectIds([]);
             } else {
@@ -2384,7 +2856,26 @@ export function Canvas({
 
       if (e.button !== 0 || spaceHeld || activeTool === "hand") return;
       const el = allElementsFlat.find((item) => item.id === elId);
-      if (!el || el.locked) return;
+      if (!el) return;
+
+      // 1. Force Marquee Selection when Cmd / Ctrl is held
+      if ((e.metaKey || e.ctrlKey) && activeTool === "select") {
+        e.stopPropagation();
+        const pos = screenToCanvas(e.clientX, e.clientY);
+        const inter: Interaction = {
+          type: "marquee",
+          startX: pos.x,
+          startY: pos.y,
+          currentX: pos.x,
+          currentY: pos.y,
+          shiftHeld: e.shiftKey,
+          initialSelected: e.shiftKey ? [...effectiveSelectedIds] : [],
+        };
+        interactionRef.current = inter;
+        setInteraction(inter);
+        return;
+      }
+
       e.stopPropagation();
 
       // Check if clicked element is inside a Group
@@ -2408,9 +2899,26 @@ export function Canvas({
       }
 
       const targetEl = allElementsFlat.find((item) => item.id === targetSelectId) || el;
-      if (targetEl.locked) return;
-
       const pos = screenToCanvas(e.clientX, e.clientY);
+
+      // 1. Locked element handling (Axure/Figma hybrid):
+      // Dragging on a locked element starts marquee selection across the canvas (never moves the locked element).
+      // Clicking without moving (< 3px) selects the locked element on pointerUp so properties & unlock actions can be accessed.
+      if (isElementLocked(targetEl, allElementsFlat)) {
+        const inter: Interaction = {
+          type: "marquee",
+          startX: pos.x,
+          startY: pos.y,
+          currentX: pos.x,
+          currentY: pos.y,
+          shiftHeld: e.shiftKey,
+          initialSelected: e.shiftKey ? [...effectiveSelectedIds] : [],
+          lockedClickTargetId: targetSelectId,
+        };
+        interactionRef.current = inter;
+        setInteraction(inter);
+        return;
+      }
 
       // Shift click for multi-selection toggle
       if (e.shiftKey) {
@@ -2425,37 +2933,67 @@ export function Canvas({
         return;
       }
 
-      // If clicked element is already in multi-selection, start multi-move for all selected elements
+      // If clicked element is already in multi-selection, start multi-move for all selected elements (excluding locked)
       if (effectiveSelectedIds.includes(targetSelectId) && effectiveSelectedIds.length > 1) {
-        const minX = Math.min(...selectedElements.map((item) => item.x));
-        const minY = Math.min(...selectedElements.map((item) => item.y));
-        const maxX = Math.max(...selectedElements.map((item) => item.x + item.width));
-        const maxY = Math.max(...selectedElements.map((item) => item.y + item.height));
+        const moveableSelected = filterOutDescendantElements(
+          selectedElements.filter((item) => !isElementLocked(item, allElementsFlat)),
+          allElementsFlat,
+        );
+        if (moveableSelected.length > 0) {
+          const boundsList = moveableSelected.map((item) => getElementDynamicBounds(item, allElementsFlat));
+          const minX = Math.min(...boundsList.map((b) => b.x));
+          const minY = Math.min(...boundsList.map((b) => b.y));
+          const maxX = Math.max(...boundsList.map((b) => b.x + b.width));
+          const maxY = Math.max(...boundsList.map((b) => b.y + b.height));
 
+          const inter: Interaction = {
+            type: "multi-move",
+            startX: pos.x,
+            startY: pos.y,
+            initialPositions: moveableSelected.map((item) => ({
+              id: item.id,
+              x: item.x,
+              y: item.y,
+              width: item.width,
+              height: item.height,
+            })),
+            combinedBounds: {
+              x: minX,
+              y: minY,
+              width: maxX - minX,
+              height: maxY - minY,
+            },
+          };
+          interactionRef.current = inter;
+          setInteraction(inter);
+          return;
+        }
+      }
+
+      // 2. Figma-style Container Empty Space Drag Detection:
+      // If the target is an unselected container/frame, start marquee interaction.
+      // If user merely clicks without moving, it will select the container on pointerUp.
+      // If user drags, it will draw a marquee selection box to select inner elements.
+      const isContainer = isContainerElement(targetEl);
+      const isAlreadySelected = effectiveSelectedIds.includes(targetSelectId);
+
+      if (isContainer && !isAlreadySelected) {
         const inter: Interaction = {
-          type: "multi-move",
+          type: "marquee",
           startX: pos.x,
           startY: pos.y,
-          initialPositions: selectedElements.map((item) => ({
-            id: item.id,
-            x: item.x,
-            y: item.y,
-            width: item.width,
-            height: item.height,
-          })),
-          combinedBounds: {
-            x: minX,
-            y: minY,
-            width: maxX - minX,
-            height: maxY - minY,
-          },
+          currentX: pos.x,
+          currentY: pos.y,
+          shiftHeld: false,
+          initialSelected: [],
+          containerClickTargetId: targetSelectId,
         };
         interactionRef.current = inter;
         setInteraction(inter);
         return;
       }
 
-      // Single select & move
+      // Single select & move (for leaf elements or already-selected containers)
       onSelect(targetSelectId);
       onSelectIds?.([targetSelectId]);
       const inter: Interaction = {
@@ -2475,8 +3013,9 @@ export function Canvas({
   );
 
   const selectedBounds = useMemo(() => {
-    if (selectedElements.length <= 1) return null;
-    const boundsList = selectedElements.map((e) => getElementDynamicBounds(e, allElementsFlat));
+    const topLevelSelected = filterOutDescendantElements(selectedElements, allElementsFlat);
+    if (topLevelSelected.length <= 1) return null;
+    const boundsList = topLevelSelected.map((e) => getElementDynamicBounds(e, allElementsFlat));
     const minX = Math.min(...boundsList.map((b) => b.x));
     const minY = Math.min(...boundsList.map((b) => b.y));
     const maxX = Math.max(...boundsList.map((b) => b.x + b.width));
@@ -2495,12 +3034,16 @@ export function Canvas({
       if (activeTool !== "select" && activeTool !== "hand") return;
       if (e.button !== 0 || spaceHeld || activeTool === "hand") return;
       if (selectedElements.length <= 1) return;
-      if (selectedElements.every((item) => item.locked)) return;
+      const moveableSelected = filterOutDescendantElements(
+        selectedElements.filter((item) => !isElementLocked(item, allElementsFlat)),
+        allElementsFlat,
+      );
+      if (moveableSelected.length === 0) return;
 
       e.stopPropagation();
       const pos = screenToCanvas(e.clientX, e.clientY);
 
-      const boundsList = selectedElements.map((item) => getElementDynamicBounds(item, allElementsFlat));
+      const boundsList = moveableSelected.map((item) => getElementDynamicBounds(item, allElementsFlat));
       const minX = Math.min(...boundsList.map((b) => b.x));
       const minY = Math.min(...boundsList.map((b) => b.y));
       const maxX = Math.max(...boundsList.map((b) => b.x + b.width));
@@ -2510,7 +3053,7 @@ export function Canvas({
         type: "multi-move",
         startX: pos.x,
         startY: pos.y,
-        initialPositions: selectedElements.map((item) => ({
+        initialPositions: moveableSelected.map((item) => ({
           id: item.id,
           x: item.x,
           y: item.y,
@@ -2674,6 +3217,9 @@ export function Canvas({
   const handleClick = useCallback(
     (e: React.MouseEvent) => {
       if (previewing) return;
+      if (editingElementId) {
+        setEditingElementId(null);
+      }
       if (dragOccurred.current) {
         dragOccurred.current = false;
         return;
@@ -2693,7 +3239,7 @@ export function Canvas({
       else onSelect(null);
       onCanvasClick(e, pos.x, pos.y);
     },
-    [screenToCanvas, onSelect, onSelectIds, onCanvasClick],
+    [previewing, editingElementId, screenToCanvas, onSelect, onSelectIds, onCanvasClick, activeTool],
   );
 
   const handleDragEnter = useCallback((e: React.DragEvent) => {
@@ -2875,6 +3421,15 @@ export function Canvas({
       }}
       onMouseDown={handleMouseDown}
       onClick={handleClick}
+      onContextMenu={(e) => {
+        const pos = screenToCanvas(e.clientX, e.clientY);
+        onCanvasPointerMove?.(pos);
+        onContextMenu?.(e, pos);
+      }}
+      onPointerMove={(e) => {
+        const pos = screenToCanvas(e.clientX, e.clientY);
+        onCanvasPointerMove?.(pos);
+      }}
       onDragEnter={handleDragEnter}
       onDragOver={handleDragOver}
       onDrop={handleDrop}
@@ -2987,6 +3542,12 @@ export function Canvas({
                 previewing={previewing}
                 activeTool={activeTool}
                 zoom={zoom}
+                editingElementId={editingElementId}
+                onStartEditing={setEditingElementId}
+                onStopEditing={() => {
+                  setEditingElementId(null);
+                  onCommitMove();
+                }}
                 onElementMouseDown={handleElementMouseDown}
                 onResizeMouseDown={handleResizeMouseDown}
                 onRotateMouseDown={handleRotateMouseDown}

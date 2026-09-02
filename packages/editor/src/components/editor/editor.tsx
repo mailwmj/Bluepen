@@ -16,7 +16,7 @@ import {
   ContextMenuShortcut,
 } from "@bluepen/editor/components/ui/context-menu";
 import {
-  Copy, Trash2, Lock, EyeOff, Square, Maximize2, ClipboardPaste,
+  Copy, CopyPlus, Scissors, Trash2, Lock, Unlock, EyeOff, Square, Maximize2, ClipboardPaste,
   MousePointer2, Hand, Type, ArrowUp, ArrowDown, ArrowUpToLine, ArrowDownToLine,
   Boxes, Ungroup,
 } from "lucide-react";
@@ -34,7 +34,17 @@ import { isBlockTemplate, createBlockTemplateGroup } from "./library/block-templ
 import { confirmLocal } from "./hooks/use-desktop";
 import { showToast } from "./hooks/use-toast";
 import { loadProjectLocal, saveProjectLocal, loadSettingsLocal, saveSettingsLocal } from "./hooks/local-store";
-import { processImageFile, extractImageFromClipboardData } from "./utils/image";
+import { processImageFile, extractImageFromClipboardData, dataUrlToBlob } from "./utils/image";
+import {
+  BLUEPEN_CLIPBOARD_MIME,
+  serializeElementsForClipboard,
+  parseElementsFromClipboard,
+  cloneElementsForPaste,
+  getTopLevelSelectedElements,
+  setInternalClipboard,
+  getInternalClipboard,
+  isEditableTarget,
+} from "./utils/clipboard";
 import { cn } from "@bluepen/editor/lib/utils";
 
 function genId() {
@@ -435,8 +445,8 @@ export function Editor() {
         ? elements.map((e) =>
             e.id === parentId ? { ...e, children: [...e.children, el] } : e,
           )
-        : elements;
-      commit([...next, el]);
+        : [...elements, el];
+      commit(next);
       setSelectedId(el.id);
       setSelectedIds([el.id]);
     },
@@ -466,7 +476,6 @@ export function Editor() {
     if (releasedIds.length > 0) {
       commit(nextElements);
       setSelectedIds(releasedIds);
-      if (releasedIds[0]) setSelectedId(releasedIds[0]);
       showToast({
         type: "success",
         title: "已打散组合",
@@ -477,11 +486,12 @@ export function Editor() {
   }, [contextElementId, selectedIds, elements, commit]);
 
   const deleteSelected = useCallback(() => {
-    if (selectedIds.length === 0) return;
-    const deleteIds = new Set(selectedIds);
+    const targetIds = selectedIds.length > 0 ? selectedIds : (contextElementId ? [contextElementId] : []);
+    if (targetIds.length === 0) return;
+    const deleteIds = new Set(targetIds);
     const filterOut = (list: EditorElement[]): EditorElement[] => {
       return list
-        .filter((e) => !deleteIds.has(e.id))
+        .filter((e) => !deleteIds.has(e.id) || e.locked)
         .map((e) => ({
           ...e,
           children: filterOut(e.children),
@@ -489,33 +499,54 @@ export function Editor() {
     };
     const next = filterOut(elements);
     commit(next);
-    setSelectedIds([]);
-  }, [selectedIds, elements, commit]);
+    const remainingSelected = targetIds.filter((id) => {
+      const el = allElementsFlat.find((item) => item.id === id);
+      return el?.locked;
+    });
+    setSelectedIds(remainingSelected);
+  }, [selectedIds, contextElementId, elements, allElementsFlat, commit]);
+
+  const toggleLockSelected = useCallback(() => {
+    const targetIds = selectedIds.length > 0 ? selectedIds : (contextElementId ? [contextElementId] : []);
+    if (targetIds.length === 0) return;
+    const targetElements = allElementsFlat.filter((e) => targetIds.includes(e.id));
+    const allLocked = targetElements.length > 0 && targetElements.every((e) => e.locked);
+    const nextLocked = !allLocked;
+    targetIds.forEach((id) => updateElement(id, { locked: nextLocked }));
+    showToast({
+      title: nextLocked ? "已锁定图层" : "已解锁图层",
+      description: `${targetIds.length} 个对象`,
+      id: "toggle-lock",
+    });
+  }, [selectedIds, contextElementId, allElementsFlat, updateElement]);
 
   const bringToFront = useCallback(() => {
-    const targetIds = contextElementId
-      ? (selectedIds.includes(contextElementId) ? selectedIds : [contextElementId])
+    const activeContextId = contextOpen ? contextElementId : null;
+    const targetIds = activeContextId
+      ? (selectedIds.includes(activeContextId) ? selectedIds : [activeContextId])
       : selectedIds;
     if (targetIds.length === 0) return;
     const selectedSet = new Set(targetIds);
     const moving = elements.filter((e) => selectedSet.has(e.id));
     const rest = elements.filter((e) => !selectedSet.has(e.id));
     commit([...rest, ...moving]);
-  }, [contextElementId, selectedIds, elements, commit]);
+  }, [contextOpen, contextElementId, selectedIds, elements, commit]);
 
   const sendToBack = useCallback(() => {
-    const targetIds = contextElementId
-      ? (selectedIds.includes(contextElementId) ? selectedIds : [contextElementId])
+    const activeContextId = contextOpen ? contextElementId : null;
+    const targetIds = activeContextId
+      ? (selectedIds.includes(activeContextId) ? selectedIds : [activeContextId])
       : selectedIds;
     if (targetIds.length === 0) return;
     const selectedSet = new Set(targetIds);
     const moving = elements.filter((e) => selectedSet.has(e.id));
     const rest = elements.filter((e) => !selectedSet.has(e.id));
     commit([...moving, ...rest]);
-  }, [contextElementId, selectedIds, elements, commit]);
+  }, [contextOpen, contextElementId, selectedIds, elements, commit]);
 
   const bringForward = useCallback(() => {
-    const targetId = contextElementId || selectedId;
+    const activeContextId = contextOpen ? contextElementId : null;
+    const targetId = activeContextId || selectedId;
     if (!targetId) return;
     const idx = elements.findIndex((e) => e.id === targetId);
     if (idx === -1 || idx === elements.length - 1) return;
@@ -524,10 +555,11 @@ export function Editor() {
     next[idx] = next[idx + 1];
     next[idx + 1] = temp;
     commit(next);
-  }, [contextElementId, selectedId, elements, commit]);
+  }, [contextOpen, contextElementId, selectedId, elements, commit]);
 
   const sendBackward = useCallback(() => {
-    const targetId = contextElementId || selectedId;
+    const activeContextId = contextOpen ? contextElementId : null;
+    const targetId = activeContextId || selectedId;
     if (!targetId) return;
     const idx = elements.findIndex((e) => e.id === targetId);
     if (idx === -1 || idx === 0) return;
@@ -536,46 +568,88 @@ export function Editor() {
     next[idx] = next[idx - 1];
     next[idx - 1] = temp;
     commit(next);
-  }, [contextElementId, selectedId, elements, commit]);
+  }, [contextOpen, contextElementId, selectedId, elements, commit]);
 
-  const duplicate = useCallback(() => {
-    const targetIds = contextElementId
-      ? (selectedIds.includes(contextElementId) ? selectedIds : [contextElementId])
+  const pasteCountRef = useRef(0);
+  const isPastingRef = useRef(false);
+
+  useEffect(() => {
+    if (isPastingRef.current) {
+      isPastingRef.current = false;
+      return;
+    }
+    pasteCountRef.current = 0;
+  }, [selectedIds]);
+
+  const copySelected = useCallback(async () => {
+    const activeContextId = contextOpen ? contextElementId : null;
+    const targetIds = activeContextId
+      ? (selectedIds.includes(activeContextId) ? selectedIds : [activeContextId])
       : selectedIds;
     if (targetIds.length === 0) return;
 
-    const newCreatedIds: string[] = [];
-    let next = [...elements];
+    const elementsToCopy = getTopLevelSelectedElements(targetIds, latestElementsRef.current);
+    if (elementsToCopy.length === 0) return;
 
-    targetIds.forEach((targetId) => {
-      const el = next.find((e) => e.id === targetId);
-      if (!el) return;
-      const idMap = new Map<string, string>();
-      const cloneNode = (node: EditorElement): EditorElement => {
-        const newId = genId();
-        idMap.set(node.id, newId);
-        return {
-          ...JSON.parse(JSON.stringify(node)),
-          id: newId,
-          name: `${node.name} copy`,
-          x: node.x + 20,
-          y: node.y + 20,
-          parentId: node.parentId ? idMap.get(node.parentId) ?? node.parentId : null,
-          children: node.children.map(cloneNode),
-        };
-      };
-      const copy = cloneNode(el);
-      newCreatedIds.push(copy.id);
-      next = copy.parentId
-        ? next.map((e) =>
-            e.id === copy.parentId ? { ...e, children: [...e.children, copy] } : e,
-          )
-        : [...next, copy];
-    });
+    const serialized = serializeElementsForClipboard(elementsToCopy);
+    setInternalClipboard(elementsToCopy);
+    pasteCountRef.current = 0;
 
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(serialized);
+      }
+    } catch {
+      // Internal clipboard cache will still work if browser clipboard write is blocked
+    }
+  }, [contextOpen, contextElementId, selectedIds]);
+
+  const cutSelected = useCallback(async () => {
+    const activeContextId = contextOpen ? contextElementId : null;
+    const targetIds = activeContextId
+      ? (selectedIds.includes(activeContextId) ? selectedIds : [activeContextId])
+      : selectedIds;
+    if (targetIds.length === 0) return;
+
+    const elementsToCopy = getTopLevelSelectedElements(targetIds, latestElementsRef.current);
+    if (elementsToCopy.length === 0) return;
+
+    const serialized = serializeElementsForClipboard(elementsToCopy);
+    setInternalClipboard(elementsToCopy);
+    pasteCountRef.current = 0;
+
+    try {
+      if (typeof navigator !== "undefined" && navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(serialized);
+      }
+    } catch {
+      // Internal clipboard cache will still work
+    }
+
+    deleteSelected();
+  }, [contextOpen, contextElementId, selectedIds, deleteSelected]);
+
+  const duplicate = useCallback(() => {
+    const activeContextId = contextOpen ? contextElementId : null;
+    const targetIds = activeContextId
+      ? (selectedIds.includes(activeContextId) ? selectedIds : [activeContextId])
+      : selectedIds;
+    if (targetIds.length === 0) return;
+
+    const elementsToClone = getTopLevelSelectedElements(targetIds, latestElementsRef.current);
+    if (elementsToClone.length === 0) return;
+
+    isPastingRef.current = true;
+    const { clonedElements, newSelectedIds } = cloneElementsForPaste(
+      elementsToClone,
+      undefined,
+      0,
+    );
+
+    const next = [...latestElementsRef.current, ...clonedElements];
     commit(next);
-    setSelectedIds(newCreatedIds);
-  }, [contextElementId, selectedIds, elements, commit]);
+    setSelectedIds(newSelectedIds);
+  }, [contextOpen, contextElementId, selectedIds, commit]);
 
   const undo = useCallback(() => {
     if (historyIndex > 0) {
@@ -699,44 +773,298 @@ export function Editor() {
     [elements, addElement],
   );
 
-  useEffect(() => {
-    const handlePaste = async (e: ClipboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (target) {
-        if (target.isContentEditable) return;
-        const tag = target.tagName?.toLowerCase();
-        if (tag === "input" || tag === "textarea" || tag === "select") return;
+  const insertTextContent = useCallback(
+    (text: string, targetCanvasX?: number, targetCanvasY?: number) => {
+      const trimmed = text.trim();
+      if (!trimmed) return;
+
+      const snap = (v: number) => Math.round(v / 20) * 20;
+
+      let posX = targetCanvasX !== undefined ? targetCanvasX : lastCanvasPointerPosRef.current.x;
+      let posY = targetCanvasY !== undefined ? targetCanvasY : lastCanvasPointerPosRef.current.y;
+
+      if (targetCanvasX === undefined) {
+        const offset = (elements.length % 6) * 24;
+        posX = 140 + offset;
+        posY = 140 + offset;
       }
 
+      // Calculate width and height adaptively based on text
+      const lines = text.split(/\r\n|\r|\n/);
+      let maxLineLength = 0;
+      for (const line of lines) {
+        let visualLen = 0;
+        for (let i = 0; i < line.length; i++) {
+          visualLen += line.charCodeAt(i) > 255 ? 2 : 1;
+        }
+        if (visualLen > maxLineLength) {
+          maxLineLength = visualLen;
+        }
+      }
+
+      let width = 180;
+      let height = 36;
+
+      if (lines.length === 1) {
+        width = Math.min(600, Math.max(120, maxLineLength * 8.5 + 24));
+        height = 36;
+      } else {
+        width = Math.min(560, Math.max(180, maxLineLength * 8.5 + 28));
+        height = Math.max(48, lines.length * 22 + 16);
+      }
+
+      width = Math.round(width);
+      height = Math.round(height);
+
+      let cx = snap(posX);
+      let cy = snap(posY);
+
+      let parentId: string | null = null;
+      const container = [...elements]
+        .reverse()
+        .find(
+          (el) =>
+            (el.type === "mobile-frame" || el.type === "browser-frame") &&
+            posX >= el.x && posX <= el.x + el.width &&
+            posY >= el.y && posY <= el.y + el.height,
+        );
+
+      if (container) {
+        parentId = container.id;
+        cx = snap(posX - container.x);
+        cy = snap(posY - container.y);
+      }
+
+      addElement(
+        "text",
+        cx,
+        cy,
+        parentId,
+        width,
+        height,
+        0,
+        {
+          text,
+          fontSize: 14,
+          fontWeight: 400,
+          textColor: "var(--foreground)",
+          align: "left",
+        },
+      );
+    },
+    [elements, addElement],
+  );
+
+  const pasteElements = useCallback(
+    async (targetCanvasX?: number, targetCanvasY?: number) => {
+      const posX = targetCanvasX ?? lastCanvasPointerPosRef.current.x;
+      const posY = targetCanvasY ?? lastCanvasPointerPosRef.current.y;
+      const targetPos =
+        targetCanvasX !== undefined && targetCanvasY !== undefined
+          ? { x: targetCanvasX, y: targetCanvasY }
+          : undefined;
+
+      // 1. Try reading system clipboard items (navigator.clipboard.read) for images
+      if (typeof navigator !== "undefined" && navigator.clipboard?.read) {
+        try {
+          const items = await navigator.clipboard.read();
+          for (const item of items) {
+            const imageType = item.types.find((t) => t.startsWith("image/"));
+            if (imageType) {
+              const blob = await item.getType(imageType);
+              await insertImageFile(blob, posX, posY);
+              return true;
+            }
+          }
+        } catch {
+          // navigator.clipboard.read() might fail or be restricted in some browsers
+        }
+      }
+
+      // 2. Try reading clipboard text (navigator.clipboard.readText)
+      let clipText: string | null = null;
+      try {
+        if (typeof navigator !== "undefined" && navigator.clipboard?.readText) {
+          clipText = await navigator.clipboard.readText();
+        }
+      } catch {
+        // Read text denied or restricted
+      }
+
+      // 2a. Check if text is valid Bluepen serialized element JSON
+      const parsedElements = parseElementsFromClipboard(clipText);
+      if (parsedElements && parsedElements.length > 0) {
+        isPastingRef.current = true;
+        const { clonedElements, newSelectedIds } = cloneElementsForPaste(
+          parsedElements,
+          targetPos,
+          pasteCountRef.current,
+        );
+        pasteCountRef.current += 1;
+
+        const next = [...latestElementsRef.current, ...clonedElements];
+        commit(next);
+        setSelectedIds(newSelectedIds);
+        return true;
+      }
+
+      // 2b. Check if text is a base64 image data URL
+      if (clipText && clipText.trim().startsWith("data:image/")) {
+        const blob = dataUrlToBlob(clipText.trim());
+        if (blob) {
+          await insertImageFile(blob, posX, posY);
+          return true;
+        }
+      }
+
+      // 2c. Check if text is non-empty plain text
+      if (clipText && clipText.trim()) {
+        insertTextContent(clipText, targetCanvasX, targetCanvasY);
+        return true;
+      }
+
+      // 3. Fallback: Internal clipboard cache ONLY if clipboard read produced nothing or failed
+      const internal = getInternalClipboard();
+      if (internal && internal.length > 0) {
+        isPastingRef.current = true;
+        const { clonedElements, newSelectedIds } = cloneElementsForPaste(
+          internal,
+          targetPos,
+          pasteCountRef.current,
+        );
+        pasteCountRef.current += 1;
+
+        const next = [...latestElementsRef.current, ...clonedElements];
+        commit(next);
+        setSelectedIds(newSelectedIds);
+        return true;
+      }
+
+      return false;
+    },
+    [commit, setSelectedIds, insertImageFile, insertTextContent],
+  );
+
+  const handlePasteAtContextPos = useCallback(async () => {
+    await pasteElements(lastCanvasPointerPosRef.current.x, lastCanvasPointerPosRef.current.y);
+  }, [pasteElements]);
+
+  useEffect(() => {
+    const handleCopy = (e: ClipboardEvent) => {
+      if (isEditableTarget(e.target)) return;
+      if (selectedIds.length === 0) return;
+
+      const elementsToCopy = getTopLevelSelectedElements(selectedIds, latestElementsRef.current);
+      if (elementsToCopy.length === 0) return;
+
+      e.preventDefault();
+      const serialized = serializeElementsForClipboard(elementsToCopy);
+      e.clipboardData?.setData("text/plain", serialized);
+      e.clipboardData?.setData(BLUEPEN_CLIPBOARD_MIME, serialized);
+      e.clipboardData?.setData("application/json", serialized);
+      setInternalClipboard(elementsToCopy);
+      pasteCountRef.current = 0;
+    };
+
+    const handleCut = (e: ClipboardEvent) => {
+      if (isEditableTarget(e.target)) return;
+      if (selectedIds.length === 0) return;
+
+      const elementsToCopy = getTopLevelSelectedElements(selectedIds, latestElementsRef.current);
+      if (elementsToCopy.length === 0) return;
+
+      e.preventDefault();
+      const serialized = serializeElementsForClipboard(elementsToCopy);
+      e.clipboardData?.setData("text/plain", serialized);
+      e.clipboardData?.setData(BLUEPEN_CLIPBOARD_MIME, serialized);
+      e.clipboardData?.setData("application/json", serialized);
+      setInternalClipboard(elementsToCopy);
+      pasteCountRef.current = 0;
+
+      deleteSelected();
+    };
+
+    const handlePaste = async (e: ClipboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && isEditableTarget(target)) return;
+
+      const clipText =
+        e.clipboardData?.getData(BLUEPEN_CLIPBOARD_MIME) ||
+        e.clipboardData?.getData("application/json") ||
+        e.clipboardData?.getData("text/plain");
+
+      // 1. First priority: parsed Bluepen elements JSON payload
+      const parsedElements = parseElementsFromClipboard(clipText);
+      if (parsedElements && parsedElements.length > 0) {
+        e.preventDefault();
+        isPastingRef.current = true;
+        const { clonedElements, newSelectedIds } = cloneElementsForPaste(
+          parsedElements,
+          undefined,
+          pasteCountRef.current,
+        );
+        pasteCountRef.current += 1;
+
+        const next = [...latestElementsRef.current, ...clonedElements];
+        commit(next);
+        setSelectedIds(newSelectedIds);
+        return;
+      }
+
+      // 2. Second priority: System clipboard images (screenshots, files, clipboard items, HTML data URLs)
       const imageFile = extractImageFromClipboardData(e.clipboardData);
       if (imageFile) {
         e.preventDefault();
         await insertImageFile(imageFile);
+        return;
+      }
+
+      // 3. Third priority: Data URL image pasted as text
+      if (clipText && clipText.trim().startsWith("data:image/")) {
+        const blob = dataUrlToBlob(clipText.trim());
+        if (blob) {
+          e.preventDefault();
+          await insertImageFile(blob);
+          return;
+        }
+      }
+
+      // 4. Fourth priority: Plain text content
+      const textData = e.clipboardData?.getData("text/plain");
+      if (textData && textData.trim()) {
+        e.preventDefault();
+        insertTextContent(textData);
+        return;
+      }
+
+      // 5. Fallback: Internal clipboard cache ONLY if clipboard had no external data
+      const internal = getInternalClipboard();
+      if (internal && internal.length > 0 && (!clipText || !clipText.trim())) {
+        e.preventDefault();
+        isPastingRef.current = true;
+        const { clonedElements, newSelectedIds } = cloneElementsForPaste(
+          internal,
+          undefined,
+          pasteCountRef.current,
+        );
+        pasteCountRef.current += 1;
+
+        const next = [...latestElementsRef.current, ...clonedElements];
+        commit(next);
+        setSelectedIds(newSelectedIds);
+        return;
       }
     };
 
+    window.addEventListener("copy", handleCopy);
+    window.addEventListener("cut", handleCut);
     window.addEventListener("paste", handlePaste);
-    return () => window.removeEventListener("paste", handlePaste);
-  }, [insertImageFile]);
-
-  const handlePasteAtContextPos = useCallback(async () => {
-    try {
-      if (navigator.clipboard && navigator.clipboard.read) {
-        const items = await navigator.clipboard.read();
-        for (const item of items) {
-          const imageType = item.types.find((t) => t.startsWith("image/"));
-          if (imageType) {
-            const blob = await item.getType(imageType);
-            await insertImageFile(blob);
-            return;
-          }
-        }
-      }
-      showToast({ title: "剪贴板中未发现图片", id: "no-clipboard-img" });
-    } catch {
-      showToast({ title: "请按 Ctrl+V 快捷键进行粘贴", id: "clipboard-key-hint" });
-    }
-  }, [insertImageFile]);
+    return () => {
+      window.removeEventListener("copy", handleCopy);
+      window.removeEventListener("cut", handleCut);
+      window.removeEventListener("paste", handlePaste);
+    };
+  }, [selectedIds, deleteSelected, commit, setSelectedId, setSelectedIds, insertImageFile, insertTextContent]);
 
   const handleContextMenu = useCallback(
     (e: React.MouseEvent) => {
@@ -849,9 +1177,14 @@ export function Editor() {
   useKeyboard({
     "Ctrl+Z": undo,
     "Ctrl+Shift+Z": redo,
+    "Ctrl+C": copySelected,
+    "Ctrl+X": cutSelected,
+    "Ctrl+V": () => void pasteElements(),
     "Delete": deleteSelected,
     "Backspace": deleteSelected,
     "Ctrl+D": duplicate,
+    "Ctrl+Shift+L": toggleLockSelected,
+    "Ctrl+L": toggleLockSelected,
     "Ctrl+]": bringForward,
     "Ctrl+[": sendBackward,
     "Ctrl+Shift+]": bringToFront,
@@ -1352,7 +1685,16 @@ export function Editor() {
           />
 
         <div className="relative flex flex-1 min-w-0 overflow-hidden">
-          <ContextMenu open={contextOpen} onOpenChange={setContextOpen}>
+          <ContextMenu
+            open={contextOpen}
+            onOpenChange={(open) => {
+              setContextOpen(open);
+              if (!open) {
+                setContextElementId(null);
+                setContextTarget("canvas");
+              }
+            }}
+          >
             <ContextMenuTrigger className="flex flex-1 min-w-0 overflow-hidden" onContextMenu={handleContextMenu}>
               <Canvas
                 elements={elements}
@@ -1374,6 +1716,12 @@ export function Editor() {
                 onCommitMove={handleCommitCanvasGesture}
                 onDelete={deleteSelected}
                 onCanvasClick={handleCanvasClick}
+                onCanvasPointerMove={(pos) => {
+                  lastCanvasPointerPosRef.current = pos;
+                }}
+                onContextMenu={(_e, pos) => {
+                  lastCanvasPointerPosRef.current = pos;
+                }}
                 onDropAsset={(type, x, y) => addElement(type, x, y)}
                 onDropFile={(file, x, y) => void handleDropFile(file, x, y)}
               />
@@ -1381,45 +1729,60 @@ export function Editor() {
             <ContextMenuPopup>
               {contextTarget === "element" && ((contextElementId && allElementsFlat.some((e: EditorElement) => e.id === contextElementId)) || selectedIds.length > 0) ? (
                 <>
-                  <ContextMenuItem closeOnClick onClick={duplicate}>
+                  <ContextMenuItem closeOnClick onClick={cutSelected}>
+                    <Scissors aria-hidden="true" className="opacity-80" />
+                    剪切
+                    <ContextMenuShortcut>{isMac ? "⌘X" : "Ctrl+X"}</ContextMenuShortcut>
+                  </ContextMenuItem>
+                  <ContextMenuItem closeOnClick onClick={copySelected}>
                     <Copy aria-hidden="true" className="opacity-80" />
+                    复制
+                    <ContextMenuShortcut>{isMac ? "⌘C" : "Ctrl+C"}</ContextMenuShortcut>
+                  </ContextMenuItem>
+                  <ContextMenuItem closeOnClick onClick={() => void handlePasteAtContextPos()}>
+                    <ClipboardPaste aria-hidden="true" className="opacity-80" />
+                    粘贴
+                    <ContextMenuShortcut>{isMac ? "⌘V" : "Ctrl+V"}</ContextMenuShortcut>
+                  </ContextMenuItem>
+                  <ContextMenuItem closeOnClick onClick={duplicate}>
+                    <CopyPlus aria-hidden="true" className="opacity-80" />
                     克隆
-                    <ContextMenuShortcut>Ctrl+D</ContextMenuShortcut>
+                    <ContextMenuShortcut>{isMac ? "⌘D" : "Ctrl+D"}</ContextMenuShortcut>
                   </ContextMenuItem>
                   {canGroupElements(selectedIds, elements) && (
                     <ContextMenuItem closeOnClick onClick={groupSelected}>
                       <Boxes aria-hidden="true" className="opacity-80" />
                       组合
-                      <ContextMenuShortcut>Ctrl+G</ContextMenuShortcut>
+                      <ContextMenuShortcut>{isMac ? "⌘G" : "Ctrl+G"}</ContextMenuShortcut>
                     </ContextMenuItem>
                   )}
                   {canUngroupElements(contextElementId ? [contextElementId] : selectedIds, elements) && (
                     <ContextMenuItem closeOnClick onClick={ungroupSelected}>
                       <Ungroup aria-hidden="true" className="opacity-80" />
                       打散
-                      <ContextMenuShortcut>Ctrl+Shift+G</ContextMenuShortcut>
+                      <ContextMenuShortcut>{isMac ? "⌘⇧G" : "Ctrl+Shift+G"}</ContextMenuShortcut>
                     </ContextMenuItem>
                   )}
                   <ContextMenuSeparator />
                   <ContextMenuItem closeOnClick onClick={bringForward}>
                     <ArrowUp aria-hidden="true" className="opacity-80" />
                     上移一层
-                    <ContextMenuShortcut>Ctrl+]</ContextMenuShortcut>
+                    <ContextMenuShortcut>{isMac ? "⌘]" : "Ctrl+]"}</ContextMenuShortcut>
                   </ContextMenuItem>
                   <ContextMenuItem closeOnClick onClick={sendBackward}>
                     <ArrowDown aria-hidden="true" className="opacity-80" />
                     下移一层
-                    <ContextMenuShortcut>Ctrl+[</ContextMenuShortcut>
+                    <ContextMenuShortcut>{isMac ? "⌘[" : "Ctrl+["}</ContextMenuShortcut>
                   </ContextMenuItem>
                   <ContextMenuItem closeOnClick onClick={bringToFront}>
                     <ArrowUpToLine aria-hidden="true" className="opacity-80" />
                     置于顶层
-                    <ContextMenuShortcut>Ctrl+Shift+]</ContextMenuShortcut>
+                    <ContextMenuShortcut>{isMac ? "⌘⇧]" : "Ctrl+Shift+]"}</ContextMenuShortcut>
                   </ContextMenuItem>
                   <ContextMenuItem closeOnClick onClick={sendToBack}>
                     <ArrowDownToLine aria-hidden="true" className="opacity-80" />
                     置于底层
-                    <ContextMenuShortcut>Ctrl+Shift+[</ContextMenuShortcut>
+                    <ContextMenuShortcut>{isMac ? "⌘⇧[" : "Ctrl+Shift+["}</ContextMenuShortcut>
                   </ContextMenuItem>
                   <ContextMenuSeparator />
                   <ContextMenuItem closeOnClick onClick={deleteSelected} variant="destructive">
@@ -1428,16 +1791,34 @@ export function Editor() {
                     <ContextMenuShortcut>Del</ContextMenuShortcut>
                   </ContextMenuItem>
                   <ContextMenuSeparator />
-                  <ContextMenuItem
-                    closeOnClick
-                    onClick={() => {
-                      const ids = selectedIds.length > 0 ? selectedIds : (contextElementId ? [contextElementId] : []);
-                      ids.forEach((id) => updateElement(id, { locked: true }));
-                    }}
-                  >
-                    <Lock aria-hidden="true" className="opacity-80" />
-                    锁定
-                  </ContextMenuItem>
+                  {(() => {
+                    const ids = selectedIds.length > 0 ? selectedIds : (contextElementId ? [contextElementId] : []);
+                    const targetElements = allElementsFlat.filter((e) => ids.includes(e.id));
+                    const isTargetLocked = targetElements.length > 0 && targetElements.every((e) => e.locked);
+                    return isTargetLocked ? (
+                      <ContextMenuItem
+                        closeOnClick
+                        onClick={() => {
+                          ids.forEach((id) => updateElement(id, { locked: false }));
+                        }}
+                      >
+                        <Unlock aria-hidden="true" className="opacity-80" />
+                        解锁
+                        <ContextMenuShortcut>{isMac ? "⌘⇧L" : "Ctrl+Shift+L"}</ContextMenuShortcut>
+                      </ContextMenuItem>
+                    ) : (
+                      <ContextMenuItem
+                        closeOnClick
+                        onClick={() => {
+                          ids.forEach((id) => updateElement(id, { locked: true }));
+                        }}
+                      >
+                        <Lock aria-hidden="true" className="opacity-80" />
+                        锁定
+                        <ContextMenuShortcut>{isMac ? "⌘⇧L" : "Ctrl+Shift+L"}</ContextMenuShortcut>
+                      </ContextMenuItem>
+                    );
+                  })()}
                   <ContextMenuItem
                     closeOnClick
                     onClick={() => {
@@ -1465,7 +1846,7 @@ export function Editor() {
                   <ContextMenuItem closeOnClick onClick={() => void handlePasteAtContextPos()}>
                     <ClipboardPaste aria-hidden="true" className="opacity-80" />
                     粘贴到此处
-                    <ContextMenuShortcut>Ctrl+V</ContextMenuShortcut>
+                    <ContextMenuShortcut>{isMac ? "⌘V" : "Ctrl+V"}</ContextMenuShortcut>
                   </ContextMenuItem>
                   <ContextMenuSeparator />
                   <ContextMenuItem closeOnClick onClick={() => setZoom(1)}>

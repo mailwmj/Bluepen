@@ -191,7 +191,7 @@ export function AgentStreamHeaderPreview({ props = {} }: { props?: Props }) {
   const elapsedTime = String(val(props, "elapsedTime", "2m 39s"));
 
   return (
-    <div className="flex h-full w-full items-center justify-between rounded-lg border border-border bg-surface px-3 select-none">
+    <div className="flex h-full w-full items-center justify-between rounded-lg border border-border-visible bg-surface px-3 select-none">
       <div className="flex items-center gap-2">
         <div className="flex size-6 items-center justify-center rounded-full bg-surface-raised border border-border-visible">
           <Bot className="size-3.5 text-foreground" />
@@ -228,7 +228,7 @@ export function AgentToolStepPreview({ props = {} }: { props?: Props }) {
   const isExpanded = props.isExpanded === true || props.isExpanded === "true";
 
   return (
-    <div className="flex h-full w-full flex-col justify-center rounded-lg border border-border-visible/80 bg-surface-raised/40 p-2 select-none">
+    <div className="flex h-full w-full flex-col justify-center rounded-lg border border-border-visible bg-surface-raised/40 p-2 select-none">
       <div className="flex items-center justify-between text-xs">
         <div className="flex items-center gap-2 text-foreground/90">
           <Terminal className="size-3.5 text-muted-foreground shrink-0" />
@@ -274,7 +274,7 @@ export function AgentThoughtStreamPreview({ props = {} }: { props?: Props }) {
   );
 
   return (
-    <div className="flex h-full w-full flex-col justify-between rounded-lg border border-border-visible/60 bg-surface-raised/20 p-2.5 select-none">
+    <div className="flex h-full w-full flex-col justify-between rounded-lg border border-border-visible bg-surface-raised/20 p-2.5 select-none">
       <div className="flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
         <Loader2 className="size-3 animate-spin text-muted-foreground" />
         <span className="tracking-wider uppercase">{statusText}</span>
@@ -781,7 +781,7 @@ export function AgentSessionListPreview({ props = {} }: { props?: Props }) {
               className={cn(
                 "rounded-md px-2 py-1.5 text-xs truncate transition-colors",
                 isActive
-                  ? "bg-surface-raised text-foreground font-semibold border border-border-visible/60"
+                  ? "bg-surface-raised text-foreground font-semibold border border-border-visible"
                   : "text-muted-foreground hover:bg-surface-raised/40 hover:text-foreground"
               )}
             >

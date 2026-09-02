@@ -12,6 +12,40 @@ export interface ProcessedImage {
 }
 
 /**
+ * Checks whether a File or Blob is an image based on MIME type or filename extension.
+ */
+export function isImageFile(file: Blob | File): boolean {
+  if (file.type && file.type.startsWith("image/")) return true;
+  const fileName = (file as File).name;
+  if (fileName && /\.(png|jpe?g|webp|gif|svg|bmp|ico|avif)$/i.test(fileName)) {
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Converts a base64 Data URL to a Blob.
+ */
+export function dataUrlToBlob(dataUrl: string): Blob | null {
+  try {
+    if (!dataUrl || typeof dataUrl !== "string") return null;
+    const parts = dataUrl.split(",");
+    if (parts.length < 2) return null;
+    const match = parts[0].match(/:(.*?);/);
+    const mime = match ? match[1] : "image/png";
+    const byteString = atob(parts[1]);
+    const ab = new ArrayBuffer(byteString.length);
+    const ia = new Uint8Array(ab);
+    for (let i = 0; i < byteString.length; i++) {
+      ia[i] = byteString.charCodeAt(i);
+    }
+    return new Blob([ia], { type: mime });
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Reads an image File or Blob, extracts dimensions, and optionally scales it down
  * if it exceeds maxCanvasDimension to avoid bloating document state.
  */
@@ -30,8 +64,8 @@ export async function processImageFile(
       const img = new Image();
 
       img.onload = () => {
-        const naturalWidth = img.naturalWidth || img.width;
-        const naturalHeight = img.naturalHeight || img.height;
+        const naturalWidth = img.naturalWidth || img.width || 400;
+        const naturalHeight = img.naturalHeight || img.height || 300;
 
         let finalDataUrl = rawDataUrl;
 
@@ -99,32 +133,46 @@ export async function processImageFile(
 }
 
 /**
- * Extracts the first image file from clipboard items or data transfer items.
+ * Extracts the first image file or Blob from clipboard items or data transfer items.
  */
 export function extractImageFromClipboardData(
   clipboardData: DataTransfer | null,
-): File | null {
+): Blob | File | null {
   if (!clipboardData) return null;
 
-  // 1. Check files list
+  // 1. Check items list (DataTransferItemList)
+  if (clipboardData.items && clipboardData.items.length > 0) {
+    for (let i = 0; i < clipboardData.items.length; i++) {
+      const item = clipboardData.items[i];
+      if (item.type && item.type.startsWith("image/")) {
+        const file = item.getAsFile();
+        if (file) return file;
+      }
+    }
+  }
+
+  // 2. Check files list (FileList)
   if (clipboardData.files && clipboardData.files.length > 0) {
     for (let i = 0; i < clipboardData.files.length; i++) {
       const file = clipboardData.files[i];
-      if (file.type.startsWith("image/")) {
+      if (isImageFile(file)) {
         return file;
       }
     }
   }
 
-  // 2. Check items list
-  if (clipboardData.items && clipboardData.items.length > 0) {
-    for (let i = 0; i < clipboardData.items.length; i++) {
-      const item = clipboardData.items[i];
-      if (item.type.startsWith("image/")) {
-        const file = item.getAsFile();
-        if (file) return file;
+  // 3. Check HTML content for embedded image data URL or img tags
+  try {
+    const html = clipboardData.getData ? clipboardData.getData("text/html") : "";
+    if (html) {
+      const match = html.match(/<img[^>]+src=["'](data:image\/[^"']+)["']/i);
+      if (match && match[1]) {
+        const blob = dataUrlToBlob(match[1]);
+        if (blob) return blob;
       }
     }
+  } catch {
+    // Ignore HTML parsing errors
   }
 
   return null;

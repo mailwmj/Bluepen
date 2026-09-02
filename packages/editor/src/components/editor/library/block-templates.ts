@@ -732,7 +732,7 @@ export function createBlockTemplateGroup(
         makeChild("rectangle", "专业版卡片", 295, 88, 250, 344, groupId, {
           fill: "var(--background)",
           stroke: "var(--foreground)",
-          borderWidth: 2,
+          borderWidth: 1,
           radius: 8,
         }),
         makeChild("text", "专业版标题", 311, 104, 218, 22, groupId, {

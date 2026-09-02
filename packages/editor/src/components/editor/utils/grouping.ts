@@ -37,6 +37,35 @@ function flattenElements(list: EditorElement[]): EditorElement[] {
   return result;
 }
 
+function computeWorldBounds(
+  element: EditorElement,
+  allElementsFlat: EditorElement[],
+): { x: number; y: number; width: number; height: number } {
+  let curX = element.x;
+  let curY = element.y;
+  let parentId = element.parentId;
+
+  if (parentId) {
+    const visited = new Set<string>([element.id]);
+    while (parentId) {
+      if (visited.has(parentId)) break;
+      visited.add(parentId);
+      const parent = allElementsFlat.find((p) => p.id === parentId);
+      if (!parent) break;
+      curX += parent.x;
+      curY += parent.y;
+      parentId = parent.parentId;
+    }
+  }
+
+  return {
+    x: curX,
+    y: curY,
+    width: element.width,
+    height: element.height,
+  };
+}
+
 /**
  * Groups multiple selected elements into a single Group container.
  * Sub-elements have their coordinates converted into relative coordinates within the group.
@@ -50,140 +79,164 @@ export function groupElements(
     return { nextElements: elements, groupId: null };
   }
 
-  const selectedSet = new Set(selectedIds);
+  const flat = flattenElements(elements);
+  const elementMap = new Map(flat.map((el) => [el.id, el]));
 
-  // Helper to recursively process a list of elements at any level of the tree
-  let createdGroupId: string | null = null;
-
-  const processLevel = (list: EditorElement[]): EditorElement[] => {
-    // Check which elements at this specific level are selected
-    const selectedAtLevel = list.filter((el) => selectedSet.has(el.id));
-
-    if (selectedAtLevel.length >= 1 && selectedAtLevel.length === selectedIds.length) {
-      // All selected elements are at this same level
-      const minX = Math.min(...selectedAtLevel.map((el) => el.x));
-      const minY = Math.min(...selectedAtLevel.map((el) => el.y));
-      const maxX = Math.max(...selectedAtLevel.map((el) => el.x + el.width));
-      const maxY = Math.max(...selectedAtLevel.map((el) => el.y + el.height));
-
-      const groupId = genId();
-      createdGroupId = groupId;
-      const commonParentId = selectedAtLevel[0]?.parentId ?? null;
-
-      const groupElement: EditorElement = {
-        id: groupId,
-        type: "group",
-        name: groupName || "组合",
-        x: minX,
-        y: minY,
-        width: Math.max(10, maxX - minX),
-        height: Math.max(10, maxY - minY),
-        rotation: 0,
-        opacity: 1,
-        visible: true,
-        locked: false,
-        autoLayout: null,
-        parentId: commonParentId,
-        props: {},
-        children: selectedAtLevel.map((child) => ({
-          ...child,
-          x: child.x - minX,
-          y: child.y - minY,
-          parentId: groupId,
-        })),
-      };
-
-      // Replace the first selected element with the group, and drop the other selected elements
-      let inserted = false;
-      const result: EditorElement[] = [];
-
-      for (const item of list) {
-        if (selectedSet.has(item.id)) {
-          if (!inserted) {
-            result.push(groupElement);
-            inserted = true;
-          }
-        } else {
-          result.push({
-            ...item,
-            children: item.children ? processLevel(item.children) : [],
-          });
-        }
+  // 1. Deduplicate: If an element's ancestor is also in selectedIds, filter out the descendant
+  const idSet = new Set(selectedIds);
+  const topLevelSelectedIds = selectedIds.filter((id) => {
+    let curr = elementMap.get(id);
+    if (!curr) return false;
+    const visited = new Set<string>([id]);
+    while (curr && curr.parentId) {
+      if (visited.has(curr.parentId)) break;
+      visited.add(curr.parentId);
+      if (idSet.has(curr.parentId)) {
+        return false;
       }
-
-      return result;
+      curr = elementMap.get(curr.parentId);
     }
+    return true;
+  });
 
-    // Otherwise, recursively check children
-    return list.map((item) => {
-      if (item.children && item.children.length > 0) {
-        return {
-          ...item,
-          children: processLevel(item.children),
-        };
-      }
-      return item;
-    });
-  };
-
-  const nextElements = processLevel(elements);
-
-  // Fallback: If elements were scattered across hierarchy, collect them to root
-  if (!createdGroupId) {
-    const flat = flattenElements(elements);
-    const selectedTargets = flat.filter((el) => selectedSet.has(el.id));
-    if (selectedTargets.length < 1) {
-      return { nextElements: elements, groupId: null };
-    }
-
-    const minX = Math.min(...selectedTargets.map((el) => el.x));
-    const minY = Math.min(...selectedTargets.map((el) => el.y));
-    const maxX = Math.max(...selectedTargets.map((el) => el.x + el.width));
-    const maxY = Math.max(...selectedTargets.map((el) => el.y + el.height));
-
-    const groupId = genId();
-    createdGroupId = groupId;
-
-    const groupElement: EditorElement = {
-      id: groupId,
-      type: "group",
-      name: groupName || "组合",
-      x: minX,
-      y: minY,
-      width: Math.max(10, maxX - minX),
-      height: Math.max(10, maxY - minY),
-      rotation: 0,
-      opacity: 1,
-      visible: true,
-      locked: false,
-      autoLayout: null,
-      parentId: null,
-      props: {},
-      children: selectedTargets.map((child) => ({
-        ...child,
-        x: child.x - minX,
-        y: child.y - minY,
-        parentId: groupId,
-      })),
-    };
-
-    const removeSelectedRecursive = (list: EditorElement[]): EditorElement[] => {
-      return list
-        .filter((el) => !selectedSet.has(el.id))
-        .map((el) => ({
-          ...el,
-          children: el.children ? removeSelectedRecursive(el.children) : [],
-        }));
-    };
-
-    const cleaned = removeSelectedRecursive(elements);
-    return {
-      nextElements: [...cleaned, groupElement],
-      groupId,
-    };
+  if (topLevelSelectedIds.length < 1) {
+    return { nextElements: elements, groupId: null };
   }
 
-  return { nextElements, groupId: createdGroupId };
+  const topLevelSelectedSet = new Set(topLevelSelectedIds);
+  const selectedTargets = topLevelSelectedIds.map((id) => elementMap.get(id)!).filter(Boolean);
+
+  // Check if all selected elements share the exact same parent
+  const firstParentId = selectedTargets[0]?.parentId ?? null;
+  const allSameParent = selectedTargets.every((el) => (el.parentId ?? null) === firstParentId);
+
+  let createdGroupId: string | null = null;
+
+  if (allSameParent) {
+    // Standard grouping within the same parent level
+    const processLevel = (list: EditorElement[]): EditorElement[] => {
+      const selectedAtLevel = list.filter((el) => topLevelSelectedSet.has(el.id));
+
+      if (selectedAtLevel.length >= 1 && selectedAtLevel.length === topLevelSelectedIds.length) {
+        const minX = Math.min(...selectedAtLevel.map((el) => el.x));
+        const minY = Math.min(...selectedAtLevel.map((el) => el.y));
+        const maxX = Math.max(...selectedAtLevel.map((el) => el.x + el.width));
+        const maxY = Math.max(...selectedAtLevel.map((el) => el.y + el.height));
+
+        const groupId = genId();
+        createdGroupId = groupId;
+        const commonParentId = selectedAtLevel[0]?.parentId ?? null;
+
+        const groupElement: EditorElement = {
+          id: groupId,
+          type: "group",
+          name: groupName || "组合",
+          x: minX,
+          y: minY,
+          width: Math.max(10, maxX - minX),
+          height: Math.max(10, maxY - minY),
+          rotation: 0,
+          opacity: 1,
+          visible: true,
+          locked: false,
+          autoLayout: null,
+          parentId: commonParentId,
+          props: {},
+          children: selectedAtLevel.map((child) => ({
+            ...child,
+            x: child.x - minX,
+            y: child.y - minY,
+            parentId: groupId,
+          })),
+        };
+
+        let inserted = false;
+        const result: EditorElement[] = [];
+
+        for (const item of list) {
+          if (topLevelSelectedSet.has(item.id)) {
+            if (!inserted) {
+              result.push(groupElement);
+              inserted = true;
+            }
+          } else {
+            result.push({
+              ...item,
+              children: item.children ? processLevel(item.children) : [],
+            });
+          }
+        }
+
+        return result;
+      }
+
+      return list.map((item) => {
+        if (item.children && item.children.length > 0) {
+          return {
+            ...item,
+            children: processLevel(item.children),
+          };
+        }
+        return item;
+      });
+    };
+
+    const nextElements = processLevel(elements);
+    if (createdGroupId) {
+      return { nextElements, groupId: createdGroupId };
+    }
+  }
+
+  // Cross-hierarchy / Fallback grouping: Resolve world coordinates accurately
+  const worldBoundsList = selectedTargets.map((el) => computeWorldBounds(el, flat));
+  const minX = Math.min(...worldBoundsList.map((b) => b.x));
+  const minY = Math.min(...worldBoundsList.map((b) => b.y));
+  const maxX = Math.max(...worldBoundsList.map((b) => b.x + b.width));
+  const maxY = Math.max(...worldBoundsList.map((b) => b.y + b.height));
+
+  const groupId = genId();
+  createdGroupId = groupId;
+
+  const groupElement: EditorElement = {
+    id: groupId,
+    type: "group",
+    name: groupName || "组合",
+    x: minX,
+    y: minY,
+    width: Math.max(10, maxX - minX),
+    height: Math.max(10, maxY - minY),
+    rotation: 0,
+    opacity: 1,
+    visible: true,
+    locked: false,
+    autoLayout: null,
+    parentId: null,
+    props: {},
+    children: selectedTargets.map((child, idx) => {
+      const wb = worldBoundsList[idx]!;
+      return {
+        ...child,
+        x: wb.x - minX,
+        y: wb.y - minY,
+        parentId: groupId,
+      };
+    }),
+  };
+
+  const removeSelectedRecursive = (list: EditorElement[]): EditorElement[] => {
+    return list
+      .filter((el) => !topLevelSelectedSet.has(el.id))
+      .map((el) => ({
+        ...el,
+        children: el.children ? removeSelectedRecursive(el.children) : [],
+      }));
+  };
+
+  const cleaned = removeSelectedRecursive(elements);
+  return {
+    nextElements: [...cleaned, groupElement],
+    groupId,
+  };
 }
 
 /**
@@ -231,8 +284,8 @@ export function ungroupElements(
             for (const child of templateGroup.children) {
               const releasedChild: EditorElement = {
                 ...child,
-                x: Math.round(child.x),
-                y: Math.round(child.y),
+                x: Math.round(parentX + child.x),
+                y: Math.round(parentY + child.y),
                 parentId,
               };
               result.push(releasedChild);

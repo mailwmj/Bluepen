@@ -110,6 +110,16 @@ export function getElementDynamicBounds(
     };
   }
 
+  if (element.parentId && allElementsFlat) {
+    const world = getElementWorldBounds(element, allElementsFlat);
+    return {
+      x: world.x,
+      y: world.y,
+      width: world.width,
+      height: world.height,
+    };
+  }
+
   return {
     x: element.x,
     y: element.y,
