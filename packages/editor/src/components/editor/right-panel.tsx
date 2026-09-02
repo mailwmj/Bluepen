@@ -58,6 +58,7 @@ import {
 } from "lucide-react";
 import type { EditorElement, Page } from "./types";
 import { showToast } from "./hooks/use-toast";
+import { parseItems, parseMenuCategories } from "./library/web-renderers";
 import { processImageFile } from "./utils/image";
 import {
   calculateAlign,
@@ -2746,9 +2747,82 @@ export const RightPanel = memo(function RightPanel({
                 {/* Web Menu */}
                 {element.type === "web-menu" && (() => {
                   const showCategories = prop("showCategories", true) !== false && prop("showCategories", true) !== "false";
-                  const cat1 = String(prop("category1", "核心工作台"));
-                  const cat2 = String(prop("category2", "系统与权限"));
-                  const activeKey = String(prop("activeKey", "用户列表"));
+                  const categories = parseMenuCategories(element.props);
+                  const flatItemsStr = String(prop("items1", prop("items", categories.flatMap((c) => c.items).join(","))));
+                  const flatItems = parseItems(flatItemsStr, ["分析概览", "实时大屏", "用户列表", "角色策略", "审计日志"]);
+                  const allMenuItems = showCategories ? categories.flatMap((c) => c.items) : flatItems;
+
+                  const rawActiveKey = String(prop("activeKey", ""));
+                  const effectiveActiveKey = allMenuItems.includes(rawActiveKey)
+                    ? rawActiveKey
+                    : (allMenuItems[0] ?? "");
+
+                  const updateCategories = (newCategories: { title: string; items: string[] | string }[]) => {
+                    const formatted = newCategories.map((c) => ({
+                      title: c.title,
+                      items: Array.isArray(c.items) ? c.items.join(",") : c.items,
+                    }));
+                    const patch: Record<string, string | number | boolean> = {
+                      categories: JSON.stringify(formatted),
+                    };
+                    if (formatted[0]) {
+                      patch.category1 = formatted[0].title;
+                      patch.items1 = formatted[0].items;
+                    }
+                    if (formatted[1]) {
+                      patch.category2 = formatted[1].title;
+                      patch.items2 = formatted[1].items;
+                    } else {
+                      patch.category2 = "";
+                      patch.items2 = "";
+                    }
+                    setProps(patch);
+                  };
+
+                  const handleAddCategory = () => {
+                    const next = [
+                      ...categories.map((c) => ({ title: c.title, items: [...c.items] })),
+                      { title: `分类 ${categories.length + 1}`, items: ["新菜单项1", "新菜单项2"] },
+                    ];
+                    updateCategories(next);
+                  };
+
+                  const handleDeleteCategory = (idx: number) => {
+                    if (categories.length <= 1) {
+                      updateCategories([{ title: "", items: [] }]);
+                      return;
+                    }
+                    const next = categories.filter((_, i) => i !== idx);
+                    updateCategories(next);
+                  };
+
+                  const handleMoveCategoryUp = (idx: number) => {
+                    if (idx <= 0) return;
+                    const next = [...categories.map((c) => ({ title: c.title, items: [...c.items] }))];
+                    const temp = next[idx - 1];
+                    next[idx - 1] = next[idx];
+                    next[idx] = temp;
+                    updateCategories(next);
+                  };
+
+                  const handleMoveCategoryDown = (idx: number) => {
+                    if (idx >= categories.length - 1) return;
+                    const next = [...categories.map((c) => ({ title: c.title, items: [...c.items] }))];
+                    const temp = next[idx + 1];
+                    next[idx + 1] = next[idx];
+                    next[idx] = temp;
+                    updateCategories(next);
+                  };
+
+                  const handleCategoryTitleChange = (idx: number, newTitle: string) => {
+                    const next = categories.map((c, i) => (i === idx ? { ...c, title: newTitle } : c));
+                    updateCategories(next);
+                  };
+
+                  const handleCategoryItemsChange = (idx: number, newItemsStr: string) => {
+                    const next = categories.map((c, i) => (i === idx ? { ...c, items: newItemsStr } : c));
+                    updateCategories(next);
+                  };
 
                   return (
                     <>
@@ -2776,66 +2850,115 @@ export const RightPanel = memo(function RightPanel({
                       </div>
 
                       {showCategories ? (
-                        <>
-                          {/* Category 1 */}
-                          <div className="flex flex-col gap-1.5 rounded-md border border-border/60 p-2 bg-surface-raised/20">
-                            <div className="flex items-center gap-2">
-                              <span className="w-14 shrink-0 text-[10px] text-muted-foreground font-mono uppercase">分类 1</span>
-                              <Input
-                                size="sm"
-                                value={cat1}
-                                onChange={(e) => setProp("category1", e.target.value)}
-                                className="h-6 text-xs font-semibold"
-                              />
-                            </div>
-                            <OptionsListEditor
-                              title="分类 1 菜单项"
-                              mode="none"
-                              value={String(prop("items1", prop("items", "分析概览,实时大屏")))}
-                              onChange={(v) => setProp("items1", v)}
-                              placeholder="菜单项名称..."
-                            />
-                          </div>
+                        <div className="flex flex-col gap-2.5">
+                          {categories.map((cat, catIdx) => (
+                            <div
+                              key={catIdx}
+                              className="group/cat flex flex-col gap-2 rounded-md border border-border/60 p-2.5 bg-surface-raised/20"
+                            >
+                              <div className="flex items-center gap-2">
+                                <span className="w-12 shrink-0 text-[10px] text-muted-foreground font-mono uppercase">
+                                  分类 {catIdx + 1}
+                                </span>
+                                <Input
+                                  size="sm"
+                                  value={cat.title}
+                                  onChange={(e) => handleCategoryTitleChange(catIdx, e.target.value)}
+                                  placeholder="输入分类标题..."
+                                  className="h-6 flex-1 text-xs font-semibold"
+                                />
+                                <div className="flex items-center gap-0.5 shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleMoveCategoryUp(catIdx)}
+                                    disabled={catIdx === 0}
+                                    className="size-5 flex items-center justify-center rounded text-muted-foreground hover:bg-surface-raised hover:text-foreground disabled:opacity-20 cursor-pointer disabled:cursor-default"
+                                    title="上移分类"
+                                  >
+                                    <ArrowUp className="size-3" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleMoveCategoryDown(catIdx)}
+                                    disabled={catIdx === categories.length - 1}
+                                    className="size-5 flex items-center justify-center rounded text-muted-foreground hover:bg-surface-raised hover:text-foreground disabled:opacity-20 cursor-pointer disabled:cursor-default"
+                                    title="下移分类"
+                                  >
+                                    <ArrowDown className="size-3" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteCategory(catIdx)}
+                                    disabled={categories.length <= 1 && !cat.title && cat.items.length === 0}
+                                    className="size-5 flex items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 disabled:opacity-20 cursor-pointer disabled:cursor-default transition-colors"
+                                    title="删除此分类"
+                                  >
+                                    <Trash2 className="size-3" />
+                                  </button>
+                                </div>
+                              </div>
 
-                          {/* Category 2 */}
-                          <div className="flex flex-col gap-1.5 rounded-md border border-border/60 p-2 bg-surface-raised/20">
-                            <div className="flex items-center gap-2">
-                              <span className="w-14 shrink-0 text-[10px] text-muted-foreground font-mono uppercase">分类 2</span>
-                              <Input
-                                size="sm"
-                                value={cat2}
-                                onChange={(e) => setProp("category2", e.target.value)}
-                                className="h-6 text-xs font-semibold"
+                              <OptionsListEditor
+                                title={`${cat.title ? `"${cat.title}"` : `分类 ${catIdx + 1}`} 菜单项`}
+                                mode="none"
+                                value={cat.items.join(",")}
+                                onChange={(v) => handleCategoryItemsChange(catIdx, v)}
+                                placeholder="菜单项名称..."
                               />
                             </div>
-                            <OptionsListEditor
-                              title="分类 2 菜单项"
-                              mode="none"
-                              value={String(prop("items2", "用户列表,角色策略,审计日志"))}
-                              onChange={(v) => setProp("items2", v)}
-                              placeholder="菜单项名称..."
-                            />
-                          </div>
-                        </>
+                          ))}
+
+                          <button
+                            type="button"
+                            onClick={handleAddCategory}
+                            className="flex h-8 w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-border-visible hover:border-foreground/50 hover:bg-surface-raised/50 text-xs font-mono uppercase tracking-wider text-muted-foreground hover:text-foreground transition-all cursor-pointer"
+                          >
+                            <Plus className="size-3.5" />
+                            <span>添加分类</span>
+                          </button>
+                        </div>
                       ) : (
                         <OptionsListEditor
                           title="一级菜单列表"
                           mode="none"
-                          value={String(prop("items1", prop("items", "分析概览,实时大屏,用户列表,角色策略,审计日志")))}
-                          onChange={(v) => setProp("items1", v)}
+                          value={flatItemsStr}
+                          onChange={(v) => {
+                            setProps({ items1: v, items: v });
+                          }}
                           placeholder="菜单项名称..."
                         />
                       )}
 
                       <div className="flex items-center gap-2 pt-1 border-t border-border/50">
                         <span className="w-16 shrink-0 text-[10px] text-muted-foreground">当前选中项</span>
-                        <Input
-                          size="sm"
-                          value={activeKey}
-                          onChange={(e) => setProp("activeKey", e.target.value)}
-                          placeholder="输入选中菜单名称..."
-                          className="h-7 text-xs font-semibold"
-                        />
+                        <Menu>
+                          <MenuTrigger
+                            render={
+                              <Button variant="outline" size="xs" className="h-7 flex-1 justify-between text-xs font-medium">
+                                <span className="truncate">{effectiveActiveKey || "请选择选中项..."}</span>
+                                <ChevronDown className="size-3 opacity-60 shrink-0" />
+                              </Button>
+                            }
+                          />
+                          <MenuPopup align="start" className="max-h-60 overflow-y-auto w-48">
+                            {allMenuItems.length > 0 ? (
+                              allMenuItems.map((item, idx) => (
+                                <MenuItem
+                                  key={`${item}-${idx}`}
+                                  onClick={() => setProp("activeKey", item)}
+                                  className={cn("text-xs justify-between", item === effectiveActiveKey && "font-bold text-foreground")}
+                                >
+                                  <span className="truncate">{item}</span>
+                                  {item === effectiveActiveKey && <Check className="size-3 ml-2 shrink-0 text-foreground" />}
+                                </MenuItem>
+                              ))
+                            ) : (
+                              <MenuItem disabled className="text-xs text-muted-foreground">
+                                暂无可选项
+                              </MenuItem>
+                            )}
+                          </MenuPopup>
+                        </Menu>
                       </div>
                     </>
                   );

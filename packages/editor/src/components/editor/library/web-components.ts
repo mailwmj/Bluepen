@@ -40,11 +40,15 @@ export const webLibrary: LibraryComponent[] = [
     defaultProps: {
       title: "控制台导航",
       showCategories: true,
+      categories: JSON.stringify([
+        { title: "核心工作台", items: "分析概览,实时大屏" },
+        { title: "系统与权限", items: "用户列表,角色策略,审计日志" },
+      ]),
       category1: "核心工作台",
       items1: "分析概览,实时大屏",
       category2: "系统与权限",
       items2: "用户列表,角色策略,审计日志",
-      activeKey: "用户列表",
+      activeKey: "分析概览",
     },
   },
   {

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import type { ComponentType } from "../types";
 import type { ComponentRenderContext } from "./renderers";
 import { cn } from "@bluepen/editor/lib/utils";
@@ -182,19 +182,69 @@ export function WebTopNavPreview({ props = {} }: { props?: Props }) {
   );
 }
 
+export interface MenuCategoryGroup {
+  title: string;
+  items: string[];
+}
+
+export function parseMenuCategories(props: Props): MenuCategoryGroup[] {
+  // 1. If explicit props.categories exists (JSON array string or array)
+  if (props.categories !== undefined && props.categories !== null) {
+    try {
+      const parsed = typeof props.categories === "string" ? JSON.parse(props.categories) : props.categories;
+      if (Array.isArray(parsed)) {
+        return parsed.map((cat: any, idx: number) => {
+          const title = typeof cat?.title === "string" ? cat.title : (cat?.name ? String(cat.name) : `分类 ${idx + 1}`);
+          const items = parseItems(cat?.items, []);
+          return { title, items };
+        });
+      }
+    } catch {
+      // fallback
+    }
+  }
+
+  // 2. Dynamic check for indexed props: category1/items1, category2/items2, ...
+  const indexed: MenuCategoryGroup[] = [];
+  let i = 1;
+  while (props[`category${i}`] !== undefined || props[`items${i}`] !== undefined) {
+    const rawTitle = props[`category${i}`];
+    const title = rawTitle !== undefined ? String(rawTitle) : `分类 ${i}`;
+    const rawItems = props[`items${i}`] ?? (i === 1 ? props.items : "");
+    const items = parseItems(rawItems, []);
+    indexed.push({ title, items });
+    i++;
+  }
+
+  if (indexed.length > 0) {
+    return indexed;
+  }
+
+  // 3. Fallback defaults if nothing specified
+  return [
+    { title: "核心工作台", items: ["分析概览", "实时大屏"] },
+    { title: "系统与权限", items: ["用户列表", "角色策略", "审计日志"] },
+  ];
+}
+
 export function WebMenuPreview({ props = {} }: { props?: Props }) {
   const title = String(val(props, "title", "控制台导航"));
+  const version = String(val(props, "version", ""));
   const showCategories = props.showCategories !== false && props.showCategories !== "false";
-  const activeKey = String(val(props, "activeKey", "用户列表"));
+  const categories = parseMenuCategories(props);
 
-  // Category 1 & Category 2 data
-  const cat1 = String(val(props, "category1", "核心工作台"));
-  const items1Raw = val(props, "items1", val(props, "items", "分析概览,实时大屏"));
-  const items1 = parseItems(items1Raw, ["分析概览", "实时大屏"]);
+  const flatItems = useMemo(() => {
+    if (props.items1 !== undefined || props.items !== undefined) {
+      return parseItems(props.items1 ?? props.items, ["分析概览", "实时大屏", "用户列表", "角色策略", "审计日志"]);
+    }
+    return categories.flatMap((c) => c.items);
+  }, [props.items1, props.items, categories]);
 
-  const cat2 = String(val(props, "category2", "系统与权限"));
-  const items2Raw = val(props, "items2", "用户列表,角色策略,审计日志");
-  const items2 = parseItems(items2Raw, ["用户列表", "角色策略", "审计日志"]);
+  const allAvailableItems = showCategories ? categories.flatMap((c) => c.items) : flatItems;
+  const activeKeyProp = String(val(props, "activeKey", ""));
+  const activeKey = allAvailableItems.includes(activeKeyProp)
+    ? activeKeyProp
+    : (allAvailableItems[0] ?? "");
 
   const getIconForLabel = (label: string, idx: number) => {
     if (label.includes("概览") || label.includes("仪表") || label.includes("控制")) return LayoutDashboard;
@@ -230,50 +280,43 @@ export function WebMenuPreview({ props = {} }: { props?: Props }) {
 
   const menuStyle = computeShapeStyle(props, { fill: "var(--surface)", stroke: "var(--border)", borderWidth: 1, radius: 0 });
 
+  let globalItemIndex = 0;
+
   return (
     <div className="flex h-full w-full flex-col border-r select-none font-sans" style={menuStyle}>
       {title && (
         <div className="flex h-11 items-center justify-between border-b border-border px-4">
           <span className="font-mono text-xs font-bold tracking-wider uppercase text-foreground">{title}</span>
-          <span className="rounded-xs bg-surface-raised border border-border-visible px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground">
-            v2.4
-          </span>
+          {version && (
+            <span className="rounded-xs bg-surface-raised border border-border-visible px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground">
+              {version}
+            </span>
+          )}
         </div>
       )}
 
       <div className="flex-1 overflow-y-auto p-2.5 space-y-4">
         {showCategories ? (
-          <>
-            {/* Category 1 */}
-            {items1.length > 0 && (
-              <div className="space-y-1">
-                {cat1 && (
+          categories.map((cat, catIdx) => {
+            if (cat.items.length === 0 && !cat.title) return null;
+            return (
+              <div key={catIdx} className="space-y-1">
+                {cat.title && (
                   <div className="px-2 font-mono text-[10px] font-semibold tracking-wider uppercase text-muted-foreground/70">
-                    {cat1}
+                    {cat.title}
                   </div>
                 )}
-                {items1.map((label, idx) => renderMenuItem(label, idx))}
+                {cat.items.map((label) => {
+                  const currentIdx = globalItemIndex++;
+                  return renderMenuItem(label, currentIdx);
+                })}
               </div>
-            )}
-
-            {/* Category 2 */}
-            {items2.length > 0 && (
-              <div className="space-y-1">
-                {cat2 && (
-                  <div className="px-2 font-mono text-[10px] font-semibold tracking-wider uppercase text-muted-foreground/70">
-                    {cat2}
-                  </div>
-                )}
-                {items2.map((label, idx) => renderMenuItem(label, idx + items1.length))}
-              </div>
-            )}
-          </>
+            );
+          })
         ) : (
           /* Flat list without categories */
           <div className="space-y-1">
-            {[...items1, ...(val(props, "items2", "") ? items2 : [])].map((label, idx) =>
-              renderMenuItem(label, idx)
-            )}
+            {flatItems.map((label, idx) => renderMenuItem(label, idx))}
           </div>
         )}
       </div>

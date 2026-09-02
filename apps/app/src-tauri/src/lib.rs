@@ -5,13 +5,24 @@ pub fn run() {
     .plugin(tauri_plugin_fs::init())
     .plugin(tauri_plugin_store::Builder::default().build())
     .setup(|app| {
-      if cfg!(debug_assertions) {
+      #[cfg(debug_assertions)]
+      {
         app.handle().plugin(
           tauri_plugin_log::Builder::default()
             .level(log::LevelFilter::Info)
             .build(),
         )?;
       }
+
+      if let Some(config) = app.config().app.windows.first() {
+        let mut builder = tauri::WebviewWindowBuilder::from_config(app.handle(), config)?;
+        #[cfg(target_os = "macos")]
+        {
+          builder = builder.traffic_light_position(tauri::LogicalPosition::new(16.0, 14.0));
+        }
+        builder.build()?;
+      }
+
       Ok(())
     })
     .run(tauri::generate_context!())
