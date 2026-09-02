@@ -17,6 +17,10 @@ import {
   FilePlus2,
   Sun,
   Moon,
+  Minus,
+  Square,
+  Copy,
+  X,
 } from "lucide-react";
 
 const ZOOM_PRESETS = [50, 75, 100, 125, 150, 200];
@@ -32,6 +36,10 @@ interface TopBarProps {
   previewing: boolean;
   demo?: boolean;
   theme?: "dark" | "light";
+  isTauri?: boolean;
+  isMac?: boolean;
+  fullscreen?: boolean;
+  maximized?: boolean;
   onToggleTheme?: () => void;
   onUndo: () => void;
   onRedo: () => void;
@@ -46,6 +54,9 @@ interface TopBarProps {
   onTemplate?: () => void;
   onPreview: () => void;
   onExport: () => void;
+  onMinimize?: () => void;
+  onMaximize?: () => void;
+  onClose?: () => void;
 }
 
 export function TopBar({
@@ -57,6 +68,10 @@ export function TopBar({
   previewing,
   showGrid,
   theme = "dark",
+  isTauri = false,
+  isMac = false,
+  fullscreen = false,
+  maximized = false,
   onToggleTheme,
   onUndo,
   onRedo,
@@ -69,15 +84,46 @@ export function TopBar({
   onOpen,
   onPreview,
   onExport,
+  onMinimize,
+  onMaximize,
+  onClose,
 }: TopBarProps) {
+  const showMacTrafficLightSpacer = isTauri && isMac && !fullscreen;
+  const showWindowsControls = isTauri && !isMac && onMinimize && onMaximize && onClose;
+
   return (
-    <header className="flex h-10 shrink-0 select-none items-center justify-between border-b border-border bg-surface px-3 text-foreground">
+    <header
+      data-tauri-drag-region
+      onDoubleClick={onMaximize}
+      className={cn(
+        "flex h-10 shrink-0 select-none items-center justify-between border-b border-border bg-surface pr-3 text-foreground transition-[padding] duration-150",
+        showMacTrafficLightSpacer ? "pl-[76px]" : "pl-3",
+      )}
+    >
       {/* Left: Brand & File Actions */}
-      <div className="flex items-center gap-1.5">
-        <div className="flex items-center gap-2 pr-1.5">
-          <span className="font-mono text-xs font-bold tracking-tight text-foreground uppercase">{projectName}</span>
+      <div className="flex items-center gap-1.5 min-w-0" onDoubleClick={(e) => e.stopPropagation()}>
+        {/* Brand Icon & Name */}
+        <div className="flex items-center gap-1.5 shrink-0 pr-1">
+          <img
+            src="/brand/bluepen-icon.svg"
+            alt="Bluepen"
+            className="size-3.5 grayscale invert dark:invert-0"
+            draggable={false}
+          />
+          <span className="font-mono text-xs font-bold tracking-wider uppercase text-foreground">
+            BLUEPEN
+          </span>
+        </div>
+
+        <Separator orientation="vertical" className="mx-1 h-3.5 bg-border" />
+
+        {/* Project Name & Save Status */}
+        <div className="flex items-center gap-2 pr-1.5 min-w-0">
+          <span className="font-mono text-xs font-bold tracking-tight text-foreground uppercase truncate max-w-[160px]">
+            {projectName}
+          </span>
           <div
-            className="flex items-center justify-center"
+            className="flex items-center justify-center shrink-0"
             title={dirty ? "Unsaved changes" : "All changes saved"}
             aria-label={dirty ? "Unsaved changes" : "All changes saved"}
           >
@@ -126,7 +172,7 @@ export function TopBar({
       </div>
 
       {/* Right: Mode & Tool Controls */}
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-1.5" onDoubleClick={(e) => e.stopPropagation()}>
         {/* Theme switch */}
         {onToggleTheme && (
           <Button
@@ -237,6 +283,46 @@ export function TopBar({
             ))}
           </MenuPopup>
         </Menu>
+
+        {/* 5. Windows Desktop Window Controls */}
+        {showWindowsControls && (
+          <>
+            <Separator orientation="vertical" className="mx-1 h-3.5 bg-border" />
+            <div className="flex items-center gap-0.5 ml-0.5">
+              <button
+                type="button"
+                onClick={onMinimize}
+                aria-label="最小化"
+                title="最小化"
+                className="flex size-7 items-center justify-center rounded-xs text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground"
+              >
+                <Minus aria-hidden="true" className="size-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={onMaximize}
+                aria-label={maximized ? "还原" : "最大化"}
+                title={maximized ? "还原" : "最大化"}
+                className="flex size-7 items-center justify-center rounded-xs text-muted-foreground transition-colors duration-150 hover:bg-muted hover:text-foreground"
+              >
+                {maximized ? (
+                  <Copy aria-hidden="true" className="size-3" />
+                ) : (
+                  <Square aria-hidden="true" className="size-3" />
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="关闭"
+                title="关闭"
+                className="flex size-7 items-center justify-center rounded-xs text-muted-foreground transition-colors duration-150 hover:bg-destructive hover:text-white"
+              >
+                <X aria-hidden="true" className="size-3.5" />
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </header>
   );

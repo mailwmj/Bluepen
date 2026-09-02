@@ -126,6 +126,8 @@ import {
   UserCheck,
   Terminal,
   LayoutGrid,
+  Compass,
+  Heading,
 } from "lucide-react";
 import type { ComponentType, EditorElement, Page } from "./types";
 import { library, type LibraryComponent, agentLibrary } from "./library/index";
@@ -463,16 +465,34 @@ export function getElementIcon(type: ComponentType) {
       return LayoutGrid;
     case "agent-nav-sidebar":
       return PanelLeft;
+    case "agent-sidebar-header":
+      return AppWindow;
+    case "agent-mode-switch":
+      return SlidersHorizontal;
+    case "agent-new-task-button":
+      return Plus;
+    case "agent-session-list":
+      return MessageSquare;
     case "agent-project-tree":
       return FolderTree;
+    case "agent-sidebar-nav":
+      return Compass;
     case "agent-user-footer":
       return User;
     case "agent-prompt-box":
       return TextCursorInput;
+    case "agent-model-badge":
+      return Sparkles;
     case "agent-prompt-toolbar":
       return SlidersHorizontal;
     case "agent-prompt-suggestions":
       return Sparkles;
+    case "agent-user-message":
+      return User;
+    case "agent-session-header":
+      return Heading;
+    case "agent-status-badge":
+      return Tag;
     case "agent-stream-header":
       return Bot;
     case "agent-tool-step":

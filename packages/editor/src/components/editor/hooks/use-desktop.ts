@@ -10,6 +10,26 @@ export function isDesktop() {
   return "__TAURI_INTERNALS__" in window;
 }
 
+export type Platform = "macos" | "windows" | "linux" | "web";
+
+export function getPlatform(): Platform {
+  if (typeof window === "undefined" || typeof navigator === "undefined") return "web";
+  const ua = navigator.userAgent || "";
+  const platform = navigator.platform || "";
+  if (/Mac|iPhone|iPod|iPad/i.test(ua) || /Mac/i.test(platform)) return "macos";
+  if (/Win/i.test(ua) || /Win/i.test(platform)) return "windows";
+  if (/Linux/i.test(ua) || /Linux/i.test(platform)) return "linux";
+  return "web";
+}
+
+export function isMac(): boolean {
+  return getPlatform() === "macos";
+}
+
+export function isWindows(): boolean {
+  return getPlatform() === "windows";
+}
+
 export function confirmLocal(message: string): Promise<boolean> {
   if (isDesktop()) {
     return import("@tauri-apps/plugin-dialog").then(({ ask }) =>
@@ -152,5 +172,19 @@ export function useDesktop(
     })();
   }, []);
 
-  return { isTauri, fileApi, windowMaximized, windowFullscreen, windowControls, toggleFullscreen };
+  const platform = getPlatform();
+  const isMacOS = platform === "macos";
+  const isWin = platform === "windows";
+
+  return {
+    isTauri,
+    platform,
+    isMac: isMacOS,
+    isWindows: isWin,
+    fileApi,
+    windowMaximized,
+    windowFullscreen,
+    windowControls,
+    toggleFullscreen,
+  };
 }

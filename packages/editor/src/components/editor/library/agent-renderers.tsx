@@ -36,6 +36,8 @@ import {
   CircleDot,
   Loader2,
   Lock,
+  Compass,
+  Heading,
 } from "lucide-react";
 
 type Props = Record<string, string | number | boolean>;
@@ -684,6 +686,254 @@ export function AgentUserFooterPreview({ props = {} }: { props?: Props }) {
   );
 }
 
+/**
+ * 1.15 侧栏窗口头部 (agent-sidebar-header)
+ */
+export function AgentSidebarHeaderPreview({ props = {} }: { props?: Props }) {
+  const appName = String(val(props, "appName", "AGENT CLAW"));
+  const showDots = Boolean(val(props, "showDots", true));
+
+  return (
+    <div className="flex h-full w-full items-center gap-2 px-1 select-none font-mono">
+      {showDots && (
+        <div className="flex gap-1.5 shrink-0">
+          <span className="size-2.5 rounded-full bg-border-visible" />
+          <span className="size-2.5 rounded-full bg-border-visible" />
+          <span className="size-2.5 rounded-full bg-border-visible" />
+        </div>
+      )}
+      <span className="ml-1 text-xs font-bold uppercase tracking-wider text-foreground truncate">
+        {appName}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * 1.16 Agent 模式切换 (agent-mode-switch) - 对应截图 3
+ */
+export function AgentModeSwitchPreview({ props = {} }: { props?: Props }) {
+  const rawOptions = val(props, "options", "对话,AI员工");
+  const options = parseList(rawOptions, ["对话", "AI员工"]);
+  const active = String(val(props, "active", options[0] || "对话"));
+
+  return (
+    <div className="grid h-full w-full grid-flow-col auto-cols-fr rounded-lg border border-border-visible bg-surface-raised p-0.5 text-xs font-mono select-none">
+      {options.map((opt) => {
+        const isActive = opt === active;
+        return (
+          <div
+            key={opt}
+            className={cn(
+              "flex items-center justify-center rounded-md py-1 text-center font-mono transition-colors truncate",
+              isActive
+                ? "bg-foreground text-background font-bold shadow-xs"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {opt}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * 1.17 新建任务按钮 (agent-new-task-button) - 对应截图 3
+ */
+export function AgentNewTaskButtonPreview({ props = {} }: { props?: Props }) {
+  const text = String(val(props, "text", "新建任务"));
+
+  return (
+    <button
+      type="button"
+      className="flex h-full w-full items-center justify-center gap-1.5 rounded-lg border border-border-visible bg-surface-raised hover:bg-surface py-1.5 px-3 text-xs font-mono font-medium text-foreground transition-colors select-none"
+    >
+      <Plus className="size-3.5 shrink-0" />
+      <span className="truncate">{text}</span>
+    </button>
+  );
+}
+
+/**
+ * 1.18 置顶与会话列表 (agent-session-list)
+ */
+export function AgentSessionListPreview({ props = {} }: { props?: Props }) {
+  const title = String(val(props, "title", "置顶会话"));
+  const rawItems = val(props, "items", "营销活动月度复盘分析...:active,市场趋势与竞争分析");
+  const items = parseList(rawItems, ["营销活动月度复盘分析...:active", "市场趋势与竞争分析"]);
+
+  return (
+    <div className="flex h-full w-full flex-col space-y-1 font-mono text-xs select-none">
+      {title && (
+        <div className="text-[10px] text-muted-foreground uppercase tracking-wider px-1 shrink-0">
+          {title}
+        </div>
+      )}
+      <div className="flex-1 space-y-1 overflow-y-auto">
+        {items.map((itemStr, idx) => {
+          const isActive = itemStr.includes(":active");
+          const label = itemStr.replace(":active", "").trim();
+          return (
+            <div
+              key={idx}
+              className={cn(
+                "rounded-md px-2 py-1.5 text-xs truncate transition-colors",
+                isActive
+                  ? "bg-surface-raised text-foreground font-semibold border border-border-visible/60"
+                  : "text-muted-foreground hover:bg-surface-raised/40 hover:text-foreground"
+              )}
+            >
+              {label}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 1.19 侧栏快捷导航组 (agent-sidebar-nav)
+ */
+export function AgentSidebarNavPreview({ props = {} }: { props?: Props }) {
+  const rawItems = val(props, "items", "技能·插件:Zap,知识库:FileText,定时任务:Clock");
+  const items = parseList(rawItems, ["技能·插件:Zap", "知识库:FileText", "定时任务:Clock"]);
+
+  const getIcon = (iconName: string) => {
+    switch (iconName.toLowerCase()) {
+      case "zap": return Zap;
+      case "filetext":
+      case "file": return FileText;
+      case "clock": return Clock;
+      case "compass": return Compass;
+      case "settings": return Settings;
+      default: return Zap;
+    }
+  };
+
+  return (
+    <div className="flex h-full w-full flex-col justify-center space-y-1.5 font-mono text-xs text-muted-foreground select-none">
+      {items.map((itemStr, idx) => {
+        const [label, iconName = "Zap"] = itemStr.split(":");
+        const IconComponent = getIcon(iconName);
+        return (
+          <div
+            key={idx}
+            className="flex items-center gap-2 px-1 hover:text-foreground cursor-pointer transition-colors truncate"
+          >
+            <IconComponent className="size-3.5 shrink-0" />
+            <span className="truncate">{label}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * 1.20 模型与权限胶囊 (agent-model-badge)
+ */
+export function AgentModelBadgePreview({ props = {} }: { props?: Props }) {
+  const modelName = String(val(props, "modelName", "高级推理模型"));
+  const permissionText = String(val(props, "permissionText", "默认权限"));
+
+  return (
+    <div className="flex h-full w-full items-center gap-2 font-mono text-[11px] select-none">
+      {permissionText && (
+        <div className="flex items-center gap-1.5 rounded-full border border-border-visible bg-surface-raised px-2.5 py-1 text-foreground/90">
+          <ShieldCheck className="size-3 text-muted-foreground" />
+          <span>{permissionText}</span>
+          <ChevronDown className="size-2.5 text-muted-foreground/60" />
+        </div>
+      )}
+      {modelName && (
+        <div className="flex items-center gap-1.5 rounded-full border border-border-visible bg-surface-raised px-2.5 py-1 text-foreground/90">
+          <Sparkles className="size-3 text-muted-foreground" />
+          <span>{modelName}</span>
+          <ChevronDown className="size-2.5 text-muted-foreground/60" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 1.21 用户提问消息气泡 (agent-user-message)
+ */
+export function AgentUserMessagePreview({ props = {} }: { props?: Props }) {
+  const prompt = String(
+    val(
+      props,
+      "prompt",
+      "/Skill maker 帮我整理最近关于 OpenClaw 的热门讨论，顺便参考我上传的需求说明和截图。",
+    )
+  );
+  const projectScope = String(val(props, "projectScope", "Project-D"));
+
+  return (
+    <div className="flex h-full w-full flex-col justify-between rounded-xl border border-border-visible bg-surface-raised p-3 select-none">
+      <div className="text-xs font-sans text-foreground leading-relaxed">
+        {prompt}
+      </div>
+      {projectScope && (
+        <div className="mt-2 flex items-center gap-1.5 font-mono text-[10px] text-muted-foreground">
+          <Folder className="size-3 text-muted-foreground/70" />
+          <span>{projectScope}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 1.22 会话标题与状态栏 (agent-session-header)
+ */
+export function AgentSessionHeaderPreview({ props = {} }: { props?: Props }) {
+  const title = String(val(props, "title", "营销活动月度复盘分析报告"));
+  const badge = String(val(props, "badge", "STREAM ACTIVE"));
+
+  return (
+    <div className="flex h-full w-full items-center justify-between border-b border-border bg-surface px-4 py-2 select-none font-mono">
+      <span className="text-xs font-bold text-foreground truncate">{title}</span>
+      {badge && (
+        <span className="text-[10px] text-muted-foreground uppercase tracking-wider">
+          [ {badge} ]
+        </span>
+      )}
+    </div>
+  );
+}
+
+/**
+ * 1.23 智能体状态微标 (agent-status-badge)
+ */
+export function AgentStatusBadgePreview({ props = {} }: { props?: Props }) {
+  const text = String(val(props, "text", "DIFF READY"));
+  const status = String(val(props, "status", "default"));
+
+  const statusCls =
+    status === "success" || text.includes("ONLINE") || text.includes("DONE")
+      ? "text-[#4A9E5C] border-[#4A9E5C]/40 bg-[#4A9E5C]/10"
+      : status === "warning" || text.includes("BUSY")
+      ? "text-[#D4A843] border-[#D4A843]/40 bg-[#D4A843]/10"
+      : status === "danger" || status === "error"
+      ? "text-[#D71921] border-[#D71921]/40 bg-[#D71921]/10"
+      : "text-muted-foreground border-border-visible bg-surface-raised";
+
+  return (
+    <div
+      className={cn(
+        "inline-flex h-full w-full items-center justify-center rounded-xs border px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider select-none",
+        statusCls
+      )}
+    >
+      [ {text.replace(/^\[\s*/, "").replace(/\s*\]$/, "")} ]
+    </div>
+  );
+}
+
 // =========================================================================
 // 2. Agent 完整模版 (Full Screen Templates)
 // =========================================================================
@@ -1269,20 +1519,38 @@ export function renderAgentLibraryComponent(
     // 侧栏与导航
     case "agent-nav-sidebar":
       return <AgentNavSidebarPreview props={props} />;
+    case "agent-sidebar-header":
+      return <AgentSidebarHeaderPreview props={props} />;
+    case "agent-mode-switch":
+      return <AgentModeSwitchPreview props={props} />;
+    case "agent-new-task-button":
+      return <AgentNewTaskButtonPreview props={props} />;
+    case "agent-session-list":
+      return <AgentSessionListPreview props={props} />;
     case "agent-project-tree":
       return <AgentProjectTreePreview props={props} />;
+    case "agent-sidebar-nav":
+      return <AgentSidebarNavPreview props={props} />;
     case "agent-user-footer":
       return <AgentUserFooterPreview props={props} />;
 
     // 输入与参数
     case "agent-prompt-box":
       return <AgentPromptBoxPreview props={props} />;
+    case "agent-model-badge":
+      return <AgentModelBadgePreview props={props} />;
     case "agent-prompt-toolbar":
       return <AgentPromptToolbarPreview props={props} />;
     case "agent-prompt-suggestions":
       return <AgentPromptSuggestionsPreview props={props} />;
 
     // 执行流与消息
+    case "agent-user-message":
+      return <AgentUserMessagePreview props={props} />;
+    case "agent-session-header":
+      return <AgentSessionHeaderPreview props={props} />;
+    case "agent-status-badge":
+      return <AgentStatusBadgePreview props={props} />;
     case "agent-stream-header":
       return <AgentStreamHeaderPreview props={props} />;
     case "agent-tool-step":

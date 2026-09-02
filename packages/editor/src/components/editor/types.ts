@@ -32,11 +32,11 @@ export type ComponentType =
   // Agent 完整模版
   | "agent-home-layout" | "agent-chat-stream-layout" | "agent-split-workspace-layout" | "agent-employee-workspace-layout" | "agent-employee-market-layout"
   // Agent 侧栏与导航
-  | "agent-nav-sidebar" | "agent-project-tree" | "agent-user-footer"
+  | "agent-nav-sidebar" | "agent-sidebar-header" | "agent-mode-switch" | "agent-new-task-button" | "agent-session-list" | "agent-project-tree" | "agent-sidebar-nav" | "agent-user-footer"
   // Agent 输入与参数
-  | "agent-prompt-box" | "agent-prompt-toolbar" | "agent-prompt-suggestions"
+  | "agent-prompt-box" | "agent-prompt-toolbar" | "agent-prompt-suggestions" | "agent-model-badge"
   // Agent 执行流与消息
-  | "agent-stream-header" | "agent-tool-step" | "agent-thought-stream" | "agent-file-attachments"
+  | "agent-user-message" | "agent-session-header" | "agent-status-badge" | "agent-stream-header" | "agent-tool-step" | "agent-thought-stream" | "agent-file-attachments"
   // Agent 角色、工件与控制台
   | "agent-employee-card" | "agent-template-card" | "agent-artifact-tabs" | "agent-console-table"
   // Legacy / 兼容别名
