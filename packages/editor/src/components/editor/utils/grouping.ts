@@ -1,4 +1,5 @@
 import type { EditorElement } from "../types";
+import { isBlockTemplate, createBlockTemplateGroup } from "../library/block-templates";
 
 function genId() {
   return `el-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -19,7 +20,9 @@ export function canUngroupElements(selectedIds: string[], elements: EditorElemen
   if (!selectedIds || selectedIds.length === 0) return false;
   const flat = flattenElements(elements);
   return flat.some(
-    (el) => selectedIds.includes(el.id) && (el.type === "group" || (el.children && el.children.length > 0)),
+    (el) =>
+      selectedIds.includes(el.id) &&
+      (el.type === "group" || (el.children && el.children.length > 0) || isBlockTemplate(el.type)),
   );
 }
 
@@ -201,21 +204,45 @@ export function ungroupElements(
     const result: EditorElement[] = [];
 
     for (const item of list) {
-      if (selectedSet.has(item.id) && (item.type === "group" || (item.children && item.children.length > 0))) {
-        // Unpack all children
-        const parentX = item.x;
-        const parentY = item.y;
-        const parentId = item.parentId ?? null;
+      if (selectedSet.has(item.id)) {
+        if (item.type === "group" || (item.children && item.children.length > 0)) {
+          // Unpack all children
+          const parentX = item.x;
+          const parentY = item.y;
+          const parentId = item.parentId ?? null;
 
-        for (const child of item.children) {
-          const releasedChild: EditorElement = {
-            ...child,
-            x: Math.round(parentX + child.x),
-            y: Math.round(parentY + child.y),
-            parentId,
-          };
-          result.push(releasedChild);
-          releasedIds.push(child.id);
+          for (const child of item.children) {
+            const releasedChild: EditorElement = {
+              ...child,
+              x: Math.round(parentX + child.x),
+              y: Math.round(parentY + child.y),
+              parentId,
+            };
+            result.push(releasedChild);
+            releasedIds.push(child.id);
+          }
+        } else if (isBlockTemplate(item.type)) {
+          // Dynamically instantiate block template and release its children
+          const parentX = item.x;
+          const parentY = item.y;
+          const parentId = item.parentId ?? null;
+          const templateGroup = createBlockTemplateGroup(item.type, parentX, parentY, parentId);
+          if (templateGroup && templateGroup.children && templateGroup.children.length > 0) {
+            for (const child of templateGroup.children) {
+              const releasedChild: EditorElement = {
+                ...child,
+                x: Math.round(child.x),
+                y: Math.round(child.y),
+                parentId,
+              };
+              result.push(releasedChild);
+              releasedIds.push(child.id);
+            }
+          } else {
+            result.push(item);
+          }
+        } else {
+          result.push(item);
         }
       } else {
         result.push({

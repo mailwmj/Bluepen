@@ -4,7 +4,6 @@ import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import type { EditorElement, ComponentType, Page } from "./types";
 import { Canvas } from "./canvas/index";
 import { TopBar } from "./top-bar";
-import { TitleBar } from "./title-bar";
 import { LeftSidebar } from "./left-sidebar";
 import { RightPanel } from "./right-panel";
 import { useDesktop } from "./hooks/use-desktop";
@@ -1001,10 +1000,16 @@ export function Editor() {
     );
   }, [loadProject, projectName, currentFilePath]);
 
-  const { isTauri, fileApi, toggleFullscreen, windowControls, windowMaximized, windowFullscreen } = useDesktop(
-    getProject,
-    loadProject,
-  );
+  const {
+    isTauri,
+    isMac,
+    isWindows,
+    fileApi,
+    toggleFullscreen,
+    windowControls,
+    windowMaximized,
+    windowFullscreen,
+  } = useDesktop(getProject, loadProject);
 
   const handleSaveShortcut = useCallback(async () => {
     if (isTauri) {
@@ -1279,6 +1284,10 @@ export function Editor() {
         previewing={previewing}
         demo={!isTauri}
         theme={theme}
+        isTauri={isTauri}
+        isMac={isMac}
+        fullscreen={windowFullscreen}
+        maximized={windowMaximized}
         onToggleTheme={toggleTheme}
         onUndo={undo}
         onRedo={redo}
@@ -1298,6 +1307,9 @@ export function Editor() {
           showToast({ title: next ? "Preview mode" : "Editing mode", id: "preview-toggle" });
         }}
         onExport={() => void exportPng()}
+        onMinimize={() => windowControls("minimize")}
+        onMaximize={() => windowControls("maximize")}
+        onClose={() => windowControls("close")}
       />
 
       {previewing ? (
@@ -1526,21 +1538,5 @@ export function Editor() {
     </div>
     );
 
-  if (!isTauri) {
-    return <div className="h-svh w-full overflow-hidden bg-background text-foreground">{content}</div>;
-  }
-
-  return (
-    <div className="flex h-svh w-full flex-col overflow-hidden bg-background text-foreground">
-      <TitleBar
-        maximized={windowMaximized}
-        onMinimize={() => windowControls("minimize")}
-        onMaximize={() => windowControls("maximize")}
-        onClose={() => windowControls("close")}
-      />
-      <div className="flex min-h-0 w-full flex-1 flex-col overflow-hidden">
-        {content}
-      </div>
-    </div>
-  );
+  return <div className="h-svh w-full overflow-hidden bg-background text-foreground">{content}</div>;
 }

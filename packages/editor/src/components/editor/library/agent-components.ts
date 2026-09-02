@@ -97,15 +97,74 @@ export const agentLibrary: LibraryComponent[] = [
     },
   },
   {
+    type: "agent-sidebar-header",
+    label: "侧栏窗口头部",
+    category: "Agent侧栏",
+    icon: "AppWindow",
+    defaultWidth: 220,
+    defaultHeight: 32,
+    defaultProps: {
+      appName: "AGENT CLAW",
+      showDots: true,
+    },
+  },
+  {
+    type: "agent-mode-switch",
+    label: "Agent模式切换",
+    category: "Agent侧栏",
+    icon: "SlidersHorizontal",
+    defaultWidth: 220,
+    defaultHeight: 32,
+    defaultProps: {
+      options: "对话,AI员工",
+      active: "对话",
+    },
+  },
+  {
+    type: "agent-new-task-button",
+    label: "新建任务按钮",
+    category: "Agent侧栏",
+    icon: "Plus",
+    defaultWidth: 220,
+    defaultHeight: 34,
+    defaultProps: {
+      text: "新建任务",
+      icon: "Plus",
+    },
+  },
+  {
+    type: "agent-session-list",
+    label: "置顶与会话列表",
+    category: "Agent侧栏",
+    icon: "MessageSquare",
+    defaultWidth: 220,
+    defaultHeight: 110,
+    defaultProps: {
+      title: "置顶会话",
+      items: "营销活动月度复盘分析...:active,市场趋势与竞争分析",
+    },
+  },
+  {
     type: "agent-project-tree",
     label: "项目与会话树",
     category: "Agent侧栏",
     icon: "FolderTree",
     defaultWidth: 220,
-    defaultHeight: 280,
+    defaultHeight: 200,
     defaultProps: {
       projectName: "Project-A",
-      items: "完善我的报告- 【Part 1】:active,2026年第一季度规划:loading,编辑我的演示文档,优化一个Skill:dot,完善我的数据分析报告",
+      items: "完善我的报告- 【Part 1】:active,2026年第一季度规划:loading,编辑我的演示文档",
+    },
+  },
+  {
+    type: "agent-sidebar-nav",
+    label: "侧栏快捷导航组",
+    category: "Agent侧栏",
+    icon: "Compass",
+    defaultWidth: 220,
+    defaultHeight: 88,
+    defaultProps: {
+      items: "技能·插件:Zap,知识库:FileText,定时任务:Clock",
     },
   },
   {
@@ -114,7 +173,7 @@ export const agentLibrary: LibraryComponent[] = [
     category: "Agent侧栏",
     icon: "User",
     defaultWidth: 220,
-    defaultHeight: 48,
+    defaultHeight: 44,
     defaultProps: {
       userName: "李 · Jason · io",
       role: "Pro Workspace",
@@ -136,6 +195,18 @@ export const agentLibrary: LibraryComponent[] = [
       permissionText: "默认权限",
       modelName: "高级模型",
       projectScope: "Project-D",
+    },
+  },
+  {
+    type: "agent-model-badge",
+    label: "模型与权限胶囊",
+    category: "Agent输入",
+    icon: "Sparkles",
+    defaultWidth: 260,
+    defaultHeight: 32,
+    defaultProps: {
+      modelName: "高级推理模型",
+      permissionText: "默认权限",
     },
   },
   {
@@ -167,6 +238,42 @@ export const agentLibrary: LibraryComponent[] = [
   // =========================================================================
   // 4. Agent 执行流与消息 (Stream & Execution)
   // =========================================================================
+  {
+    type: "agent-user-message",
+    label: "用户提问消息气泡",
+    category: "Agent执行流",
+    icon: "User",
+    defaultWidth: 580,
+    defaultHeight: 64,
+    defaultProps: {
+      prompt: "/Skill maker 帮我整理最近关于 OpenClaw 的热门讨论，顺便参考我上传的需求说明和截图。",
+      projectScope: "Project-D",
+    },
+  },
+  {
+    type: "agent-session-header",
+    label: "会话标题与状态栏",
+    category: "Agent执行流",
+    icon: "Heading",
+    defaultWidth: 580,
+    defaultHeight: 38,
+    defaultProps: {
+      title: "营销活动月度复盘分析报告",
+      badge: "STREAM ACTIVE",
+    },
+  },
+  {
+    type: "agent-status-badge",
+    label: "智能体状态微标",
+    category: "Agent执行流",
+    icon: "Tag",
+    defaultWidth: 120,
+    defaultHeight: 26,
+    defaultProps: {
+      text: "DIFF READY",
+      status: "default",
+    },
+  },
   {
     type: "agent-stream-header",
     label: "Agent消息响应头",

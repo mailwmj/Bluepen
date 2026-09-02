@@ -143,8 +143,10 @@ const STROKE_SUPPORTED_TYPES = new Set([
   // Agent templates & components
   "agent-home-layout", "agent-chat-stream-layout", "agent-split-workspace-layout",
   "agent-employee-workspace-layout", "agent-employee-market-layout",
-  "agent-nav-sidebar", "agent-project-tree", "agent-user-footer",
-  "agent-prompt-box", "agent-prompt-toolbar", "agent-prompt-suggestions",
+  "agent-nav-sidebar", "agent-sidebar-header", "agent-mode-switch", "agent-new-task-button",
+  "agent-session-list", "agent-project-tree", "agent-sidebar-nav", "agent-user-footer",
+  "agent-prompt-box", "agent-model-badge", "agent-prompt-toolbar", "agent-prompt-suggestions",
+  "agent-user-message", "agent-session-header", "agent-status-badge",
   "agent-stream-header", "agent-tool-step", "agent-thought-stream", "agent-file-attachments",
   "agent-employee-card", "agent-template-card", "agent-artifact-tabs", "agent-console-table",
   ...FLOWCHART_TYPES,
@@ -170,8 +172,10 @@ const FILL_SUPPORTED_TYPES = new Set([
   // Agent templates & components
   "agent-home-layout", "agent-chat-stream-layout", "agent-split-workspace-layout",
   "agent-employee-workspace-layout", "agent-employee-market-layout",
-  "agent-nav-sidebar", "agent-project-tree", "agent-user-footer",
-  "agent-prompt-box", "agent-prompt-toolbar", "agent-prompt-suggestions",
+  "agent-nav-sidebar", "agent-sidebar-header", "agent-mode-switch", "agent-new-task-button",
+  "agent-session-list", "agent-project-tree", "agent-sidebar-nav", "agent-user-footer",
+  "agent-prompt-box", "agent-model-badge", "agent-prompt-toolbar", "agent-prompt-suggestions",
+  "agent-user-message", "agent-session-header", "agent-status-badge",
   "agent-stream-header", "agent-tool-step", "agent-thought-stream", "agent-file-attachments",
   "agent-employee-card", "agent-template-card", "agent-artifact-tabs", "agent-console-table",
   ...FLOWCHART_TYPES,
@@ -197,8 +201,10 @@ const RADIUS_SUPPORTED_TYPES = new Set([
   // Agent templates & components
   "agent-home-layout", "agent-chat-stream-layout", "agent-split-workspace-layout",
   "agent-employee-workspace-layout", "agent-employee-market-layout",
-  "agent-nav-sidebar", "agent-project-tree", "agent-user-footer",
-  "agent-prompt-box", "agent-prompt-toolbar", "agent-prompt-suggestions",
+  "agent-nav-sidebar", "agent-sidebar-header", "agent-mode-switch", "agent-new-task-button",
+  "agent-session-list", "agent-project-tree", "agent-sidebar-nav", "agent-user-footer",
+  "agent-prompt-box", "agent-model-badge", "agent-prompt-toolbar", "agent-prompt-suggestions",
+  "agent-user-message", "agent-session-header", "agent-status-badge",
   "agent-stream-header", "agent-tool-step", "agent-thought-stream", "agent-file-attachments",
   "agent-employee-card", "agent-template-card", "agent-artifact-tabs", "agent-console-table",
 ]);
@@ -4432,6 +4438,254 @@ export const RightPanel = memo(function RightPanel({
                         rows={2}
                         className="w-full resize-y rounded-md border border-input bg-background p-1.5 text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring"
                       />
+                    </div>
+                  </>
+                )}
+
+                {/* Agent Sidebar Header */}
+                {element.type === "agent-sidebar-header" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">应用名称</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("appName", "AGENT CLAW"))}
+                        onChange={(e) => setProp("appName", e.target.value)}
+                        className="h-7 text-xs font-bold font-mono"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Agent Mode Switch */}
+                {element.type === "agent-mode-switch" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">分段选项</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("options", "对话,AI员工"))}
+                        onChange={(e) => setProp("options", e.target.value)}
+                        placeholder="逗号分隔选项..."
+                        className="h-7 text-xs font-mono"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">当前选中</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("active", "对话"))}
+                        onChange={(e) => setProp("active", e.target.value)}
+                        className="h-7 text-xs font-mono font-bold"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Agent New Task Button */}
+                {element.type === "agent-new-task-button" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">按钮文字</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("text", "新建任务"))}
+                        onChange={(e) => setProp("text", e.target.value)}
+                        className="h-7 text-xs font-medium font-mono"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Agent Session List */}
+                {element.type === "agent-session-list" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">分组标题</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("title", "置顶会话"))}
+                        onChange={(e) => setProp("title", e.target.value)}
+                        className="h-7 text-xs font-mono"
+                      />
+                    </div>
+                    <OptionsListEditor
+                      title="会话条目列表 (:active 表示高亮)"
+                      mode="none"
+                      value={String(prop("items", "营销活动月度复盘分析...:active,市场趋势与竞争分析"))}
+                      onChange={(v) => setProp("items", v)}
+                      placeholder="会话标题:active..."
+                    />
+                  </>
+                )}
+
+                {/* Agent Project Tree */}
+                {element.type === "agent-project-tree" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">工程名称</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("projectName", "Project-A"))}
+                        onChange={(e) => setProp("projectName", e.target.value)}
+                        className="h-7 text-xs font-bold font-mono"
+                      />
+                    </div>
+                    <OptionsListEditor
+                      title="项目任务列表 (:active, :loading, :dot)"
+                      mode="none"
+                      value={String(prop("items", "完善我的报告- 【Part 1】:active,2026年第一季度规划:loading,编辑我的演示文档"))}
+                      onChange={(v) => setProp("items", v)}
+                      placeholder="任务标题..."
+                    />
+                  </>
+                )}
+
+                {/* Agent Sidebar Nav */}
+                {element.type === "agent-sidebar-nav" && (
+                  <>
+                    <OptionsListEditor
+                      title="快捷导航项 (名称:图标)"
+                      mode="none"
+                      value={String(prop("items", "技能·插件:Zap,知识库:FileText,定时任务:Clock"))}
+                      onChange={(v) => setProp("items", v)}
+                      placeholder="名称:图标..."
+                    />
+                  </>
+                )}
+
+                {/* Agent User Footer */}
+                {element.type === "agent-user-footer" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">用户名称</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("userName", "李 · Jason · io"))}
+                        onChange={(e) => setProp("userName", e.target.value)}
+                        className="h-7 text-xs font-bold"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">身份角色</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("role", "Pro Workspace"))}
+                        onChange={(e) => setProp("role", e.target.value)}
+                        className="h-7 text-xs font-mono"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Agent Model Badge */}
+                {element.type === "agent-model-badge" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">模型名称</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("modelName", "高级推理模型"))}
+                        onChange={(e) => setProp("modelName", e.target.value)}
+                        className="h-7 text-xs font-mono"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">权限级别</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("permissionText", "默认权限"))}
+                        onChange={(e) => setProp("permissionText", e.target.value)}
+                        className="h-7 text-xs font-mono"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Agent User Message */}
+                {element.type === "agent-user-message" && (
+                  <>
+                    <div className="flex flex-col gap-1">
+                      <span className="text-[10px] text-muted-foreground">提问Prompt内容</span>
+                      <textarea
+                        value={String(prop("prompt", "/Skill maker 帮我整理最近关于 OpenClaw 的热门讨论..."))}
+                        onChange={(e) => setProp("prompt", e.target.value)}
+                        rows={3}
+                        className="w-full resize-y rounded-md border border-input bg-background p-1.5 text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">挂载工程</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("projectScope", "Project-D"))}
+                        onChange={(e) => setProp("projectScope", e.target.value)}
+                        className="h-7 text-xs font-mono"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Agent Session Header */}
+                {element.type === "agent-session-header" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">会话标题</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("title", "营销活动月度复盘分析报告"))}
+                        onChange={(e) => setProp("title", e.target.value)}
+                        className="h-7 text-xs font-bold"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">状态标签</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("badge", "STREAM ACTIVE"))}
+                        onChange={(e) => setProp("badge", e.target.value)}
+                        className="h-7 text-xs font-mono uppercase"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Agent Status Badge */}
+                {element.type === "agent-status-badge" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">标签文本</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("text", "DIFF READY"))}
+                        onChange={(e) => setProp("text", e.target.value)}
+                        className="h-7 text-xs font-mono font-bold uppercase"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">状态类型</span>
+                      <div className="grid grid-cols-4 gap-1 flex-1">
+                        {[
+                          { id: "default", label: "默认" },
+                          { id: "success", label: "成功" },
+                          { id: "warning", label: "警告" },
+                          { id: "danger", label: "紧急" },
+                        ].map((s) => (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => setProp("status", s.id)}
+                            className={cn(
+                              "h-6 rounded text-[10px] font-mono border select-none cursor-pointer transition-colors",
+                              prop("status", "default") === s.id
+                                ? "bg-foreground text-background border-foreground font-bold"
+                                : "bg-transparent text-muted-foreground border-border hover:border-border-visible"
+                            )}
+                          >
+                            {s.label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   </>
                 )}

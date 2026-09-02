@@ -47,7 +47,8 @@ export const BLOCK_TEMPLATE_TYPES = new Set<string>([
   "web-pricing-table",
   "web-faq-section",
 
-  // Agent 完整模版
+  // Agent 完整模版与复合侧栏
+  "agent-nav-sidebar",
   "agent-home-layout",
   "agent-chat-stream-layout",
   "agent-split-workspace-layout",
@@ -848,8 +849,67 @@ export function createBlockTemplateGroup(
     }
 
     // =========================================================================
-    // Agent 完整模版 (Agent Full Layout Templates)
+    // Agent 侧栏与完整模版 (Agent Sidebar & Full Layout Templates)
     // =========================================================================
+
+    // 10. 智能体导航侧栏 (复合区块模版)
+    case "agent-nav-sidebar": {
+      const width = 240;
+      const height = 640;
+      const children: EditorElement[] = [
+        makeChild("rectangle", "侧栏底框", 0, 0, width, height, groupId, {
+          fill: "var(--surface)",
+          stroke: "var(--border-visible)",
+          borderWidth: 1,
+          radius: 0,
+        }),
+        makeChild("agent-sidebar-header", "侧栏窗口头部", 12, 12, 216, 28, groupId, {
+          appName: "AGENT CLAW",
+          showDots: true,
+        }),
+        makeChild("agent-mode-switch", "模式切换分段器", 12, 48, 216, 32, groupId, {
+          options: "对话,AI员工",
+          active: "对话",
+        }),
+        makeChild("agent-new-task-button", "新建任务按钮", 12, 88, 216, 34, groupId, {
+          text: "新建任务",
+          icon: "Plus",
+        }),
+        makeChild("agent-session-list", "置顶会话列表", 12, 130, 216, 96, groupId, {
+          title: "置顶会话",
+          items: "营销活动月度复盘分析...:active,市场趋势与竞争分析",
+        }),
+        makeChild("agent-project-tree", "项目与会话树", 12, 234, 216, 200, groupId, {
+          projectName: "Project-A",
+          items: "完善我的报告- 【Part 1】:active,2026年第一季度规划:loading,编辑我的演示文档",
+        }),
+        makeChild("agent-sidebar-nav", "侧栏快捷导航组", 12, 490, 216, 88, groupId, {
+          items: "技能·插件:Zap,知识库:FileText,定时任务:Clock",
+        }),
+        makeChild("agent-user-footer", "用户身份与设置底栏", 12, 586, 216, 44, groupId, {
+          userName: "李 · Jason · io",
+          role: "Pro Workspace",
+        }),
+      ];
+
+      return {
+        id: groupId,
+        type: "group",
+        name: "智能体侧边栏",
+        x: posX,
+        y: posY,
+        width,
+        height,
+        rotation: 0,
+        opacity: 1,
+        visible: true,
+        locked: false,
+        autoLayout: null,
+        parentId,
+        props: {},
+        children,
+      };
+    }
 
     // 11. Agent 对话主页
     case "agent-home-layout": {
@@ -862,12 +922,42 @@ export function createBlockTemplateGroup(
           borderWidth: 1,
           radius: 16,
         }),
-        makeChild("agent-nav-sidebar", "智能体导航侧栏", 0, 0, 240, height, groupId, {
-          appName: "AGENT DESKTOP",
-          activeMode: "chat",
-          activeTaskName: "完善我的报告- 【Part 1】",
-          userName: "李 · Jason · io",
+        // 左侧栏子元素
+        makeChild("rectangle", "侧栏底框", 0, 0, 240, height, groupId, {
+          fill: "var(--surface)",
+          stroke: "var(--border)",
+          borderWidth: 1,
+          radius: 0,
         }),
+        makeChild("agent-sidebar-header", "侧栏窗口头部", 12, 12, 216, 28, groupId, {
+          appName: "AGENT DESKTOP",
+          showDots: true,
+        }),
+        makeChild("agent-mode-switch", "模式切换分段器", 12, 48, 216, 32, groupId, {
+          options: "对话,AI员工",
+          active: "对话",
+        }),
+        makeChild("agent-new-task-button", "新建任务按钮", 12, 88, 216, 34, groupId, {
+          text: "新建任务",
+          icon: "Plus",
+        }),
+        makeChild("agent-session-list", "置顶会话列表", 12, 130, 216, 96, groupId, {
+          title: "置顶会话",
+          items: "完善我的报告- 【Part 1】:active,市场趋势与竞争分析",
+        }),
+        makeChild("agent-project-tree", "项目与会话树", 12, 234, 216, 200, groupId, {
+          projectName: "Project-A",
+          items: "完善我的报告- 【Part 1】:active,2026年第一季度规划:loading,编辑我的演示文档",
+        }),
+        makeChild("agent-sidebar-nav", "侧栏快捷导航组", 12, 530, 216, 88, groupId, {
+          items: "技能·插件:Zap,知识库:FileText,定时任务:Clock",
+        }),
+        makeChild("agent-user-footer", "用户身份与设置底栏", 12, 626, 216, 44, groupId, {
+          userName: "李 · Jason · io",
+          role: "Pro Workspace",
+        }),
+
+        // 中间主区域
         makeChild("circle", "智能体标志底座", 620, 120, 80, 80, groupId, {
           fill: "var(--surface)",
           stroke: "var(--border-visible)",
@@ -921,43 +1011,52 @@ export function createBlockTemplateGroup(
           borderWidth: 1,
           radius: 16,
         }),
-        makeChild("agent-nav-sidebar", "智能体导航侧栏", 0, 0, 240, height, groupId, {
-          appName: "AGENT DESKTOP",
-          activeMode: "chat",
-          activeTaskName: "营销活动月度复盘分析报告",
-          userName: "李 · Jason · io",
-        }),
-        makeChild("rectangle", "顶部会话标题栏", 240, 0, 840, 48, groupId, {
+        // 左侧栏
+        makeChild("rectangle", "侧栏底框", 0, 0, 240, height, groupId, {
           fill: "var(--surface)",
           stroke: "var(--border)",
           borderWidth: 1,
           radius: 0,
         }),
-        makeChild("text", "会话标题文本", 260, 14, 400, 22, groupId, {
-          text: "营销活动月度复盘分析报告",
-          fontSize: 13,
-          fontWeight: 700,
-          textColor: "var(--foreground)",
+        makeChild("agent-sidebar-header", "侧栏窗口头部", 12, 12, 216, 28, groupId, {
+          appName: "AGENT DESKTOP",
+          showDots: true,
         }),
-        makeChild("text", "执行流状态提示", 920, 15, 140, 20, groupId, {
-          text: "[ STREAM ACTIVE ]",
-          fontSize: 10,
-          align: "right",
-          textColor: "var(--text-secondary)",
+        makeChild("agent-mode-switch", "模式切换分段器", 12, 48, 216, 32, groupId, {
+          options: "对话,AI员工",
+          active: "对话",
+        }),
+        makeChild("agent-new-task-button", "新建任务按钮", 12, 88, 216, 34, groupId, {
+          text: "新建任务",
+          icon: "Plus",
+        }),
+        makeChild("agent-session-list", "置顶会话列表", 12, 130, 216, 96, groupId, {
+          title: "置顶会话",
+          items: "营销活动月度复盘分析报告:active,市场趋势与竞争分析",
+        }),
+        makeChild("agent-project-tree", "项目与会话树", 12, 234, 216, 200, groupId, {
+          projectName: "Project-A",
+          items: "完善我的报告- 【Part 1】:active,2026年第一季度规划:loading,编辑我的演示文档",
+        }),
+        makeChild("agent-sidebar-nav", "侧栏快捷导航组", 12, 530, 216, 88, groupId, {
+          items: "技能·插件:Zap,知识库:FileText,定时任务:Clock",
+        }),
+        makeChild("agent-user-footer", "用户身份与设置底栏", 12, 626, 216, 44, groupId, {
+          userName: "李 · Jason · io",
+          role: "Pro Workspace",
+        }),
+
+        // 中间主区域
+        makeChild("agent-session-header", "顶部会话标题栏", 240, 0, 840, 48, groupId, {
+          title: "营销活动月度复盘分析报告",
+          badge: "STREAM ACTIVE",
         }),
         makeChild("agent-file-attachments", "用户上下文附件组", 620, 64, 420, 36, groupId, {
           files: "openclaw-report.md:doc,issue_imgs.png:img",
         }),
-        makeChild("rectangle", "用户提问气泡底框", 520, 108, 520, 62, groupId, {
-          fill: "var(--surface-raised)",
-          stroke: "var(--border-visible)",
-          borderWidth: 1,
-          radius: 12,
-        }),
-        makeChild("text", "用户提问Prompt", 536, 118, 488, 42, groupId, {
-          text: "/Skill maker 帮我整理最近关于 OpenClaw 的热门讨论，顺便参考我上传的需求说明和截图。",
-          fontSize: 12,
-          textColor: "var(--foreground)",
+        makeChild("agent-user-message", "用户提问气泡", 520, 108, 520, 68, groupId, {
+          prompt: "/Skill maker 帮我整理最近关于 OpenClaw 的热门讨论，顺便参考我上传的需求说明和截图。",
+          projectScope: "Project-A",
         }),
         makeChild("agent-stream-header", "智能体响应头部", 260, 186, 780, 44, groupId, {
           agentName: "ClawHive 总管",
@@ -1024,23 +1123,51 @@ export function createBlockTemplateGroup(
           borderWidth: 1,
           radius: 16,
         }),
-        makeChild("agent-nav-sidebar", "左侧导航侧栏", 0, 0, 200, height, groupId, {
-          appName: "AGENT CLAW",
-          activeMode: "chat",
-          activeTaskName: "营销活动月度复盘分析报告",
-          userName: "李 · Jason · io",
+        // 左侧栏组件群
+        makeChild("rectangle", "侧栏底框", 0, 0, 200, height, groupId, {
+          fill: "var(--surface)",
+          stroke: "var(--border)",
+          borderWidth: 1,
+          radius: 0,
         }),
+        makeChild("agent-sidebar-header", "侧栏窗口头部", 8, 12, 184, 28, groupId, {
+          appName: "AGENT CLAW",
+          showDots: true,
+        }),
+        makeChild("agent-mode-switch", "模式切换分段器", 8, 48, 184, 32, groupId, {
+          options: "对话,AI员工",
+          active: "对话",
+        }),
+        makeChild("agent-new-task-button", "新建任务按钮", 8, 88, 184, 34, groupId, {
+          text: "新建任务",
+          icon: "Plus",
+        }),
+        makeChild("agent-session-list", "置顶会话列表", 8, 130, 184, 96, groupId, {
+          title: "置顶会话",
+          items: "营销活动月度复盘分析...:active,市场趋势与竞争分析",
+        }),
+        makeChild("agent-project-tree", "项目与会话树", 8, 234, 184, 200, groupId, {
+          projectName: "Project-A",
+          items: "完善我的报告- 【Part 1】:active,2026年第一季度规划:loading,编辑我的演示文档",
+        }),
+        makeChild("agent-sidebar-nav", "侧栏快捷导航组", 8, 530, 184, 88, groupId, {
+          items: "技能·插件:Zap,知识库:FileText,定时任务:Clock",
+        }),
+        makeChild("agent-user-footer", "用户身份与设置底栏", 8, 626, 184, 44, groupId, {
+          userName: "李 · Jason · io",
+          role: "Pro Workspace",
+        }),
+
+        // 中间会话分栏
         makeChild("rectangle", "中间会话分栏底框", 200, 0, 380, height, groupId, {
           fill: "var(--surface)",
           stroke: "var(--border)",
           borderWidth: 1,
           radius: 0,
         }),
-        makeChild("text", "会话标题文本", 216, 16, 348, 22, groupId, {
-          text: "营销活动月度复盘分析报告",
-          fontSize: 13,
-          fontWeight: 700,
-          textColor: "var(--foreground)",
+        makeChild("agent-session-header", "会话标题状态栏", 200, 0, 380, 42, groupId, {
+          title: "营销活动月度复盘分析报告",
+          badge: "",
         }),
         makeChild("agent-stream-header", "执行流头部", 216, 48, 348, 42, groupId, {
           agentName: "ClawHive 总管",
@@ -1061,6 +1188,8 @@ export function createBlockTemplateGroup(
           placeholder: "输入指令继续调整...",
           modelName: "高级推理模型",
         }),
+
+        // 右侧工件与控制台
         makeChild("agent-artifact-tabs", "工件多标签工作栏", 580, 0, 620, 46, groupId, {
           tabs: "northstar-dashboard.html:active,issue_imgs.png,summary-spec.md",
           filePath: "file:///workspace/northstar-dashboard.html",
@@ -1124,12 +1253,42 @@ export function createBlockTemplateGroup(
           borderWidth: 1,
           radius: 16,
         }),
-        makeChild("agent-nav-sidebar", "左侧员工导航", 0, 0, 240, height, groupId, {
-          appName: "AGENT DESKTOP",
-          activeMode: "employee",
-          activeTaskName: "销售宝 (对话类)",
-          userName: "李 · Jason · io",
+        // 左侧栏
+        makeChild("rectangle", "侧栏底框", 0, 0, 240, height, groupId, {
+          fill: "var(--surface)",
+          stroke: "var(--border)",
+          borderWidth: 1,
+          radius: 0,
         }),
+        makeChild("agent-sidebar-header", "侧栏窗口头部", 12, 12, 216, 28, groupId, {
+          appName: "AGENT DESKTOP",
+          showDots: true,
+        }),
+        makeChild("agent-mode-switch", "模式切换分段器", 12, 48, 216, 32, groupId, {
+          options: "对话,AI员工",
+          active: "AI员工",
+        }),
+        makeChild("agent-new-task-button", "新建任务按钮", 12, 88, 216, 34, groupId, {
+          text: "新建任务",
+          icon: "Plus",
+        }),
+        makeChild("agent-session-list", "置顶会话列表", 12, 130, 216, 96, groupId, {
+          title: "专属员工",
+          items: "销售宝 (对话类):active,流程画师,视觉设计师",
+        }),
+        makeChild("agent-project-tree", "项目与会话树", 12, 234, 216, 200, groupId, {
+          projectName: "Project-D",
+          items: "营销物料生成:active,季度PPT策划,销售对练模拟",
+        }),
+        makeChild("agent-sidebar-nav", "侧栏快捷导航组", 12, 530, 216, 88, groupId, {
+          items: "技能·插件:Zap,知识库:FileText,定时任务:Clock",
+        }),
+        makeChild("agent-user-footer", "用户身份与设置底栏", 12, 626, 216, 44, groupId, {
+          userName: "李 · Jason · io",
+          role: "Pro Workspace",
+        }),
+
+        // 中间主区域
         makeChild("circle", "角色头像底座", 620, 36, 68, 68, groupId, {
           fill: "var(--surface)",
           stroke: "var(--border-visible)",
@@ -1227,12 +1386,42 @@ export function createBlockTemplateGroup(
           borderWidth: 1,
           radius: 16,
         }),
-        makeChild("agent-nav-sidebar", "左侧员工导航", 0, 0, 240, height, groupId, {
-          appName: "AGENT DESKTOP",
-          activeMode: "employee",
-          activeTaskName: "技能市场",
-          userName: "李 · Jason · io",
+        // 左侧栏
+        makeChild("rectangle", "侧栏底框", 0, 0, 240, height, groupId, {
+          fill: "var(--surface)",
+          stroke: "var(--border)",
+          borderWidth: 1,
+          radius: 0,
         }),
+        makeChild("agent-sidebar-header", "侧栏窗口头部", 12, 12, 216, 28, groupId, {
+          appName: "AGENT DESKTOP",
+          showDots: true,
+        }),
+        makeChild("agent-mode-switch", "模式切换分段器", 12, 48, 216, 32, groupId, {
+          options: "对话,AI员工",
+          active: "AI员工",
+        }),
+        makeChild("agent-new-task-button", "新建任务按钮", 12, 88, 216, 34, groupId, {
+          text: "新建任务",
+          icon: "Plus",
+        }),
+        makeChild("agent-session-list", "置顶会话列表", 12, 130, 216, 96, groupId, {
+          title: "置顶会话",
+          items: "技能市场:active,我的员工,招聘中心",
+        }),
+        makeChild("agent-project-tree", "项目与会话树", 12, 234, 216, 200, groupId, {
+          projectName: "Project-D",
+          items: "热门推荐:active,研发技术类,内容创作类",
+        }),
+        makeChild("agent-sidebar-nav", "侧栏快捷导航组", 12, 530, 216, 88, groupId, {
+          items: "技能·插件:Zap,知识库:FileText,定时任务:Clock",
+        }),
+        makeChild("agent-user-footer", "用户身份与设置底栏", 12, 626, 216, 44, groupId, {
+          userName: "李 · Jason · io",
+          role: "Pro Workspace",
+        }),
+
+        // 中间主区域
         makeChild("rectangle", "市场横幅容器底框", 268, 20, 784, 78, groupId, {
           fill: "var(--surface)",
           stroke: "var(--border-visible)",
