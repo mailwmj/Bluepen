@@ -66,7 +66,15 @@ interface CanvasProps {
   onCanvasClick: (e: React.MouseEvent, canvasX: number, canvasY: number) => void;
   onCanvasPointerMove?: (pos: { x: number; y: number }) => void;
   onContextMenu?: (e: React.MouseEvent, canvasPos: { x: number; y: number }) => void;
-  onDropAsset?: (type: ComponentType, x: number, y: number) => void;
+  onDropAsset?: (
+    type: ComponentType,
+    x: number,
+    y: number,
+    customProps?: Record<string, string | number | boolean>,
+    width?: number,
+    height?: number,
+    label?: string,
+  ) => void;
   onDropFile?: (file: File, x: number, y: number) => void;
 }
 
@@ -3279,10 +3287,19 @@ export function Canvas({
         if (!raw) return;
 
         let compType: ComponentType | null = null;
+        let defaultProps: Record<string, string | number | boolean> | undefined;
+        let defaultWidth: number | undefined;
+        let defaultHeight: number | undefined;
+        let label: string | undefined;
+
         try {
           const parsed = JSON.parse(raw);
           if (parsed && typeof parsed === "object" && parsed.type) {
             compType = parsed.type as ComponentType;
+            defaultProps = parsed.defaultProps;
+            defaultWidth = parsed.defaultWidth;
+            defaultHeight = parsed.defaultHeight;
+            label = parsed.label;
           } else if (typeof parsed === "string") {
             compType = parsed as ComponentType;
           }
@@ -3293,7 +3310,7 @@ export function Canvas({
 
         if (compType) {
           const pos = screenToCanvas(e.clientX, e.clientY);
-          onDropAsset(compType, snap(pos.x), snap(pos.y));
+          onDropAsset(compType, snap(pos.x), snap(pos.y), defaultProps, defaultWidth, defaultHeight, label);
         }
       } catch {
         // Ignore parsing errors

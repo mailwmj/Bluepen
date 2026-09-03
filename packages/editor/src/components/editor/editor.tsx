@@ -27,8 +27,7 @@ import {
   ToolbarSeparator,
 } from "@bluepen/editor/components/ui/toolbar";
 import { useKeyboard } from "./hooks/use-keyboard";
-import { library } from "./library/index";
-import { webLibrary } from "./library/web-components";
+import { library, type LibraryComponent } from "./library/index";
 import { groupElements, ungroupElements, canGroupElements, canUngroupElements } from "./utils/grouping";
 import { isBlockTemplate, createBlockTemplateGroup } from "./library/block-templates";
 import { confirmLocal } from "./hooks/use-desktop";
@@ -406,6 +405,7 @@ export function Editor() {
       height?: number,
       rotation = 0,
       customProps?: Record<string, string | number | boolean>,
+      label?: string,
     ) => {
       // 业务区块模版：生成由真实原子组件构成的 Group 组合
       if (isBlockTemplate(type)) {
@@ -423,11 +423,11 @@ export function Editor() {
         }
       }
 
-      const lib = library.find((c) => c.type === type) || webLibrary.find((c) => c.type === type);
+      const lib = library.find((c) => c.type === type);
       const el: EditorElement = {
         id: genId(),
         type,
-        name: lib?.label || (type === "connector" ? "连接线" : type === "group" ? "组合" : type),
+        name: label || lib?.label || (type === "connector" ? "连接线" : type === "group" ? "组合" : type),
         x,
         y,
         width: width ?? (lib?.defaultWidth || (type === "connector" ? 160 : 200)),
@@ -1230,7 +1230,7 @@ export function Editor() {
   });
 
   const handleSidebarAdd = useCallback(
-    (type: ComponentType) => {
+    (asset: ComponentType | LibraryComponent) => {
       let parentId: string | null = null;
       let px = 120;
       let py = 120;
@@ -1244,7 +1244,22 @@ export function Editor() {
         px = 120 + offset;
         py = 120 + offset;
       }
-      addElement(type, px, py, parentId);
+
+      if (typeof asset === "object" && asset !== null) {
+        addElement(
+          asset.type,
+          px,
+          py,
+          parentId,
+          asset.defaultWidth,
+          asset.defaultHeight,
+          0,
+          asset.defaultProps,
+          asset.label,
+        );
+      } else {
+        addElement(asset, px, py, parentId);
+      }
     },
     [addElement, elements, selectedId],
   );
@@ -1722,7 +1737,9 @@ export function Editor() {
                 onContextMenu={(_e, pos) => {
                   lastCanvasPointerPosRef.current = pos;
                 }}
-                onDropAsset={(type, x, y) => addElement(type, x, y)}
+                onDropAsset={(type, x, y, customProps, width, height, label) =>
+                  addElement(type, x, y, null, width, height, 0, customProps, label)
+                }
                 onDropFile={(file, x, y) => void handleDropFile(file, x, y)}
               />
             </ContextMenuTrigger>

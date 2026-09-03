@@ -130,8 +130,13 @@ import {
   Heading,
 } from "lucide-react";
 import type { ComponentType, EditorElement, Page } from "./types";
-import { library, type LibraryComponent, agentLibrary } from "./library/index";
-import { webLibrary } from "./library/web-components";
+import {
+  library,
+  type LibraryComponent,
+  baseLibrary,
+  webLibrary,
+  agentLibrary,
+} from "./library/index";
 
 interface LeftSidebarProps {
   pages: Page[];
@@ -148,7 +153,7 @@ interface LeftSidebarProps {
   onSelectIds?: (ids: string[]) => void;
   onUpdateElement: (id: string, patch: Partial<EditorElement>) => void;
   onDeleteElement: (id: string) => void;
-  onAddAsset: (type: ComponentType) => void;
+  onAddAsset: (asset: ComponentType | LibraryComponent) => void;
   drawerCollapsed?: boolean;
   onToggleDrawer?: () => void;
 }
@@ -770,30 +775,41 @@ export const LeftSidebar = memo(function LeftSidebar({
     }));
   };
 
-  const filteredLibrary = library.filter((item) => {
-    if (item.category.startsWith("Web") || item.category.startsWith("Agent")) return false;
-    return searchQuery === "" || item.label.toLowerCase().includes(searchQuery.toLowerCase());
+  const filteredBaseLibrary = baseLibrary.filter((item) => {
+    return (
+      searchQuery === "" ||
+      item.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.type.toLowerCase().includes(searchQuery.toLowerCase())
+    );
   });
 
   const filteredWebLibrary = webLibrary.filter((item) => {
-    return searchQuery === "" || item.label.toLowerCase().includes(searchQuery.toLowerCase()) || item.type.toLowerCase().includes(searchQuery.toLowerCase());
+    return (
+      searchQuery === "" ||
+      item.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.type.toLowerCase().includes(searchQuery.toLowerCase())
+    );
   });
 
   const filteredAgentLibrary = agentLibrary.filter((item) => {
-    return searchQuery === "" || item.label.toLowerCase().includes(searchQuery.toLowerCase()) || item.type.toLowerCase().includes(searchQuery.toLowerCase());
+    return (
+      searchQuery === "" ||
+      item.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      item.type.toLowerCase().includes(searchQuery.toLowerCase())
+    );
   });
 
-  const allCategories = ["基础", "流程"];
-  const groupedCategories = allCategories.filter((cat) =>
-    filteredLibrary.some((c) => c.category === cat),
+  const baseCategories = ["基础图元", "基础控件", "流程图元", "结构容器"];
+  const groupedBaseCategories = baseCategories.filter((cat) =>
+    filteredBaseLibrary.some((c) => c.category === cat),
   );
 
-  const webCategories = ["Web导航", "Web表单", "Web展示", "Web反馈", "Web模版"];
+  const webCategories = ["Web结构", "Web表单", "Web复合", "Web展示与反馈", "Web模版"];
   const groupedWebCategories = webCategories.filter((cat) =>
     filteredWebLibrary.some((c) => c.category === cat),
   );
 
-  const agentCategories = ["Agent模版", "Agent输入", "Agent执行流", "Agent侧栏", "Agent角色与工件"];
+  const agentCategories = ["Agent基础", "Agent分子", "Agent功能舱", "Agent模版"];
   const groupedAgentCategories = agentCategories.filter((cat) =>
     filteredAgentLibrary.some((c) => c.category === cat),
   );
@@ -802,9 +818,9 @@ export const LeftSidebar = memo(function LeftSidebar({
 
   const navItems: { id: NavTab; label: string; dockLabel: string; icon: typeof Layers }[] = [
     { id: "pages", label: "页面与图层", dockLabel: "页面", icon: Layers },
-    { id: "components", label: "基础通用组件", dockLabel: "组件", icon: Box },
-    { id: "web", label: "业务模版库", dockLabel: "Web", icon: LayoutTemplate },
-    { id: "agent", label: "Agent智能体库", dockLabel: "Agent", icon: Bot },
+    { id: "components", label: "基础通用组件", dockLabel: "基础", icon: Box },
+    { id: "web", label: "Web业务组件库", dockLabel: "Web", icon: LayoutTemplate },
+    { id: "agent", label: "Agent桌面客户端", dockLabel: "Agent", icon: Bot },
   ];
 
   return (
@@ -866,7 +882,7 @@ export const LeftSidebar = memo(function LeftSidebar({
               {/* Tab Header & Search */}
               <div className="flex shrink-0 flex-col border-b border-border p-2 gap-1.5 bg-surface">
                 <div className="flex items-center justify-between px-1 py-0.5">
-                  <span className="font-mono text-xs font-bold tracking-wider uppercase text-foreground">[ AGENT 智能体库 ]</span>
+                  <span className="font-mono text-xs font-bold tracking-wider uppercase text-foreground">[ AGENT 桌面客户端 ]</span>
                   <span className="font-mono text-[10px] text-muted-foreground/80">{String(filteredAgentLibrary.length).padStart(2, "0")} ITEMS</span>
                 </div>
                 <div className="relative flex items-center">
@@ -898,11 +914,10 @@ export const LeftSidebar = memo(function LeftSidebar({
                   const isTemplateCat = cat === "Agent模版";
 
                   const categoryLabels: Record<string, string> = {
-                    "Agent模版": "整屏业务模版",
-                    "Agent输入": "输入与控制",
-                    "Agent执行流": "执行流与消息",
-                    "Agent侧栏": "侧栏与资产",
-                    "Agent角色与工件": "角色与工件预览",
+                    "Agent基础": "客户端基础",
+                    "Agent分子": "交互分子",
+                    "Agent功能舱": "核心功能舱",
+                    "Agent模版": "工作台模版",
                   };
 
                   return (
@@ -936,19 +951,21 @@ export const LeftSidebar = memo(function LeftSidebar({
                                 key={item.type}
                                 draggable
                                 onDragStart={(e) => {
-                                  const data = JSON.stringify({ type: item.type });
+                                  const data = JSON.stringify({
+                                    type: item.type,
+                                    label: item.label,
+                                    defaultWidth: item.defaultWidth,
+                                    defaultHeight: item.defaultHeight,
+                                    defaultProps: item.defaultProps,
+                                  });
                                   e.dataTransfer.setData("application/json", data);
                                   e.dataTransfer.setData("text/plain", data);
                                   e.dataTransfer.effectAllowed = "copy";
                                 }}
                                 onClick={() => {
-                                  if (onSelectTool) {
-                                    onSelectTool(item.type);
-                                  } else {
-                                    onAddAsset(item.type);
-                                  }
+                                  onAddAsset(item);
                                 }}
-                                title={`${item.label} (点击在画布绘制或拖拽)`}
+                                title={`${item.label} (点击添加至画布或拖拽)`}
                                 className={cn(
                                   "group relative flex cursor-pointer flex-col items-center justify-center rounded-md border p-1.5 text-center transition-all duration-150 active:scale-95 select-none",
                                   isToolActive
@@ -994,7 +1011,7 @@ export const LeftSidebar = memo(function LeftSidebar({
               {/* Tab Header & Search */}
               <div className="flex shrink-0 flex-col border-b border-border p-2 gap-1.5 bg-surface">
                 <div className="flex items-center justify-between px-1 py-0.5">
-                  <span className="font-mono text-xs font-bold tracking-wider uppercase text-foreground">[ 业务模版库 ]</span>
+                  <span className="font-mono text-xs font-bold tracking-wider uppercase text-foreground">[ WEB 业务设计库 ]</span>
                   <span className="font-mono text-[10px] text-muted-foreground/80">{String(filteredWebLibrary.length).padStart(2, "0")} ITEMS</span>
                 </div>
                 <div className="relative flex items-center">
@@ -1026,11 +1043,11 @@ export const LeftSidebar = memo(function LeftSidebar({
                   const isTemplateCat = cat === "Web模版";
 
                   const categoryLabels: Record<string, string> = {
-                    "Web导航": "导航与定位",
+                    "Web结构": "结构与排版",
                     "Web表单": "表单与输入",
-                    "Web展示": "数据展示",
-                    "Web反馈": "反馈与浮层",
-                    "Web模版": "业务区块模版",
+                    "Web复合": "复合选择与导航",
+                    "Web展示与反馈": "数据展示与反馈",
+                    "Web模版": "整屏业务模版",
                   };
 
                   return (
@@ -1064,19 +1081,21 @@ export const LeftSidebar = memo(function LeftSidebar({
                                 key={item.type}
                                 draggable
                                 onDragStart={(e) => {
-                                  const data = JSON.stringify({ type: item.type });
+                                  const data = JSON.stringify({
+                                    type: item.type,
+                                    label: item.label,
+                                    defaultWidth: item.defaultWidth,
+                                    defaultHeight: item.defaultHeight,
+                                    defaultProps: item.defaultProps,
+                                  });
                                   e.dataTransfer.setData("application/json", data);
                                   e.dataTransfer.setData("text/plain", data);
                                   e.dataTransfer.effectAllowed = "copy";
                                 }}
                                 onClick={() => {
-                                  if (onSelectTool) {
-                                    onSelectTool(item.type);
-                                  } else {
-                                    onAddAsset(item.type);
-                                  }
+                                  onAddAsset(item);
                                 }}
-                                title={`${item.label} (点击在画布绘制或拖拽)`}
+                                title={`${item.label} (点击添加至画布或拖拽)`}
                                 className={cn(
                                   "group relative flex cursor-pointer flex-col items-center justify-center rounded-md border p-1.5 text-center transition-all duration-150 active:scale-95 select-none",
                                   isToolActive
@@ -1126,8 +1145,8 @@ export const LeftSidebar = memo(function LeftSidebar({
               {/* Tab Header & Search */}
               <div className="flex shrink-0 flex-col border-b border-border p-2 gap-1.5 bg-surface">
                 <div className="flex items-center justify-between px-1 py-0.5">
-                  <span className="font-mono text-xs font-bold tracking-wider uppercase text-foreground">[ 基础组件库 ]</span>
-                  <span className="font-mono text-[10px] text-muted-foreground/80">{String(filteredLibrary.length).padStart(2, "0")} ITEMS</span>
+                  <span className="font-mono text-xs font-bold tracking-wider uppercase text-foreground">[ 基础通用组件库 ]</span>
+                  <span className="font-mono text-[10px] text-muted-foreground/80">{String(filteredBaseLibrary.length).padStart(2, "0")} ITEMS</span>
                 </div>
                 <div className="relative flex items-center">
                   <Search className="pointer-events-none absolute left-2 size-3 text-muted-foreground" />
@@ -1152,9 +1171,16 @@ export const LeftSidebar = memo(function LeftSidebar({
 
               {/* Component Groups & 3-Column Grid */}
               <div className="flex-1 overflow-y-auto p-2 space-y-2.5">
-                {groupedCategories.map((cat) => {
-                  const items = filteredLibrary.filter((c) => c.category === cat);
+                {groupedBaseCategories.map((cat) => {
+                  const items = filteredBaseLibrary.filter((c) => c.category === cat);
                   const isCollapsed = searchQuery.trim().length > 0 ? false : Boolean(collapsedCategories[cat]);
+
+                  const categoryLabels: Record<string, string> = {
+                    "基础图元": "线框基础图元",
+                    "基础控件": "常用表单控件",
+                    "流程图元": "标准流程图元",
+                    "结构容器": "结构与容器",
+                  };
 
                   return (
                     <div key={cat} className="space-y-1">
@@ -1170,7 +1196,7 @@ export const LeftSidebar = memo(function LeftSidebar({
                           <ChevronDown className="size-3 text-muted-foreground" />
                         )}
                         <span className="font-mono text-[11px] text-muted-foreground/70">[</span>
-                        <span className="text-xs font-semibold tracking-wide text-foreground/90">{cat}</span>
+                        <span className="text-xs font-semibold tracking-wide text-foreground/90">{categoryLabels[cat] || cat}</span>
                         <span className="font-mono text-[11px] text-muted-foreground/70">]</span>
                         <span className="ml-auto font-mono text-[10px] font-normal text-muted-foreground">
                           {String(items.length).padStart(2, "0")}
@@ -1187,16 +1213,23 @@ export const LeftSidebar = memo(function LeftSidebar({
                                 key={item.type}
                                 draggable
                                 onDragStart={(e) => {
-                                  const data = JSON.stringify({ type: item.type });
+                                  const data = JSON.stringify({
+                                    type: item.type,
+                                    label: item.label,
+                                    defaultWidth: item.defaultWidth,
+                                    defaultHeight: item.defaultHeight,
+                                    defaultProps: item.defaultProps,
+                                  });
                                   e.dataTransfer.setData("application/json", data);
                                   e.dataTransfer.setData("text/plain", data);
                                   e.dataTransfer.effectAllowed = "copy";
                                 }}
                                 onClick={() => {
-                                  if (onSelectTool) {
-                                     onSelectTool(item.type);
+                                  const wireframeTools = ["rectangle", "circle", "line", "arrow", "text", "hotspot", "pin-note", "sticky-note", "connector"];
+                                  if (onSelectTool && wireframeTools.includes(item.type)) {
+                                    onSelectTool(item.type);
                                   } else {
-                                    onAddAsset(item.type);
+                                    onAddAsset(item);
                                   }
                                 }}
                                 title={`${item.label} (点击在画布绘制或拖拽)`}
