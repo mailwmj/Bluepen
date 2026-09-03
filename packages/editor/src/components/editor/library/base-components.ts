@@ -9,7 +9,7 @@ export const baseLibrary: LibraryComponent[] = [
     icon: "Type",
     shortcut: "T",
     defaultWidth: 160,
-    defaultHeight: 32,
+    defaultHeight: 20,
     defaultProps: { text: "请输入文本内容", textColor: "var(--foreground)", fontSize: 14, fontWeight: 400, align: "left" },
   },
   {
@@ -392,6 +392,20 @@ export const baseLibrary: LibraryComponent[] = [
     defaultWidth: 480,
     defaultHeight: 200,
     defaultProps: { headers: "编号,用户名称,所属部门,状态", rows: 4, cols: 4, headerBg: "" },
+  },
+  {
+    type: "file-list",
+    label: "文件列表",
+    category: "结构容器",
+    icon: "FolderTree",
+    defaultWidth: 640,
+    defaultHeight: 280,
+    defaultProps: {
+      columns: "名称,所有者,位置,最近访问",
+      items: "未命名文件夹:folder:leo:我的资料:15 小时前\n未命名文档:doc:leo:我的资料:15 小时前\n未命名文件夹:folder:leo:我的资料:16 小时前\nWB资料库功能调研文档:doc:leo:我的资料:4 天前",
+      showHeader: true,
+      showCheckbox: true,
+    },
   },
   {
     type: "sticky-note",

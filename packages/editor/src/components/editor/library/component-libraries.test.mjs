@@ -42,54 +42,101 @@ test("Base Library has correct atomic categories and self-contained controls", (
   assert.ok(types.has("flow-process"), "Has flow-process");
 });
 
-test("Web Library is self-contained with atomic design layers and primitives", () => {
+test("Web Library is structured with 5 user-centric workflow categories and navigation primitives", () => {
   const categories = new Set(webLibrary.map((c) => c.category));
-  assert.ok(categories.has("Web结构"), "Has Web结构");
+  assert.ok(categories.has("Web导航"), "Has Web导航");
   assert.ok(categories.has("Web表单"), "Has Web表单");
-  assert.ok(categories.has("Web复合"), "Has Web复合");
-  assert.ok(categories.has("Web展示与反馈"), "Has Web展示与反馈");
+  assert.ok(categories.has("Web展示"), "Has Web展示");
+  assert.ok(categories.has("Web反馈"), "Has Web反馈");
   assert.ok(categories.has("Web模版"), "Has Web模版");
 
-  // Verify atomic reuse
-  const webStructureItems = webLibrary.filter((c) => c.category === "Web结构");
-  const structTypes = new Set(webStructureItems.map((c) => c.type));
-  assert.ok(structTypes.has("rectangle"), "Web has rectangle for card surface");
-  assert.ok(structTypes.has("text"), "Web has text for typography");
-  assert.ok(structTypes.has("line"), "Web has line for divider");
-  assert.ok(structTypes.has("browser-frame"), "Web has browser-frame for viewport");
+  // Verify navigation priority and completeness
+  const webNavItems = webLibrary.filter((c) => c.category === "Web导航");
+  const navTypes = new Set(webNavItems.map((c) => c.type));
+  assert.ok(navTypes.has("web-top-nav"), "Web has top nav");
+  assert.ok(navTypes.has("web-menu"), "Web has sidebar menu");
+  assert.ok(navTypes.has("web-page-header"), "Web has page header");
+  assert.ok(navTypes.has("web-breadcrumb"), "Web has breadcrumb");
+  assert.ok(navTypes.has("web-tabs"), "Web has tabs");
+  assert.ok(navTypes.has("web-segmented"), "Web has segmented control");
+  assert.ok(navTypes.has("web-steps"), "Web has steps");
+  assert.ok(navTypes.has("web-pagination"), "Web has pagination");
+  assert.ok(navTypes.has("web-dropdown"), "Web has dropdown");
 
-  const cardSurface = webStructureItems.find((c) => c.type === "rectangle");
-  assert.equal(cardSurface.label, "卡片底板");
-  assert.equal(cardSurface.defaultWidth, 360);
-  assert.equal(cardSurface.defaultHeight, 240);
+  const pageHeader = webNavItems.find((c) => c.type === "web-page-header");
+  assert.equal(pageHeader.label, "页头标题栏");
+  assert.equal(pageHeader.defaultWidth, 960);
+  assert.equal(pageHeader.defaultHeight, 96);
+
+  const segmented = webNavItems.find((c) => c.type === "web-segmented");
+  assert.equal(segmented.label, "分段切换器");
+  assert.equal(segmented.defaultWidth, 260);
+  assert.equal(segmented.defaultHeight, 36);
+
+  // Verify redundant primitives (hotspot, browser-frame) are removed from Web library
+  const allWebTypes = new Set(webLibrary.map((c) => c.type));
+  assert.ok(!allWebTypes.has("hotspot"), "Web does not duplicate hotspot");
+  assert.ok(!allWebTypes.has("browser-frame"), "Web does not duplicate browser-frame");
 });
 
-test("Agent Library is self-contained with desktop client atomic layers", () => {
+test("Agent Library is structured with user-frequency hierarchy and clean atomic layers", () => {
   const categories = new Set(agentLibrary.map((c) => c.category));
-  assert.ok(categories.has("Agent基础"), "Has Agent基础");
-  assert.ok(categories.has("Agent分子"), "Has Agent分子");
-  assert.ok(categories.has("Agent功能舱"), "Has Agent功能舱");
-  assert.ok(categories.has("Agent模版"), "Has Agent模版");
+  assert.ok(categories.has("Agent基础图元"), "Has Agent基础图元");
+  assert.ok(categories.has("Agent框架容器"), "Has Agent框架容器");
+  assert.ok(categories.has("Agent结构与数据"), "Has Agent结构与数据");
+  assert.ok(categories.has("Agent核心交互"), "Has Agent核心交互");
+  assert.ok(categories.has("Agent场景模版"), "Has Agent场景模版");
 
-  // Verify atomic reuse
-  const agentBaseItems = agentLibrary.filter((c) => c.category === "Agent基础");
+  // Verify atomic primitives are prioritized and clearly named
+  const agentBaseItems = agentLibrary.filter((c) => c.category === "Agent基础图元");
   const baseTypes = new Set(agentBaseItems.map((c) => c.type));
-  assert.ok(baseTypes.has("browser-frame"), "Agent has desktop window frame");
-  assert.ok(baseTypes.has("rectangle"), "Agent has panel container");
-  assert.ok(baseTypes.has("text"), "Agent has explanation text");
-  assert.ok(baseTypes.has("line"), "Agent has section divider");
-  assert.ok(baseTypes.has("pin-note"), "Agent has status dot indicator");
-  assert.ok(baseTypes.has("button-primary"), "Agent has pill action button");
+  assert.ok(baseTypes.has("rectangle"), "Agent has rectangle");
+  assert.ok(baseTypes.has("text"), "Agent has text");
+  assert.ok(baseTypes.has("line"), "Agent has line");
+  assert.ok(baseTypes.has("button-primary"), "Agent has button-primary");
+  assert.ok(baseTypes.has("button"), "Agent has button");
+  assert.ok(baseTypes.has("image"), "Agent has image");
+  assert.ok(baseTypes.has("agent-status-badge"), "Agent has agent-status-badge in Agent基础图元");
 
-  const panelContainer = agentBaseItems.find((c) => c.type === "rectangle");
-  assert.equal(panelContainer.label, "面板容器底板");
-  assert.equal(panelContainer.defaultWidth, 320);
-  assert.equal(panelContainer.defaultHeight, 480);
+  const rect = agentBaseItems.find((c) => c.type === "rectangle");
+  assert.equal(rect.label, "矩形");
+  const text = agentBaseItems.find((c) => c.type === "text");
+  assert.equal(text.label, "文字");
+  const statusBadge = agentBaseItems.find((c) => c.type === "agent-status-badge");
+  assert.equal(statusBadge.label, "状态徽标");
+
+  // Verify redundant widgets (status dot, empty browser frame) are removed
+  assert.ok(!baseTypes.has("pin-note"), "Agent removed redundant pin-note / status dot");
+  assert.ok(!baseTypes.has("browser-frame"), "Agent removed redundant browser-frame");
+
+  // Verify framework and tree additions
+  const frameItems = agentLibrary.filter((c) => c.category === "Agent框架容器");
+  assert.ok(frameItems.some((c) => c.type === "agent-client-home"), "Agent has agent-client-home");
+  assert.ok(frameItems.some((c) => c.type === "agent-client-chat"), "Agent has agent-client-chat");
+  assert.ok(frameItems.some((c) => c.type === "agent-client-split"), "Agent has agent-client-split");
+  assert.ok(frameItems.some((c) => c.type === "agent-desktop-frame"), "Agent has agent-desktop-frame");
+
+  // Verify unified outer frame dimensions for all Agent client components (1280 x 800)
+  for (const clientType of ["agent-client-home", "agent-client-chat", "agent-client-split", "agent-desktop-frame"]) {
+    const item = frameItems.find((c) => c.type === clientType);
+    assert.equal(item.defaultWidth, 1280, `${clientType} has unified width 1280`);
+    assert.equal(item.defaultHeight, 800, `${clientType} has unified height 800`);
+  }
+
+  const structItems = agentLibrary.filter((c) => c.category === "Agent结构与数据");
+  assert.ok(structItems.some((c) => c.type === "agent-directory-tree"), "Agent has agent-directory-tree");
+  assert.ok(structItems.some((c) => c.type === "agent-filter-bar"), "Agent has agent-filter-bar");
+  assert.ok(structItems.some((c) => c.type === "file-list"), "Agent has file-list");
+
+  const interactItems = agentLibrary.filter((c) => c.category === "Agent核心交互");
+  const attachmentComp = interactItems.find((c) => c.type === "agent-file-attachments");
+  assert.ok(attachmentComp, "Agent has agent-file-attachments in Agent核心交互");
+  assert.equal(attachmentComp.label, "附件组件");
 });
 
 test("All libraries have valid metadata and positive dimensions", () => {
   const allLibraries = [...baseLibrary, ...webLibrary, ...agentLibrary];
-  assert.ok(allLibraries.length > 50, "Combined library contains all components");
+  assert.ok(allLibraries.length > 40, "Combined library contains all components");
 
   for (const item of allLibraries) {
     assert.ok(item.type, "Item must have type");
@@ -99,4 +146,30 @@ test("All libraries have valid metadata and positive dimensions", () => {
     assert.ok(item.defaultWidth > 0, `Item ${item.type} must have positive width`);
     assert.ok(item.defaultHeight > 0, `Item ${item.type} must have positive height`);
   }
+});
+
+test("Unified file-list is present across Base, Web, and Agent libraries with scenario-specific presets", () => {
+  const baseFileList = baseLibrary.find((c) => c.type === "file-list");
+  assert.ok(baseFileList, "file-list exists in baseLibrary");
+  assert.equal(baseFileList.category, "结构容器");
+  assert.equal(baseFileList.label, "文件列表");
+
+  const webFileList = webLibrary.find((c) => c.type === "file-list");
+  assert.ok(webFileList, "file-list exists in webLibrary");
+  assert.equal(webFileList.category, "Web展示");
+  assert.equal(webFileList.label, "文件资源列表");
+
+  const agentFileList = agentLibrary.find((c) => c.type === "file-list");
+  assert.ok(agentFileList, "file-list exists in agentLibrary");
+  assert.equal(agentFileList.category, "Agent结构与数据");
+  assert.equal(agentFileList.label, "文件资源列表");
+
+  // Check template additions
+  const webLayout = webLibrary.find((c) => c.type === "web-file-manager-layout");
+  assert.ok(webLayout, "web-file-manager-layout exists in webLibrary");
+  assert.equal(webLayout.category, "Web模版");
+
+  const agentLayout = agentLibrary.find((c) => c.type === "agent-knowledge-base-layout");
+  assert.ok(agentLayout, "agent-knowledge-base-layout exists in agentLibrary");
+  assert.equal(agentLayout.category, "Agent场景模版");
 });

@@ -17,6 +17,7 @@ import {
   CalendarDays,
   Clock,
   ArrowRight,
+  ArrowLeft,
   ArrowLeftRight,
   Filter,
   RefreshCw,
@@ -47,7 +48,11 @@ import {
   Download,
   Settings,
   Edit,
+  Folder,
+  FolderPlus,
+  LayoutGrid,
 } from "lucide-react";
+import { FileListPreview } from "./file-list-renderer";
 
 type Props = Record<string, string | number | boolean>;
 const val = (props: Props, key: string, fallback: string | number | boolean) =>
@@ -374,6 +379,109 @@ export function WebTabsPreview({ props = {} }: { props?: Props }) {
   );
 }
 
+export function WebPageHeaderPreview({ props = {} }: { props?: Props }) {
+  const title = String(val(props, "title", "微服务集群实例详情"));
+  const breadcrumb = String(val(props, "breadcrumb", "工作台 / 研发项目 / 架构服务"));
+  const description = String(val(props, "description", "查看与管控当前集群节点状态、网络拓扑及健康度指标"));
+  const showBack = props.backButton !== false && props.backButton !== "false";
+  const actionText = String(val(props, "actionText", "新建节点"));
+  const secondaryAction = String(val(props, "secondaryActionText", "操作日志"));
+  const tagText = String(val(props, "tagText", "PROD-READY"));
+  const headerStyle = computeShapeStyle(props, { fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1, radius: 0 });
+
+  const breadcrumbs = breadcrumb ? breadcrumb.split("/").map((s) => s.trim()).filter(Boolean) : [];
+
+  return (
+    <div className="flex h-full w-full flex-col justify-between border-b px-6 py-3.5 select-none font-sans overflow-hidden" style={headerStyle}>
+      {/* Top row: Breadcrumb */}
+      {breadcrumbs.length > 0 && (
+        <div className="flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground leading-none">
+          {breadcrumbs.map((item, idx) => (
+            <React.Fragment key={`${item}-${idx}`}>
+              <span className={cn(idx === breadcrumbs.length - 1 ? "text-foreground font-semibold" : "hover:text-foreground")}>
+                {item}
+              </span>
+              {idx < breadcrumbs.length - 1 && <span className="text-muted-foreground/60">/</span>}
+            </React.Fragment>
+          ))}
+        </div>
+      )}
+
+      {/* Main row: Back + Title + Tag + Actions */}
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-3">
+          {showBack && (
+            <div className="flex size-7 shrink-0 items-center justify-center rounded-xs border border-border-visible bg-background text-muted-foreground">
+              <ArrowLeft className="size-3.5" />
+            </div>
+          )}
+          <h1 className="truncate font-sans text-base font-bold tracking-tight text-foreground">
+            {title}
+          </h1>
+          {tagText && (
+            <span className="shrink-0 rounded-xs border border-border-visible bg-surface-raised px-1.5 py-0.5 font-mono text-[10px] font-medium tracking-wider text-muted-foreground uppercase">
+              {tagText}
+            </span>
+          )}
+        </div>
+
+        {/* Right Actions */}
+        <div className="flex shrink-0 items-center gap-2">
+          {secondaryAction && (
+            <div className="flex h-7 items-center gap-1.5 rounded-full border border-border-visible bg-background px-3 font-mono text-[11px] font-medium text-foreground">
+              <span>{secondaryAction}</span>
+            </div>
+          )}
+          {actionText && (
+            <div className="flex h-7 items-center gap-1.5 rounded-full bg-foreground px-3.5 font-mono text-[11px] font-semibold text-background">
+              <Plus className="size-3 stroke-[2.5]" />
+              <span>{actionText}</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Sub row: Description */}
+      {description && (
+        <div className="text-xs text-muted-foreground truncate leading-normal">
+          {description}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function WebSegmentedPreview({ props = {} }: { props?: Props }) {
+  const rawOptions = val(props, "options", "日视图,周视图,月度统计");
+  const options = parseItems(rawOptions, ["日视图", "周视图", "月度统计"]);
+  const selectedIndex = Number(val(props, "selectedIndex", 0));
+  const segStyle = computeShapeStyle(props, { fill: "var(--background)", stroke: "var(--border-visible)", borderWidth: 1, radius: 8 });
+
+  return (
+    <div
+      className="flex h-full w-full items-center p-1 font-mono text-xs select-none gap-1"
+      style={segStyle}
+    >
+      {options.map((opt, idx) => {
+        const isActive = idx === selectedIndex;
+        return (
+          <div
+            key={`${opt}-${idx}`}
+            className={cn(
+              "flex flex-1 h-full items-center justify-center rounded-sm px-2 text-center text-[11px] font-medium transition-all",
+              isActive
+                ? "bg-surface-raised text-foreground font-bold border border-border-visible shadow-2xs"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            <span className="truncate">{opt}</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 export function WebBreadcrumbPreview({ props = {} }: { props?: Props }) {
   const pathStr = String(val(props, "path", "工作台 / 研发项目 / 迭代计划 / 需求详情"));
   const items = pathStr.split("/").map((s) => s.trim()).filter(Boolean);
@@ -452,9 +560,10 @@ export function WebStepsPreview({ props = {} }: { props?: Props }) {
   const rawSteps = val(props, "steps", "填写基本信息,配置权限策略,关联数据源,完成创建");
   const steps = parseItems(rawSteps, ["填写基本信息", "配置权限策略", "关联数据源", "完成创建"]);
   const current = Number(val(props, "current", 2));
+  const stepsStyle = computeShapeStyle(props, { fill: "transparent", stroke: "transparent", borderWidth: 0, radius: 0 });
 
   return (
-    <div className="flex h-full w-full items-center justify-between px-4 font-sans select-none">
+    <div className="flex h-full w-full items-center justify-between px-4 font-sans select-none overflow-hidden" style={stepsStyle}>
       {steps.map((step, idx) => {
         const stepNum = idx + 1;
         const isDone = stepNum < current;
@@ -462,31 +571,40 @@ export function WebStepsPreview({ props = {} }: { props?: Props }) {
 
         return (
           <React.Fragment key={step}>
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-2.5 shrink-0">
               <div
                 className={cn(
-                  "flex size-7 shrink-0 items-center justify-center rounded-full font-mono text-xs font-bold transition-colors",
+                  "flex size-6 shrink-0 items-center justify-center rounded-full font-mono text-xs transition-colors",
                   isDone
-                    ? "bg-surface-raised border border-foreground text-foreground"
+                    ? "border border-foreground bg-surface-raised text-foreground"
                     : isCurrent
-                    ? "bg-foreground text-background"
-                    : "border border-border-visible bg-surface text-muted-foreground"
+                    ? "border border-foreground bg-foreground font-bold text-background shadow-xs ring-2 ring-foreground/20 ring-offset-1 ring-offset-background"
+                    : "border border-border-visible bg-surface font-medium text-muted-foreground/60"
                 )}
               >
-                {isDone ? <Check className="size-3.5 stroke-[3]" /> : stepNum}
+                {isDone ? <Check className="size-3.5 stroke-[2.5]" /> : stepNum}
               </div>
-              <div className="flex flex-col">
-                <span className={cn("text-xs font-medium leading-tight", isCurrent ? "font-bold text-foreground" : "text-muted-foreground")}>
-                  {step}
-                </span>
-                <span className="font-mono text-[9px] text-muted-foreground/60 uppercase">
-                  {isDone ? "COMPLETED" : isCurrent ? "IN PROGRESS" : "PENDING"}
-                </span>
-              </div>
+              <span
+                className={cn(
+                  "text-xs tracking-tight whitespace-nowrap transition-colors",
+                  isCurrent
+                    ? "font-semibold text-foreground"
+                    : isDone
+                    ? "font-medium text-foreground/85"
+                    : "font-normal text-muted-foreground/60"
+                )}
+              >
+                {step}
+              </span>
             </div>
 
             {idx < steps.length - 1 && (
-              <div className={cn("h-px flex-1 mx-3", isDone ? "bg-foreground" : "bg-border-visible")} />
+              <div
+                className={cn(
+                  "h-px flex-1 min-w-4 mx-3.5 transition-colors",
+                  isDone ? "bg-foreground" : "bg-border-visible"
+                )}
+              />
             )}
           </React.Fragment>
         );
@@ -2328,6 +2446,82 @@ export function WebFaqSectionPreview({ props = {} }: { props?: Props }) {
   );
 }
 
+export function WebFileManagerLayoutPreview({
+  props = {},
+  context,
+}: {
+  props?: Props;
+  context?: ComponentRenderContext;
+}) {
+  const title = String(val(props, "title", "企业云盘与文档中心"));
+  const path = String(val(props, "path", "全部文件 / 研发部门 / 2026架构规划"));
+
+  return (
+    <div className="flex h-full w-full flex-col rounded-xl border border-border-visible bg-background p-4 gap-3 font-sans select-none shadow-sm">
+      {/* Top Header */}
+      <div className="flex items-center justify-between border-b border-border pb-3">
+        <div className="flex items-center gap-2">
+          <Folder className="size-4 text-foreground" />
+          <span className="text-sm font-bold text-foreground">{title}</span>
+          <span className="text-[11px] font-mono text-muted-foreground/70 hidden sm:inline-block">
+            [{path}]
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className="flex h-8 items-center gap-1.5 rounded-full bg-foreground px-3.5 text-xs font-mono uppercase tracking-wider font-bold text-background hover:opacity-90 transition-opacity"
+          >
+            <Plus className="size-3.5" />
+            <span>上传文件</span>
+          </button>
+          <button
+            type="button"
+            className="flex h-8 items-center gap-1.5 rounded-full border border-border-visible bg-transparent px-3 text-xs font-mono uppercase tracking-wider text-foreground hover:bg-surface-raised transition-colors"
+          >
+            <FolderPlus className="size-3.5" />
+            <span>新建文件夹</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Filter & View Switcher Bar */}
+      <div className="flex items-center justify-between gap-3 h-9">
+        <div className="flex items-center gap-2 flex-1 max-w-sm">
+          <div className="relative flex-1 flex items-center">
+            <Search className="pointer-events-none absolute left-2.5 size-3.5 text-muted-foreground" />
+            <input
+              type="text"
+              readOnly
+              placeholder="搜索文档、文件夹或文件格式..."
+              className="h-8 w-full rounded-md border border-border-visible bg-surface pl-8 pr-3 text-xs text-foreground placeholder:text-muted-foreground/60 outline-none"
+            />
+          </div>
+        </div>
+        <div className="flex items-center gap-1 border border-border-visible rounded-md p-0.5 bg-surface">
+          <div className="p-1 rounded bg-surface-raised text-foreground">
+            <Table className="size-3.5" />
+          </div>
+          <div className="p-1 rounded text-muted-foreground hover:text-foreground">
+            <LayoutGrid className="size-3.5" />
+          </div>
+        </div>
+      </div>
+
+      {/* Main Table: File List */}
+      <div className="flex-1 min-h-0">
+        <FileListPreview props={props} context={context} mode="web" />
+      </div>
+
+      {/* Footer / Storage Bar */}
+      <div className="flex h-8 shrink-0 items-center justify-between border-t border-border pt-2 text-[11px] font-mono text-muted-foreground">
+        <span>已使用 24.8 GB / 100 GB (24.8%)</span>
+        <span className="text-muted-foreground/70">8 项资源已就绪</span>
+      </div>
+    </div>
+  );
+}
+
 // Top-level dispatcher for Web Components
 export function renderWebLibraryComponent(
   type: ComponentType,
@@ -2339,7 +2533,9 @@ export function renderWebLibraryComponent(
     case "web-dropdown": return <WebDropdownPreview props={props} />;
     case "web-top-nav": return <WebTopNavPreview props={props} />;
     case "web-menu": return <WebMenuPreview props={props} />;
+    case "web-page-header": return <WebPageHeaderPreview props={props} />;
     case "web-tabs": return <WebTabsPreview props={props} />;
+    case "web-segmented": return <WebSegmentedPreview props={props} />;
     case "web-breadcrumb": return <WebBreadcrumbPreview props={props} />;
     case "web-pagination": return <WebPaginationPreview props={props} />;
     case "web-steps": return <WebStepsPreview props={props} />;
@@ -2385,6 +2581,11 @@ export function renderWebLibraryComponent(
     case "web-message": return <WebMessagePreview props={props} />;
     case "web-skeleton": return <WebSkeletonPreview props={props} />;
     case "web-empty-state": return <WebEmptyStatePreview props={props} />;
+    case "file-list":
+    case "web-file-list":
+      return <FileListPreview props={props} context={context} mode="web" />;
+    case "web-file-manager-layout":
+      return <WebFileManagerLayoutPreview props={props} context={context} />;
     case "web-admin-layout": return <WebAdminLayoutPreview props={props} />;
     case "web-filter-bar": return <WebFilterBarPreview props={props} />;
     case "web-crud-table": return <WebCrudTablePreview props={props} />;
@@ -2399,5 +2600,6 @@ export function renderWebLibraryComponent(
       return null;
   }
 }
+
 
 

@@ -3,6 +3,7 @@ import type { ComponentType, EditorElement } from "../types";
 import { cn } from "@bluepen/editor/lib/utils";
 import { renderWebLibraryComponent } from "./web-renderers";
 import { renderAgentLibraryComponent } from "./agent-renderers";
+import { FileListPreview } from "./file-list-renderer";
 
 export interface ComponentRenderContext {
   elementId?: string;
@@ -139,6 +140,7 @@ export function renderLibraryComponent(
     case "button-primary": return <ButtonPrimaryPreview props={props} isEditing={context?.isEditing} />;
     case "placeholder": return <PlaceholderPreview props={props} isEditing={context?.isEditing} />;
     case "table": return <TablePreview props={props} context={context} />;
+    case "file-list": return <FileListPreview props={props} context={context} />;
     case "sticky-note": return <StickyNotePreview props={props} />;
     case "pin-note": return <PinNotePreview props={props} />;
     case "scroll-panel": return <ScrollPanelPreview props={props} />;

@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const blockTemplatesSource = fs.readFileSync(path.join(__dirname, "block-templates.ts"), "utf8");
 
 // Simulate block templates and grouping functions
 function genId() {
@@ -249,5 +255,29 @@ test("canUngroupElements and ungroupElements support dynamic explosion for singl
   assert.equal(releasedIds.length, 8);
   assert.ok(nextElements.some((e) => e.type === "agent-mode-switch"));
   assert.ok(nextElements.some((e) => e.type === "agent-new-task-button"));
+});
+
+test("block-templates.ts includes web-file-manager-layout and agent-knowledge-base-layout in BLOCK_TEMPLATE_TYPES", () => {
+  assert.ok(blockTemplatesSource.includes('"web-file-manager-layout"'), "Includes web-file-manager-layout");
+  assert.ok(blockTemplatesSource.includes('"agent-knowledge-base-layout"'), "Includes agent-knowledge-base-layout");
+  assert.ok(blockTemplatesSource.includes('case "web-file-manager-layout":'), "Includes web-file-manager-layout case in createBlockTemplateGroup");
+  assert.ok(blockTemplatesSource.includes('case "agent-knowledge-base-layout":'), "Includes agent-knowledge-base-layout case in createBlockTemplateGroup");
+  assert.ok(blockTemplatesSource.includes('makeChild("file-list"'), "Uses file-list component inside block templates");
+});
+
+test("Agent client framework components (home, chat, split, desktop-frame) are in BLOCK_TEMPLATE_TYPES and support ungrouping (打散)", () => {
+  assert.ok(blockTemplatesSource.includes('"agent-client-home"'), "Includes agent-client-home in BLOCK_TEMPLATE_TYPES");
+  assert.ok(blockTemplatesSource.includes('"agent-client-chat"'), "Includes agent-client-chat in BLOCK_TEMPLATE_TYPES");
+  assert.ok(blockTemplatesSource.includes('"agent-client-split"'), "Includes agent-client-split in BLOCK_TEMPLATE_TYPES");
+  assert.ok(blockTemplatesSource.includes('"agent-desktop-frame"'), "Includes agent-desktop-frame in BLOCK_TEMPLATE_TYPES");
+
+  assert.ok(blockTemplatesSource.includes('case "agent-client-home":'), "Includes agent-client-home case in createBlockTemplateGroup");
+  assert.ok(blockTemplatesSource.includes('case "agent-client-chat":'), "Includes agent-client-chat case in createBlockTemplateGroup");
+  assert.ok(blockTemplatesSource.includes('case "agent-client-split":'), "Includes agent-client-split case in createBlockTemplateGroup");
+  assert.ok(blockTemplatesSource.includes('case "agent-desktop-frame":'), "Includes agent-desktop-frame case in createBlockTemplateGroup");
+
+  // Verify 1280x800 dimensions in createBlockTemplateGroup for agent clients
+  assert.ok(blockTemplatesSource.includes("const width = 1280;"), "Uses 1280 width for desktop clients");
+  assert.ok(blockTemplatesSource.includes("const height = 800;"), "Uses 800 height for desktop clients");
 });
 

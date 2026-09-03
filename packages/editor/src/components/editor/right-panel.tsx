@@ -136,13 +136,15 @@ const STROKE_SUPPORTED_TYPES = new Set([
   "web-color-picker", "web-upload", "web-transfer",
   // Web containers & cards
   "web-card", "web-statistic-card", "web-collapse", "web-filter-bar", "web-login-card",
-  "web-table", "web-descriptions", "web-kanban", "web-calendar", "web-chart", "web-tree",
+  "web-table", "file-list", "web-file-list", "agent-knowledge-files", "web-file-manager-layout", "agent-knowledge-base-layout",
+  "web-descriptions", "web-kanban", "web-calendar", "web-chart", "web-tree",
   // Web feedback & popups
   "web-modal", "web-drawer", "web-alert", "web-popconfirm", "web-notification",
   "web-tips", "web-message", "web-empty-state",
   // Web navigation & tags
   "web-tag", "web-badge", "web-dropdown", "web-menu", "web-tabs", "web-pagination",
   // Agent templates & components
+  "agent-knowledge-base-layout",
   "agent-home-layout", "agent-chat-stream-layout", "agent-split-workspace-layout",
   "agent-employee-workspace-layout", "agent-employee-market-layout",
   "agent-nav-sidebar", "agent-sidebar-header", "agent-mode-switch", "agent-new-task-button",
@@ -165,13 +167,15 @@ const FILL_SUPPORTED_TYPES = new Set([
   "web-color-picker", "web-upload", "web-transfer",
   // Web containers & cards
   "web-card", "web-statistic-card", "web-collapse", "web-filter-bar", "web-login-card",
-  "web-table", "web-descriptions", "web-kanban", "web-calendar", "web-chart", "web-tree",
+  "web-table", "file-list", "web-file-list", "agent-knowledge-files", "web-file-manager-layout", "agent-knowledge-base-layout",
+  "web-descriptions", "web-kanban", "web-calendar", "web-chart", "web-tree",
   // Web feedback & popups
   "web-modal", "web-drawer", "web-alert", "web-popconfirm", "web-notification",
   "web-tips", "web-message", "web-empty-state",
   // Web navigation & tags
   "web-tag", "web-badge", "web-dropdown", "web-menu", "web-tabs", "web-pagination",
   // Agent templates & components
+  "agent-knowledge-base-layout",
   "agent-home-layout", "agent-chat-stream-layout", "agent-split-workspace-layout",
   "agent-employee-workspace-layout", "agent-employee-market-layout",
   "agent-nav-sidebar", "agent-sidebar-header", "agent-mode-switch", "agent-new-task-button",
@@ -194,13 +198,15 @@ const RADIUS_SUPPORTED_TYPES = new Set([
   "web-color-picker", "web-upload", "web-transfer",
   // Web containers & cards
   "web-card", "web-statistic-card", "web-collapse", "web-filter-bar", "web-login-card",
-  "web-table", "web-descriptions", "web-kanban", "web-calendar", "web-chart", "web-tree",
+  "web-table", "file-list", "web-file-list", "agent-knowledge-files", "web-file-manager-layout", "agent-knowledge-base-layout",
+  "web-descriptions", "web-kanban", "web-calendar", "web-chart", "web-tree",
   // Web feedback & popups
   "web-modal", "web-drawer", "web-alert", "web-popconfirm", "web-notification",
   "web-tips", "web-message", "web-empty-state",
   // Web navigation & tags
   "web-tag", "web-badge", "web-dropdown", "web-menu", "web-tabs", "web-pagination",
   // Agent templates & components
+  "agent-knowledge-base-layout",
   "agent-home-layout", "agent-chat-stream-layout", "agent-split-workspace-layout",
   "agent-employee-workspace-layout", "agent-employee-market-layout",
   "agent-nav-sidebar", "agent-sidebar-header", "agent-mode-switch", "agent-new-task-button",
@@ -2771,6 +2777,69 @@ export const RightPanel = memo(function RightPanel({
                   </>
                 )}
 
+                {/* Web Page Header */}
+                {element.type === "web-page-header" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">页面大标题</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("title", "微服务集群实例详情"))}
+                        onChange={(e) => setProp("title", e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">面包屑路径</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("breadcrumb", "工作台 / 研发项目 / 架构服务"))}
+                        onChange={(e) => setProp("breadcrumb", e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">页面说明</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("description", "查看与管控当前集群节点状态、网络拓扑及健康度指标"))}
+                        onChange={(e) => setProp("description", e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">主要操作</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("actionText", "新建节点"))}
+                        onChange={(e) => setProp("actionText", e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">状态标签</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("tagText", "PROD-READY"))}
+                        onChange={(e) => setProp("tagText", e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between pt-1">
+                      <span className="text-[10px] text-muted-foreground">返回按钮</span>
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={prop("backButton", true) !== false && prop("backButton", true) !== "false"}
+                          onChange={(e) => setProp("backButton", e.target.checked)}
+                          className="size-3.5 rounded border-border-visible accent-primary"
+                        />
+                        <span className="font-mono text-[10px] text-muted-foreground">显示返回上一级</span>
+                      </label>
+                    </div>
+                  </>
+                )}
+
                 {/* Web Menu */}
                 {element.type === "web-menu" && (() => {
                   const showCategories = prop("showCategories", true) !== false && prop("showCategories", true) !== "false";
@@ -3023,6 +3092,21 @@ export const RightPanel = memo(function RightPanel({
                         ))}
                       </div>
                     </div>
+                  </>
+                )}
+
+                {/* Web Segmented */}
+                {element.type === "web-segmented" && (
+                  <>
+                    <OptionsListEditor
+                      title="分段选项列表"
+                      mode="single"
+                      value={String(prop("options", "日视图,周视图,月度统计"))}
+                      selectedIndex={Number(prop("selectedIndex", 0))}
+                      onSelectIndex={(idx) => setProp("selectedIndex", idx)}
+                      onChange={(v) => setProp("options", v)}
+                      placeholder="分段项标签..."
+                    />
                   </>
                 )}
 
@@ -3751,6 +3835,151 @@ export const RightPanel = memo(function RightPanel({
                     onChange={(v) => setProp("columns", v)}
                     placeholder="列名..."
                   />
+                )}
+
+                {/* File List / Resource Table */}
+                {(element.type === "file-list" || element.type === "web-file-list" || element.type === "agent-knowledge-files") && (
+                  <>
+                    <OptionsListEditor
+                      title="表头列名定义"
+                      mode="none"
+                      value={String(prop("columns", "名称,所有者,位置,最近访问"))}
+                      onChange={(v) => setProp("columns", v)}
+                      placeholder="列名（逗号分隔）..."
+                    />
+
+                    <div className="flex items-center justify-between pt-1">
+                      <span className="text-xs text-muted-foreground">显示表头</span>
+                      <Checkbox
+                        checked={Boolean(prop("showHeader", true))}
+                        onCheckedChange={(checked: boolean) => setProp("showHeader", Boolean(checked))}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">显示首列图标</span>
+                      <Checkbox
+                        checked={Boolean(prop("showIcon", true))}
+                        onCheckedChange={(checked: boolean) => setProp("showIcon", Boolean(checked))}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">显示多选复选框</span>
+                      <Checkbox
+                        checked={Boolean(prop("showCheckbox", true))}
+                        onCheckedChange={(checked: boolean) => setProp("showCheckbox", Boolean(checked))}
+                      />
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-muted-foreground">显示操作列</span>
+                      <Checkbox
+                        checked={Boolean(prop("showActionCol", false))}
+                        onCheckedChange={(checked: boolean) => setProp("showActionCol", Boolean(checked))}
+                      />
+                    </div>
+
+                    {Boolean(prop("showActionCol", false)) && (
+                      <div className="flex items-center gap-2 pt-0.5">
+                        <span className="w-16 shrink-0 text-[10px] text-muted-foreground">操作项定义</span>
+                        <Input
+                          size="sm"
+                          value={String(prop("actions", "下载,分享,删除"))}
+                          onChange={(e: React.ChangeEvent<HTMLInputElement>) => setProp("actions", e.target.value)}
+                          placeholder="操作名（逗号分隔）..."
+                          className="h-7 text-xs font-mono"
+                        />
+                      </div>
+                    )}
+
+                    <div className="space-y-1.5 pt-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-mono uppercase text-muted-foreground">行数据管理</span>
+                        <div className="flex items-center gap-1.5">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-6 px-2 text-[11px] font-mono"
+                            onClick={() => {
+                              const cur = String(prop("items", ""));
+                              const newRow = "新建文档:doc:leo:我的资料:刚刚";
+                              const next = cur ? `${cur}\n${newRow}` : newRow;
+                              setProp("items", next);
+                            }}
+                          >
+                            + 添加行
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-6 px-2 text-[11px] font-mono text-muted-foreground hover:text-destructive"
+                            onClick={() => {
+                              const cur = String(prop("items", ""));
+                              const lines = cur.split("\n").filter(Boolean);
+                              if (lines.length > 1) {
+                                lines.pop();
+                                setProp("items", lines.join("\n"));
+                              }
+                            }}
+                          >
+                            - 删除末行
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="rounded border border-border-visible/60 bg-surface-raised/30 px-2 py-1.5 text-[10px] text-muted-foreground/80 leading-relaxed">
+                        💡 双击画布表格中的任意文件名、所有者、位置或时间可直接原地编辑。
+                      </div>
+                    </div>
+                  </>
+                )}
+
+                {/* Web File Manager Layout */}
+                {element.type === "web-file-manager-layout" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">工作台标题</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("title", "企业云盘与文档中心"))}
+                        onChange={(e) => setProp("title", e.target.value)}
+                        className="h-7 text-xs font-bold"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">路径面包屑</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("path", "全部文件 / 研发部门 / 2026架构规划"))}
+                        onChange={(e) => setProp("path", e.target.value)}
+                        className="h-7 text-xs font-mono"
+                      />
+                    </div>
+                  </>
+                )}
+
+                {/* Agent Knowledge Base Layout */}
+                {element.type === "agent-knowledge-base-layout" && (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">知识库标题</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("title", "智能体 RAG 知识库与语料索引"))}
+                        onChange={(e) => setProp("title", e.target.value)}
+                        className="h-7 text-xs font-bold"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">激活分类</span>
+                      <Input
+                        size="sm"
+                        value={String(prop("activeCategory", "核心白皮书"))}
+                        onChange={(e) => setProp("activeCategory", e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                  </>
                 )}
 
                 {/* Web Descriptions */}
@@ -4673,20 +4902,23 @@ export const RightPanel = memo(function RightPanel({
                 {element.type === "agent-project-tree" && (
                   <>
                     <div className="flex items-center gap-2">
-                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">工程名称</span>
+                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">标题/名称</span>
                       <Input
                         size="sm"
-                        value={String(prop("projectName", "Project-A"))}
-                        onChange={(e) => setProp("projectName", e.target.value)}
+                        value={String(prop("title", prop("projectName", "项目")))}
+                        onChange={(e) => {
+                          setProp("title", e.target.value);
+                          setProp("projectName", e.target.value);
+                        }}
                         className="h-7 text-xs font-bold font-mono"
                       />
                     </div>
                     <OptionsListEditor
-                      title="项目任务列表 (:active, :loading, :dot)"
+                      title="项目列表 (:active, :loading, :dot)"
                       mode="none"
-                      value={String(prop("items", "完善我的报告- 【Part 1】:active,2026年第一季度规划:loading,编辑我的演示文档"))}
+                      value={String(prop("items", "Project-B,Project-c"))}
                       onChange={(v) => setProp("items", v)}
-                      placeholder="任务标题..."
+                      placeholder="项目名称..."
                     />
                   </>
                 )}
@@ -4807,29 +5039,35 @@ export const RightPanel = memo(function RightPanel({
                       <span className="w-16 shrink-0 text-[10px] text-muted-foreground">标签文本</span>
                       <Input
                         size="sm"
-                        value={String(prop("text", "DIFF READY"))}
+                        value={String(prop("text", "DONE"))}
                         onChange={(e) => setProp("text", e.target.value)}
                         className="h-7 text-xs font-mono font-bold uppercase"
                       />
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="w-16 shrink-0 text-[10px] text-muted-foreground">状态类型</span>
-                      <div className="grid grid-cols-4 gap-1 flex-1">
+                    <div className="flex flex-col gap-1.5">
+                      <span className="text-[10px] text-muted-foreground">预置颜色模板</span>
+                      <div className="grid grid-cols-3 gap-1">
                         {[
-                          { id: "default", label: "默认" },
-                          { id: "success", label: "成功" },
-                          { id: "warning", label: "警告" },
-                          { id: "danger", label: "紧急" },
+                          { id: "success", label: "DONE", tip: "完成 / DONE", bg: "bg-[#4A9E5C]/15 border-[#4A9E5C]/60 text-[#4A9E5C]" },
+                          { id: "warning", label: "BUSY", tip: "运行 / BUSY", bg: "bg-[#D4A843]/15 border-[#D4A843]/60 text-[#D4A843]" },
+                          { id: "danger", label: "FAIL", tip: "错误 / FAIL", bg: "bg-[#D71921]/15 border-[#D71921]/60 text-[#D71921]" },
+                          { id: "info", label: "STREAM", tip: "活跃 / STREAM", bg: "bg-[#5B9BF6]/15 border-[#5B9BF6]/60 text-[#5B9BF6]" },
+                          { id: "purple", label: "AGENT", tip: "思考 / AGENT", bg: "bg-[#A855F7]/15 border-[#A855F7]/60 text-[#C084FC]" },
+                          { id: "neutral", label: "IDLE", tip: "默认 / IDLE", bg: "bg-surface-raised border-border-visible text-foreground" },
                         ].map((s) => (
                           <button
                             key={s.id}
                             type="button"
-                            onClick={() => setProp("status", s.id)}
+                            title={s.tip}
+                            onClick={() => {
+                              setProp("status", s.id);
+                            }}
                             className={cn(
-                              "h-6 rounded text-[10px] font-mono border select-none cursor-pointer transition-colors",
-                              prop("status", "default") === s.id
-                                ? "bg-foreground text-background border-foreground font-bold"
-                                : "bg-transparent text-muted-foreground border-border hover:border-border-visible"
+                              "h-6.5 rounded border px-1 text-[11px] font-mono select-none cursor-pointer transition-all flex items-center justify-center font-bold tracking-wider",
+                              s.bg,
+                              prop("status", "success") === s.id
+                                ? "ring-2 ring-foreground/90 scale-[1.02] shadow-xs"
+                                : "opacity-75 hover:opacity-100"
                             )}
                           >
                             {s.label}
@@ -4837,6 +5075,32 @@ export const RightPanel = memo(function RightPanel({
                         ))}
                       </div>
                     </div>
+                  </>
+                )}
+
+                {/* Agent File Attachments */}
+                {element.type === "agent-file-attachments" && (
+                  <>
+                    <OptionsListEditor
+                      title="附件列表 (格式: 文件名:类型，如 :doc 或 :img)"
+                      mode="none"
+                      value={String(prop("files", "openclaw-report.docx:doc,issue_imgs.png:img"))}
+                      onChange={(v) => setProp("files", v)}
+                      placeholder="文件名:类型..."
+                    />
+                  </>
+                )}
+
+                {/* Agent Artifact Tabs */}
+                {element.type === "agent-artifact-tabs" && (
+                  <>
+                    <OptionsListEditor
+                      title="工件标签列表 (:active 表示激活)"
+                      mode="none"
+                      value={String(prop("tabs", "news-aggregator:active,issue_imgs"))}
+                      onChange={(v) => setProp("tabs", v)}
+                      placeholder="标签名:active..."
+                    />
                   </>
                 )}
 

@@ -81,6 +81,7 @@ import {
   ChevronsRight,
   LayoutTemplate,
   FolderTree,
+  FolderArchive,
   CalendarRange,
   Clock,
   ArrowLeftRight,
@@ -128,6 +129,7 @@ import {
   LayoutGrid,
   Compass,
   Heading,
+  Paperclip,
 } from "lucide-react";
 import type { ComponentType, EditorElement, Page } from "./types";
 import {
@@ -185,6 +187,14 @@ export function getElementIcon(type: ComponentType) {
       return Grid2X2;
     case "table":
       return Table;
+    case "file-list":
+    case "web-file-list":
+    case "agent-knowledge-files":
+      return FolderTree;
+    case "web-file-manager-layout":
+      return FolderArchive;
+    case "agent-knowledge-base-layout":
+      return BookOpen;
     case "sticky-note":
       return StickyNote;
     case "pin-note":
@@ -336,8 +346,12 @@ export function getElementIcon(type: ComponentType) {
       return Menu;
     case "web-top-nav":
       return PanelTop;
+    case "web-page-header":
+      return Heading;
     case "web-tabs":
       return Columns3;
+    case "web-segmented":
+      return SlidersHorizontal;
     case "web-breadcrumb":
       return Route;
     case "web-pagination":
@@ -458,6 +472,18 @@ export function getElementIcon(type: ComponentType) {
       return HelpCircle;
 
     // Agent Templates & Components
+    case "agent-client-home":
+      return Bot;
+    case "agent-client-chat":
+      return MessageSquare;
+    case "agent-client-split":
+      return Columns3;
+    case "agent-desktop-frame":
+      return Layout;
+    case "agent-directory-tree":
+      return FolderTree;
+    case "agent-filter-bar":
+      return Search;
     case "agent-home-layout":
       return Bot;
     case "agent-chat-stream-layout":
@@ -505,7 +531,7 @@ export function getElementIcon(type: ComponentType) {
     case "agent-thought-stream":
       return Sparkles;
     case "agent-file-attachments":
-      return FileText;
+      return Paperclip;
     case "agent-employee-card":
       return UserCheck;
     case "agent-template-card":
@@ -804,12 +830,23 @@ export const LeftSidebar = memo(function LeftSidebar({
     filteredBaseLibrary.some((c) => c.category === cat),
   );
 
-  const webCategories = ["Web结构", "Web表单", "Web复合", "Web展示与反馈", "Web模版"];
+  const webCategories = ["Web导航", "Web表单", "Web展示", "Web反馈", "Web模版"];
   const groupedWebCategories = webCategories.filter((cat) =>
     filteredWebLibrary.some((c) => c.category === cat),
   );
 
-  const agentCategories = ["Agent基础", "Agent分子", "Agent功能舱", "Agent模版"];
+  const agentCategories = [
+    "Agent基础图元",
+    "Agent框架容器",
+    "Agent结构与数据",
+    "Agent核心交互",
+    "Agent场景模版",
+    // 兼容旧分类
+    "Agent基础",
+    "Agent分子",
+    "Agent功能舱",
+    "Agent模版",
+  ];
   const groupedAgentCategories = agentCategories.filter((cat) =>
     filteredAgentLibrary.some((c) => c.category === cat),
   );
@@ -911,9 +948,14 @@ export const LeftSidebar = memo(function LeftSidebar({
                 {groupedAgentCategories.map((cat) => {
                   const items = filteredAgentLibrary.filter((c) => c.category === cat);
                   const isCollapsed = searchQuery.trim().length > 0 ? false : Boolean(collapsedCategories[cat]);
-                  const isTemplateCat = cat === "Agent模版";
+                  const isTemplateCat = cat === "Agent场景模版" || cat === "Agent模版";
 
                   const categoryLabels: Record<string, string> = {
+                    "Agent基础图元": "基础图元",
+                    "Agent框架容器": "框架与容器",
+                    "Agent结构与数据": "结构与数据",
+                    "Agent核心交互": "核心交互",
+                    "Agent场景模版": "场景模版",
                     "Agent基础": "客户端基础",
                     "Agent分子": "交互分子",
                     "Agent功能舱": "核心功能舱",
@@ -1043,10 +1085,10 @@ export const LeftSidebar = memo(function LeftSidebar({
                   const isTemplateCat = cat === "Web模版";
 
                   const categoryLabels: Record<string, string> = {
-                    "Web结构": "结构与排版",
-                    "Web表单": "表单与输入",
-                    "Web复合": "复合选择与导航",
-                    "Web展示与反馈": "数据展示与反馈",
+                    "Web导航": "页面与骨架导航",
+                    "Web表单": "表单与数据录入",
+                    "Web展示": "数据与信息呈现",
+                    "Web反馈": "交互反馈与浮层",
                     "Web模版": "整屏业务模版",
                   };
 

@@ -236,12 +236,10 @@ function rectsIntersect(
 }
 
 const CONTAINER_TYPES: Set<ComponentType> = new Set([
-  "group",
   "card",
   "web-card",
   "mobile-frame",
   "browser-frame",
-  "rectangle",
   "scroll-panel",
   "modal-dialog",
   "web-admin-layout",
@@ -278,8 +276,9 @@ export function isElementLocked(el: EditorElement, allElementsFlat?: EditorEleme
 
 export function isContainerElement(el: EditorElement): boolean {
   return (
-    CONTAINER_TYPES.has(el.type) ||
-    (Boolean(el.children) && el.children.length > 0)
+    el.type !== "group" &&
+    (CONTAINER_TYPES.has(el.type) ||
+      (Boolean(el.children) && el.children.length > 0))
   );
 }
 
@@ -376,7 +375,7 @@ export function getMarqueeHitElementIds(
   }
 
   for (const el of candidates) {
-    if (isContainerElement(el)) {
+    if (el.type !== "group" && isContainerElement(el)) {
       const bounds = getElementDynamicBounds(el, allElementsFlat);
       const containerArea = bounds.width * bounds.height;
       if (
@@ -414,9 +413,25 @@ export function getMarqueeHitElementIds(
     return leafOnly.map((el) => el.id);
   }
 
-  // 5. Standard Mode: Hierarchy-aware top-level selection (never select both a container and its children)
-  const candidateIds = activeCandidates.map((el) => el.id);
-  return filterOutDescendantIds(candidateIds, allElementsFlat);
+  // 5. Standard Mode: Hierarchy-aware top-level selection (groups are atomic units)
+  const candidateIds = activeCandidates.map((el) => {
+    let curr = el;
+    let groupAncestor: EditorElement | null = null;
+    const visited = new Set<string>([el.id]);
+    while (curr.parentId) {
+      if (visited.has(curr.parentId)) break;
+      visited.add(curr.parentId);
+      const parent = allElementsFlat.find((p) => p.id === curr.parentId);
+      if (!parent) break;
+      if (parent.type === "group") {
+        groupAncestor = parent;
+      }
+      curr = parent;
+    }
+    return groupAncestor ? groupAncestor.id : el.id;
+  });
+
+  return filterOutDescendantIds(Array.from(new Set(candidateIds)), allElementsFlat);
 }
 
 function flattenElements(list: EditorElement[]): EditorElement[] {
@@ -1481,9 +1496,24 @@ const ElementNode = memo(function ElementNode({
       onDoubleClick={(e) => {
         e.stopPropagation();
         if (previewing) return;
-        onSelect(el.id);
         if (!locked && isTextCapable(el.type, el.props)) {
+          onSelect(el.id);
           onStartEditing?.(el.id);
+        } else {
+          let curr = el;
+          let groupAncestor: EditorElement | null = null;
+          const visited = new Set<string>([el.id]);
+          while (curr.parentId) {
+            if (visited.has(curr.parentId)) break;
+            visited.add(curr.parentId);
+            const parent = allElementsFlat.find((p) => p.id === curr.parentId);
+            if (!parent) break;
+            if (parent.type === "group") {
+              groupAncestor = parent;
+            }
+            curr = parent;
+          }
+          onSelect(groupAncestor ? groupAncestor.id : el.id);
         }
       }}
     >
@@ -2891,7 +2921,10 @@ export function Canvas({
       if (el.parentId && !e.metaKey && !e.ctrlKey) {
         let curr = el;
         let groupAncestor: EditorElement | null = null;
+        const visited = new Set<string>([el.id]);
         while (curr.parentId) {
+          if (visited.has(curr.parentId)) break;
+          visited.add(curr.parentId);
           const parent = allElementsFlat.find((p) => p.id === curr.parentId);
           if (!parent) break;
           if (parent.type === "group") {
@@ -2900,8 +2933,8 @@ export function Canvas({
           curr = parent;
         }
 
-        // If the child itself is not directly selected, resolve target to the group ancestor
-        if (groupAncestor && !effectiveSelectedIds.includes(elId)) {
+        // Always resolve target to the group ancestor on standard click/drag
+        if (groupAncestor) {
           targetSelectId = groupAncestor.id;
         }
       }
@@ -2978,30 +3011,7 @@ export function Canvas({
         }
       }
 
-      // 2. Figma-style Container Empty Space Drag Detection:
-      // If the target is an unselected container/frame, start marquee interaction.
-      // If user merely clicks without moving, it will select the container on pointerUp.
-      // If user drags, it will draw a marquee selection box to select inner elements.
-      const isContainer = isContainerElement(targetEl);
-      const isAlreadySelected = effectiveSelectedIds.includes(targetSelectId);
-
-      if (isContainer && !isAlreadySelected) {
-        const inter: Interaction = {
-          type: "marquee",
-          startX: pos.x,
-          startY: pos.y,
-          currentX: pos.x,
-          currentY: pos.y,
-          shiftHeld: false,
-          initialSelected: [],
-          containerClickTargetId: targetSelectId,
-        };
-        interactionRef.current = inter;
-        setInteraction(inter);
-        return;
-      }
-
-      // Single select & move (for leaf elements or already-selected containers)
+      // Single select & move (for all elements: leaf, shapes, groups, and containers)
       onSelect(targetSelectId);
       onSelectIds?.([targetSelectId]);
       const inter: Interaction = {

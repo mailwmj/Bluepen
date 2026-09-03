@@ -10,12 +10,18 @@ export type ComponentCategory =
   | "流程图元"
   | "结构容器"
   // Web 业务组件组 (Web & SaaS Application)
-  | "Web结构"
+  | "Web导航"
   | "Web表单"
-  | "Web复合"
-  | "Web展示与反馈"
+  | "Web展示"
+  | "Web反馈"
   | "Web模版"
   // Agent 桌面客户端组 (Desktop Agent Client)
+  | "Agent基础图元"
+  | "Agent框架容器"
+  | "Agent结构与数据"
+  | "Agent核心交互"
+  | "Agent场景模版"
+  // Legacy / 兼容旧分类
   | "Agent基础"
   | "Agent分子"
   | "Agent功能舱"
@@ -23,9 +29,9 @@ export type ComponentCategory =
   // Legacy / 兼容旧分类
   | "基础"
   | "流程"
-  | "Web导航"
-  | "Web展示"
-  | "Web反馈"
+  | "Web结构"
+  | "Web复合"
+  | "Web展示与反馈"
   | "Agent侧栏"
   | "Agent输入"
   | "Agent执行流"
@@ -45,7 +51,7 @@ export interface LibraryComponent {
 export { baseLibrary, webLibrary, agentLibrary };
 
 export const library: LibraryComponent[] = [
-  ...agentLibrary,
-  ...webLibrary,
   ...baseLibrary,
+  ...webLibrary,
+  ...agentLibrary,
 ];

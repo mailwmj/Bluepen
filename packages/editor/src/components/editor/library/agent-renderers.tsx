@@ -25,6 +25,7 @@ import {
   Image as ImageIcon,
   ShieldCheck,
   PanelLeft,
+  PanelRight,
   X,
   Play,
   RotateCw,
@@ -35,10 +36,15 @@ import {
   Tag,
   CircleDot,
   Loader2,
-  Lock,
-  Compass,
   Heading,
+  Compass,
+  Database,
+  BookOpen,
+  MoreHorizontal,
+  Mic,
+  Layers,
 } from "lucide-react";
+import { FileListPreview } from "./file-list-renderer";
 
 type Props = Record<string, string | number | boolean>;
 const val = (props: Props, key: string, fallback: string | number | boolean) =>
@@ -116,6 +122,313 @@ export function AgentPromptBoxPreview({ props = {} }: { props?: Props }) {
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+// =========================================================================
+// 0. Agent 桌面框架与基础骨架 (Frames & Skeleton Primitives)
+// =========================================================================
+
+/**
+ * 统一 Agent 客户端侧边栏 (240px 标准导航底座)
+ * 严格遵从 Nothing-design 工业风规范，包含 2 个项目与 4 个具体任务
+ */
+export function AgentUnifiedSidebar({
+  appName = "帝王蟹",
+  activeMode = "chat",
+  userName = "李·Jason·io",
+}: {
+  appName?: string;
+  activeMode?: "chat" | "employee" | string;
+  userName?: string;
+}) {
+  return (
+    <div className="flex h-full w-60 shrink-0 flex-col justify-between border-r border-border bg-surface select-none font-sans">
+      {/* 1. 顶部控制栏 (macOS 控制灯 + 搜索) */}
+      <div className="flex h-10 shrink-0 items-center justify-between border-b border-border px-3.5">
+        <div className="flex items-center gap-1.5">
+          <span className="size-2.5 rounded-full bg-[#FF5F56]" />
+          <span className="size-2.5 rounded-full bg-[#FFBD2E]" />
+          <span className="size-2.5 rounded-full bg-[#27C93F]" />
+        </div>
+        <div className="flex items-center gap-1.5 text-muted-foreground hover:text-foreground cursor-pointer transition-colors">
+          <Search className="size-3.5" />
+        </div>
+      </div>
+
+      {/* 2. 侧栏核心内容区 */}
+      <div className="flex-1 overflow-y-auto p-3 space-y-3">
+        {/* 客户端品牌与徽标 */}
+        <div className="flex items-center gap-2 px-0.5">
+          <div className="flex size-7 items-center justify-center rounded-md border border-border-visible bg-surface-raised text-foreground">
+            <Bot className="size-4" />
+          </div>
+          <span className="font-mono text-xs font-bold uppercase tracking-wider text-foreground">
+            {appName}
+          </span>
+        </div>
+
+        {/* 模式分段切换器 */}
+        <div className="grid grid-cols-2 rounded-lg border border-border-visible bg-surface-raised p-0.5 text-xs font-mono">
+          <button
+            type="button"
+            className={cn(
+              "rounded-md py-1 text-center transition-colors cursor-pointer",
+              activeMode === "chat"
+                ? "bg-foreground text-background font-bold shadow-2xs"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            对话
+          </button>
+          <button
+            type="button"
+            className={cn(
+              "rounded-md py-1 text-center transition-colors cursor-pointer",
+              activeMode === "employee"
+                ? "bg-foreground text-background font-bold shadow-2xs"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            AI员工
+          </button>
+        </div>
+
+        {/* 新建任务按钮 */}
+        <button
+          type="button"
+          className="flex w-full items-center justify-center gap-1.5 rounded-full border border-border-visible bg-surface-raised hover:bg-surface py-1.5 text-xs font-mono font-medium text-foreground transition-colors cursor-pointer"
+        >
+          <Plus className="size-3.5" />
+          <span>新建任务</span>
+        </button>
+
+        {/* 置顶、项目与任务列表 */}
+        <div className="space-y-2.5 pt-0.5 font-mono text-xs">
+          {/* 置顶会话 */}
+          <div className="space-y-1">
+            <div className="text-[10px] text-muted-foreground uppercase tracking-wider px-1">置顶</div>
+            <div className="flex items-center justify-between rounded-md px-2 py-1 bg-surface-raised text-foreground font-medium truncate cursor-pointer">
+              <span className="truncate">营销活动月度复盘分析报告</span>
+              <span className="text-muted-foreground/60 text-[10px]">···</span>
+            </div>
+            <div className="rounded-md px-2 py-1 text-muted-foreground hover:bg-surface-raised/40 hover:text-foreground truncate cursor-pointer">
+              市场趋势与竞争分析
+            </div>
+          </div>
+
+          {/* 项目 (保持纯净折叠态，与图 2 严格对齐) */}
+          <div className="space-y-1">
+            <div className="text-[10px] text-muted-foreground uppercase tracking-wider px-1">
+              项目
+            </div>
+
+            {/* 项目项: Project-B */}
+            <div className="flex items-center justify-between rounded-md px-2 py-1 text-foreground hover:bg-surface-raised/40 cursor-pointer transition-colors">
+              <div className="flex items-center gap-2 truncate">
+                <Folder className="size-3.5 text-muted-foreground shrink-0" />
+                <span className="truncate">Project-B</span>
+              </div>
+            </div>
+
+            {/* 项目项: Project-c */}
+            <div className="flex items-center justify-between rounded-md px-2 py-1 text-foreground hover:bg-surface-raised/40 cursor-pointer transition-colors">
+              <div className="flex items-center gap-2 truncate">
+                <Folder className="size-3.5 text-muted-foreground shrink-0" />
+                <span className="truncate">Project-c</span>
+              </div>
+            </div>
+          </div>
+
+          {/* 任务 (清晰展示 4 项任务) */}
+          <div className="space-y-1">
+            <div className="text-[10px] text-muted-foreground uppercase tracking-wider px-1">任务</div>
+            <div className="space-y-0.5">
+              {/* 任务 1 */}
+              <div className="flex items-center justify-between rounded-md px-2 py-1 bg-surface-raised/60 text-foreground text-[11px] font-medium cursor-pointer">
+                <span className="truncate">营销活动月度复盘分析报告</span>
+                <Loader2 className="size-3 animate-spin text-muted-foreground shrink-0 ml-1" />
+              </div>
+              {/* 任务 2 */}
+              <div className="flex items-center justify-between rounded-md px-2 py-1 hover:bg-surface-raised/40 text-foreground text-[11px] cursor-pointer transition-colors">
+                <span className="truncate">完善我的报告- 【Part 1】</span>
+                <span className="size-1.5 rounded-full bg-[#D71921] shrink-0 ml-1" />
+              </div>
+              {/* 任务 3 */}
+              <div className="rounded-md px-2 py-1 hover:bg-surface-raised/40 text-muted-foreground hover:text-foreground text-[11px] truncate cursor-pointer transition-colors">
+                2026年第一季度营销
+              </div>
+              {/* 任务 4 */}
+              <div className="flex items-center justify-between rounded-md px-2 py-1 hover:bg-surface-raised/40 text-muted-foreground hover:text-foreground text-[11px] cursor-pointer transition-colors">
+                <span className="truncate">优化一个Skill</span>
+                <span className="size-1.5 rounded-full bg-[#D71921] shrink-0 ml-1" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 3. 底部快捷工具与用户身份态 */}
+      <div className="border-t border-border p-3 space-y-1.5 font-mono text-xs text-muted-foreground">
+        <div className="flex items-center gap-2 px-1 py-0.5 hover:text-foreground cursor-pointer transition-colors">
+          <Zap className="size-3.5 shrink-0" />
+          <span>技能·插件</span>
+        </div>
+        <div className="flex items-center gap-2 px-1 py-0.5 hover:text-foreground cursor-pointer transition-colors">
+          <FileText className="size-3.5 shrink-0" />
+          <span>知识库</span>
+        </div>
+        <div className="flex items-center gap-2 px-1 py-0.5 hover:text-foreground cursor-pointer transition-colors">
+          <Clock className="size-3.5 shrink-0" />
+          <span>定时任务</span>
+        </div>
+
+        {/* 用户身份态 */}
+        <div className="flex items-center justify-between border-t border-border/60 pt-2 px-1 text-foreground">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="size-5 rounded-full bg-border-visible flex items-center justify-center text-[10px] font-mono font-semibold">
+              李
+            </div>
+            <span className="truncate text-xs font-medium">{userName}</span>
+            <span className="rounded-2xs border border-border-visible px-1 py-0.2 text-[8px] font-mono text-muted-foreground uppercase">
+              PRO
+            </span>
+          </div>
+          <Settings className="size-3.5 text-muted-foreground hover:text-foreground cursor-pointer shrink-0" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Agent 桌面分栏底座 (agent-desktop-frame)
+ * 统一 1080x680 外框，带统一 240px 侧边栏，右侧为开放式容器骨架
+ */
+export function AgentDesktopFramePreview({ props = {} }: { props?: Props }) {
+  const appName = String(val(props, "appName", "帝王蟹"));
+  const userName = String(val(props, "userName", "李·Jason·io"));
+
+  return (
+    <div className="flex h-full w-full overflow-hidden rounded-xl border border-border-visible bg-background select-none font-sans">
+      {/* 统一 240px 侧边栏 */}
+      <AgentUnifiedSidebar appName={appName} userName={userName} />
+
+      {/* 右侧主工作区容器底座 */}
+      <div className="flex flex-1 flex-col bg-background">
+        {/* 顶部标题栏 */}
+        <div className="flex h-10 shrink-0 items-center justify-between border-b border-border bg-surface px-4">
+          <span className="font-mono text-xs font-bold uppercase tracking-wider text-foreground">
+            {appName} WORKSPACE
+          </span>
+          <span className="font-mono text-[10px] text-muted-foreground uppercase">
+            [ DESKTOP SHELL · FRAMEWORK READY ]
+          </span>
+        </div>
+
+        {/* 工作视区骨架 */}
+        <div className="flex flex-1 flex-col p-4">
+          <div className="flex items-center justify-between px-1 py-0.5 text-[10px] font-mono uppercase tracking-wider text-muted-foreground/70">
+            <span>[ 主工作视区框架容器 ]</span>
+            <span>CANVAS MOUNT POINT</span>
+          </div>
+          <div className="mt-2 flex flex-1 flex-col items-center justify-center rounded-lg border border-dashed border-border-visible/80 bg-surface/20 p-6 text-center space-y-2">
+            <LayoutGrid className="size-6 text-muted-foreground/60" />
+            <span className="font-mono text-xs font-semibold text-foreground tracking-wider uppercase">
+              在此放置对话执行流、表格或任务画板
+            </span>
+            <span className="font-mono text-[10px] text-muted-foreground max-w-sm leading-relaxed">
+              支持直接拖入【通用首页】、【对话组件】、【任务展开栏】或任意组件自由编排。
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 知识库与目录分类树 (agent-directory-tree)
+ */
+export function AgentDirectoryTreePreview({ props = {} }: { props?: Props }) {
+  const title = String(val(props, "title", "知识库目录"));
+  const rawItems = val(
+    props,
+    "items",
+    "核心白皮书:folder:active,客户服务FAQ:folder,Wiki实体库:folder,架构设计规范:file,竞品分析报告:file,会议纪要归档:file",
+  );
+  const items = parseList(rawItems, [
+    "核心白皮书:folder:active",
+    "客户服务FAQ:folder",
+    "Wiki实体库:folder",
+    "架构设计规范:file",
+    "竞品分析报告:file",
+  ]);
+
+  return (
+    <div className="flex h-full w-full flex-col rounded-lg border border-border-visible bg-surface p-2 select-none">
+      {title && (
+        <div className="mb-2 flex items-center justify-between border-b border-border/60 px-1.5 pb-1.5">
+          <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-foreground">
+            {title}
+          </span>
+          <span className="font-mono text-[9px] text-muted-foreground">TREE</span>
+        </div>
+      )}
+      <div className="flex flex-1 flex-col gap-1 overflow-y-auto font-mono text-[11px]">
+        {items.map((raw, idx) => {
+          const [label, type = "folder", status = ""] = raw.split(":");
+          const isActive = status === "active";
+          const isFolder = type === "folder";
+
+          return (
+            <div
+              key={idx}
+              className={cn(
+                "flex items-center gap-2 rounded-xs px-2 py-1.5 transition-colors cursor-pointer",
+                isActive
+                  ? "bg-surface-raised font-semibold text-foreground border border-border-visible"
+                  : "text-muted-foreground hover:bg-surface-raised/50 hover:text-foreground",
+              )}
+            >
+              {isFolder ? (
+                <Folder className={cn("size-3.5", isActive ? "text-foreground" : "text-muted-foreground")} />
+              ) : (
+                <FileText className="size-3.5 text-muted-foreground" />
+              )}
+              <span className="truncate flex-1">{label}</span>
+              {isActive && <span className="size-1.5 rounded-full bg-primary" />}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * 搜索与操作条 (agent-filter-bar)
+ */
+export function AgentFilterBarPreview({ props = {} }: { props?: Props }) {
+  const placeholder = String(val(props, "placeholder", "搜索文档、文件夹或关键词..."));
+  const buttonText = String(val(props, "buttonText", "+ 上传语料"));
+
+  return (
+    <div className="flex h-full w-full items-center justify-between gap-3 rounded-lg border border-border-visible bg-surface px-3 select-none">
+      <div className="relative flex flex-1 items-center">
+        <Search className="pointer-events-none absolute left-2.5 size-3.5 text-muted-foreground" />
+        <div className="h-7 w-full rounded-xs border border-border-visible/80 bg-background pl-8 pr-3 flex items-center font-mono text-[11px] text-muted-foreground">
+          {placeholder}
+        </div>
+      </div>
+      <button
+        type="button"
+        className="flex h-7 items-center gap-1.5 rounded-full bg-primary px-3 font-mono text-[11px] font-semibold text-primary-foreground hover:opacity-90 transition-opacity whitespace-nowrap cursor-pointer"
+      >
+        <Plus className="size-3" />
+        <span>{buttonText}</span>
+      </button>
     </div>
   );
 }
@@ -276,7 +589,7 @@ export function AgentThoughtStreamPreview({ props = {} }: { props?: Props }) {
   return (
     <div className="flex h-full w-full flex-col justify-between rounded-lg border border-border-visible bg-surface-raised/20 p-2.5 select-none">
       <div className="flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
-        <Loader2 className="size-3 animate-spin text-muted-foreground" />
+        <Sparkles className="size-3 text-muted-foreground shrink-0" />
         <span className="tracking-wider uppercase">{statusText}</span>
       </div>
 
@@ -291,24 +604,32 @@ export function AgentThoughtStreamPreview({ props = {} }: { props?: Props }) {
  * 1.7 上下文附件卡片组 (agent-file-attachments)
  */
 export function AgentFileAttachmentsPreview({ props = {} }: { props?: Props }) {
-  const rawFiles = val(props, "files", "openclaw-report.md:doc,issue_imgs.png:img,requirement-spec.docx:doc");
-  const files = parseList(rawFiles, ["openclaw-report.md:doc", "issue_imgs.png:img", "requirement-spec.docx:doc"]);
+  const rawFiles = val(props, "files", "openclaw-report.docx:doc,issue_imgs.png:img");
+  const files = parseList(rawFiles, ["openclaw-report.docx:doc", "issue_imgs.png:img"]);
 
   return (
-    <div className="flex h-full w-full items-center gap-2 overflow-x-auto select-none">
+    <div className="flex h-full w-full items-center gap-2 overflow-x-auto select-none font-mono">
       {files.map((fileStr, idx) => {
         const [name, type] = fileStr.split(":");
+        const isImg =
+          type === "img" ||
+          name.endsWith(".png") ||
+          name.endsWith(".jpg") ||
+          name.endsWith(".jpeg") ||
+          name.endsWith(".webp") ||
+          name.endsWith(".svg");
+
         return (
           <div
             key={idx}
-            className="flex shrink-0 items-center gap-1.5 rounded-md border border-border-visible bg-surface px-2.5 py-1 text-xs text-foreground/90 font-mono"
+            className="flex shrink-0 items-center gap-2 rounded-md border border-border-visible bg-surface px-3 py-1.5 text-xs text-foreground hover:border-foreground/40 transition-colors"
           >
-            {type === "img" ? (
-              <ImageIcon className="size-3 text-muted-foreground" />
+            {isImg ? (
+              <ImageIcon className="size-3.5 text-muted-foreground shrink-0" />
             ) : (
-              <FileCode className="size-3 text-muted-foreground" />
+              <FileCode className="size-3.5 text-muted-foreground shrink-0" />
             )}
-            <span className="max-w-[140px] truncate">{name}</span>
+            <span className="max-w-[160px] truncate">{name}</span>
           </div>
         );
       })}
@@ -384,54 +705,71 @@ export function AgentTemplateCardPreview({ props = {} }: { props?: Props }) {
  * 1.10 工件多标签工作栏 (agent-artifact-tabs)
  */
 export function AgentArtifactTabsPreview({ props = {} }: { props?: Props }) {
-  const rawTabs = val(props, "tabs", "news-aggregator.html:active,issue_imgs.png,summary-spec.md");
-  const tabs = parseList(rawTabs, ["news-aggregator.html:active", "issue_imgs.png", "summary-spec.md"]);
-  const filePath = String(val(props, "filePath", "file:///workspace/northstar-dashboard.html"));
+  const rawTabs = val(props, "tabs", "news-aggregator:active,issue_imgs");
+  const tabs = parseList(rawTabs, ["news-aggregator:active", "issue_imgs"]);
+
+  const renderTabIcon = (tabStr: string) => {
+    const lower = tabStr.toLowerCase();
+    if (lower.includes(".png") || lower.includes(".jpg") || lower.includes(".webp") || lower.includes(".svg")) {
+      return <ImageIcon className="size-3.5 text-muted-foreground shrink-0" />;
+    }
+    if (lower.includes("issue_imgs") || lower.includes(".doc") || lower.includes(".docx")) {
+      return (
+        <div className="flex size-4 shrink-0 items-center justify-center rounded-xs bg-[#2B579A] text-white font-bold text-[9px]">
+          W
+        </div>
+      );
+    }
+    if (lower.includes("news-aggregator") || lower.includes(".md") || lower.includes("markdown")) {
+      return (
+        <div className="flex size-4 shrink-0 items-center justify-center rounded-xs bg-muted-foreground/30 text-foreground font-bold text-[9px]">
+          M
+        </div>
+      );
+    }
+    return <FileCode className="size-3.5 text-muted-foreground shrink-0" />;
+  };
 
   return (
-    <div className="flex h-full w-full flex-col justify-between border-b border-border bg-surface select-none">
-      {/* Top Tabs */}
-      <div className="flex items-center justify-between border-b border-border/80 px-2 pt-1">
-        <div className="flex items-center gap-1 overflow-x-auto">
-          {tabs.map((t, idx) => {
-            const isActive = t.includes(":active");
-            const label = t.replace(":active", "");
-            return (
-              <div
-                key={idx}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-t-md px-3 py-1 text-xs font-mono transition-colors",
-                  isActive
-                    ? "border-t-2 border-foreground bg-surface-raised text-foreground font-semibold"
-                    : "text-muted-foreground hover:bg-surface-raised/40 hover:text-foreground"
-                )}
-              >
-                <FileCode className="size-3 text-muted-foreground" />
-                <span>{label}</span>
-                <X className="size-3 text-muted-foreground/60 hover:text-foreground cursor-pointer" />
-              </div>
-            );
-          })}
-        </div>
-
-        <div className="flex items-center gap-1.5 pb-1">
-          <button
-            type="button"
-            className="flex items-center gap-1 rounded-full bg-foreground px-2.5 py-0.5 font-mono text-[10px] text-background uppercase"
-          >
-            <Play className="size-2.5 fill-current" />
-            <span>保存并运行</span>
-          </button>
-        </div>
+    <div className="flex h-full w-full items-center justify-between border-b border-border bg-surface px-2.5 select-none">
+      {/* 标签页与新建按钮 */}
+      <div className="flex items-center gap-1.5 overflow-x-auto">
+        {tabs.map((t, idx) => {
+          const isActive = t.includes(":active");
+          const label = t.replace(":active", "").trim();
+          return (
+            <div
+              key={idx}
+              className={cn(
+                "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs transition-colors cursor-pointer",
+                isActive
+                  ? "bg-surface-raised text-foreground font-medium shadow-2xs"
+                  : "text-muted-foreground hover:bg-surface-raised/40 hover:text-foreground"
+              )}
+            >
+              {renderTabIcon(label)}
+              <span>{label}</span>
+            </div>
+          );
+        })}
+        <button
+          type="button"
+          className="p-1 text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
+          title="新建标签"
+        >
+          <Plus className="size-3.5" />
+        </button>
       </div>
 
-      {/* Sub-toolbar path */}
-      <div className="flex items-center justify-between px-3 py-1 font-mono text-[10px] text-muted-foreground">
-        <div className="flex items-center gap-1 truncate">
-          <span>正在编辑:</span>
-          <span className="text-foreground">{filePath}</span>
-        </div>
-        <span className="uppercase text-muted-foreground/60">[ DIFF READY ]</span>
+      {/* 右侧面板折叠/切换控制 */}
+      <div className="flex items-center gap-1 text-muted-foreground">
+        <button
+          type="button"
+          className="p-1 text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
+          title="切换侧栏面板"
+        >
+          <PanelRight className="size-4" />
+        </button>
       </div>
     </div>
   );
@@ -607,31 +945,19 @@ export function AgentNavSidebarPreview({ props = {} }: { props?: Props }) {
  * 1.13 项目与会话树 (agent-project-tree)
  */
 export function AgentProjectTreePreview({ props = {} }: { props?: Props }) {
-  const projectName = String(val(props, "projectName", "Project-A"));
-  const rawItems = val(
-    props,
-    "items",
-    "完善我的报告- 【Part 1】:active,2026年第一季度规划:loading,编辑我的演示文档,优化一个Skill:dot,完善我的数据分析报告",
-  );
-  const items = parseList(rawItems, [
-    "完善我的报告- 【Part 1】:active",
-    "2026年第一季度规划:loading",
-    "编辑我的演示文档",
-    "优化一个Skill:dot",
-    "完善我的数据分析报告",
-  ]);
+  const title = String(val(props, "title", val(props, "projectName", "项目")));
+  const rawItems = val(props, "items", "Project-B,Project-c");
+  const items = parseList(rawItems, ["Project-B", "Project-c"]);
 
   return (
-    <div className="flex h-full w-full flex-col rounded-xl border border-border-visible bg-surface p-3 font-mono text-xs select-none">
-      <div className="flex items-center justify-between border-b border-border pb-2 text-foreground font-semibold">
-        <div className="flex items-center gap-1.5">
-          <FolderTree className="size-3.5 text-muted-foreground" />
-          <span>{projectName}</span>
+    <div className="flex h-full w-full flex-col space-y-1 font-mono text-xs select-none">
+      {title && (
+        <div className="text-[10px] text-muted-foreground uppercase tracking-wider px-1 shrink-0">
+          {title}
         </div>
-        <Plus className="size-3.5 text-muted-foreground hover:text-foreground cursor-pointer" />
-      </div>
+      )}
 
-      <div className="mt-2 flex-1 space-y-1 overflow-y-auto">
+      <div className="flex-1 space-y-0.5 overflow-y-auto">
         {items.map((itemStr, idx) => {
           const isActive = itemStr.includes(":active");
           const isLoading = itemStr.includes(":loading");
@@ -642,17 +968,20 @@ export function AgentProjectTreePreview({ props = {} }: { props?: Props }) {
             <div
               key={idx}
               className={cn(
-                "flex items-center justify-between rounded-md px-2 py-1.5 text-xs transition-colors",
+                "flex items-center justify-between rounded-md px-2 py-1 text-xs transition-colors cursor-pointer",
                 isActive
-                  ? "bg-surface-raised text-foreground font-semibold border border-border-visible"
-                  : "text-muted-foreground hover:bg-surface-raised/40 hover:text-foreground"
+                  ? "bg-surface-raised text-foreground font-semibold"
+                  : "text-foreground hover:bg-surface-raised/40"
               )}
             >
-              <span className="truncate">{label}</span>
+              <div className="flex items-center gap-2 truncate">
+                <Folder className="size-3.5 text-muted-foreground shrink-0" />
+                <span className="truncate">{label}</span>
+              </div>
               {isLoading ? (
-                <Loader2 className="size-3 animate-spin text-muted-foreground" />
+                <Loader2 className="size-3 animate-spin text-muted-foreground shrink-0" />
               ) : hasDot ? (
-                <span className="size-1.5 rounded-full bg-[#D71921]" />
+                <span className="size-1.5 rounded-full bg-[#D71921] shrink-0" />
               ) : null}
             </div>
           );
@@ -907,29 +1236,55 @@ export function AgentSessionHeaderPreview({ props = {} }: { props?: Props }) {
 }
 
 /**
- * 1.23 智能体状态微标 (agent-status-badge)
+ * 1.23 智能体状态徽标 (agent-status-badge)
  */
 export function AgentStatusBadgePreview({ props = {} }: { props?: Props }) {
-  const text = String(val(props, "text", "DIFF READY"));
-  const status = String(val(props, "status", "default"));
+  const text = String(val(props, "text", "DONE"));
+  const status = String(val(props, "status", "success")).toLowerCase();
+  const showBrackets = Boolean(val(props, "showBrackets", false));
 
-  const statusCls =
-    status === "success" || text.includes("ONLINE") || text.includes("DONE")
-      ? "text-[#4A9E5C] border-[#4A9E5C]/40 bg-[#4A9E5C]/10"
-      : status === "warning" || text.includes("BUSY")
-      ? "text-[#D4A843] border-[#D4A843]/40 bg-[#D4A843]/10"
-      : status === "danger" || status === "error"
-      ? "text-[#D71921] border-[#D71921]/40 bg-[#D71921]/10"
-      : "text-muted-foreground border-border-visible bg-surface-raised";
+  // 1. Explicit status preset has highest priority
+  let statusCls = "";
+  if (status === "success" || status === "done") {
+    statusCls = "text-[#4A9E5C] border-[#4A9E5C]/60 bg-[#4A9E5C]/15";
+  } else if (status === "warning" || status === "running" || status === "busy") {
+    statusCls = "text-[#D4A843] border-[#D4A843]/60 bg-[#D4A843]/15";
+  } else if (status === "danger" || status === "error" || status === "fail") {
+    statusCls = "text-[#D71921] border-[#D71921]/60 bg-[#D71921]/15";
+  } else if (status === "info" || status === "active" || status === "stream") {
+    statusCls = "text-[#5B9BF6] border-[#5B9BF6]/60 bg-[#5B9BF6]/15";
+  } else if (status === "purple" || status === "agent") {
+    statusCls = "text-[#C084FC] border-[#A855F7]/60 bg-[#A855F7]/15";
+  } else if (status === "neutral" || status === "idle") {
+    statusCls = "text-foreground/80 border-border-visible bg-surface-raised";
+  } else {
+    // 2. Fallback to keyword matching in text only if status is not a known preset
+    const upper = text.toUpperCase();
+    if (upper.includes("ONLINE") || upper.includes("DONE") || upper.includes("SUCCESS")) {
+      statusCls = "text-[#4A9E5C] border-[#4A9E5C]/60 bg-[#4A9E5C]/15";
+    } else if (upper.includes("BUSY") || upper.includes("RUNNING") || upper.includes("WARN")) {
+      statusCls = "text-[#D4A843] border-[#D4A843]/60 bg-[#D4A843]/15";
+    } else if (upper.includes("ERROR") || upper.includes("FAIL")) {
+      statusCls = "text-[#D71921] border-[#D71921]/60 bg-[#D71921]/15";
+    } else if (upper.includes("ACTIVE") || upper.includes("STREAM")) {
+      statusCls = "text-[#5B9BF6] border-[#5B9BF6]/60 bg-[#5B9BF6]/15";
+    } else if (upper.includes("AGENT") || upper.includes("AI")) {
+      statusCls = "text-[#C084FC] border-[#A855F7]/60 bg-[#A855F7]/15";
+    } else {
+      statusCls = "text-foreground/80 border-border-visible bg-surface-raised";
+    }
+  }
+
+  const cleanText = text.replace(/^\[\s*/, "").replace(/\s*\]$/, "");
 
   return (
     <div
       className={cn(
-        "inline-flex h-full w-full items-center justify-center rounded-xs border px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider select-none",
+        "inline-flex h-full w-full items-center justify-center rounded-xs border px-2 py-0.5 font-mono text-xs font-bold uppercase tracking-wider select-none",
         statusCls
       )}
     >
-      [ {text.replace(/^\[\s*/, "").replace(/\s*\]$/, "")} ]
+      {cleanText}
     </div>
   );
 }
@@ -938,247 +1293,285 @@ export function AgentStatusBadgePreview({ props = {} }: { props?: Props }) {
 // 2. Agent 完整模版 (Full Screen Templates)
 // =========================================================================
 
+// =========================================================================
+// 2. Agent 客户端组件 (Agent Client Three States) & 完整模版
+// =========================================================================
+
 /**
- * 2.1 Agent 对话主页模版 (agent-home-layout) - 对应截图 1
+ * 2.1 通用首页组件 (agent-client-home)
+ * 标准 1080x680 外框，左侧统一侧栏补充 2 个项目与 4 个任务，右侧居中欢迎区与提示词输入框
  */
-export function AgentHomeLayoutPreview({ props = {} }: { props?: Props }) {
-  const appName = String(val(props, "appName", "AGENT DESKTOP"));
+export function AgentClientHomePreview({ props = {} }: { props?: Props }) {
+  const appName = String(val(props, "appName", "帝王蟹"));
   const welcomeTitle = String(val(props, "welcomeTitle", "Hi, 有什么可以帮你？"));
-  const promptPlaceholder = String(val(props, "promptPlaceholder", "有什么问题请问我吧，输入 / 可调用技能"));
-  const projectName = String(val(props, "projectName", "Project-A"));
-  const modelName = String(val(props, "modelName", "高级推理模型"));
+  const promptPlaceholder = String(val(props, "promptPlaceholder", "有什么问题问我吧，输入/可用技能"));
+  const modelName = String(val(props, "modelName", "高级模型"));
+  const userName = String(val(props, "userName", "李·Jason·io"));
 
   return (
-    <div className="flex h-full w-full rounded-2xl border border-border-visible bg-surface text-foreground overflow-hidden font-sans select-none shadow-sm">
-      {/* Left Sidebar (220px) */}
-      <div className="w-56 shrink-0 border-r border-border bg-surface flex flex-col justify-between p-3">
-        <div className="space-y-3">
-          <div className="flex items-center gap-2">
-            <div className="flex gap-1.5">
-              <span className="size-2.5 rounded-full bg-border-visible" />
-              <span className="size-2.5 rounded-full bg-border-visible" />
-              <span className="size-2.5 rounded-full bg-border-visible" />
-            </div>
-            <span className="ml-1 font-mono text-xs font-bold uppercase tracking-wider">{appName}</span>
-          </div>
+    <div className="flex h-full w-full rounded-xl border border-border-visible bg-background text-foreground overflow-hidden font-sans select-none">
+      {/* 统一 240px 左侧边栏 (内置 2 个项目、4 个任务) */}
+      <AgentUnifiedSidebar appName={appName} userName={userName} />
 
-          <div className="grid grid-cols-2 rounded-lg border border-border-visible bg-surface-raised p-0.5 text-xs font-mono">
-            <div className="rounded-md py-1 text-center bg-foreground text-background font-bold">对话</div>
-            <div className="rounded-md py-1 text-center text-muted-foreground">AI员工</div>
-          </div>
-
-          <button
-            type="button"
-            className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-border-visible bg-surface-raised py-1.5 text-xs font-mono font-medium text-foreground"
-          >
-            <Plus className="size-3.5" />
-            <span>新建任务</span>
-          </button>
-
-          <div className="space-y-1 font-mono text-xs">
-            <div className="text-[10px] text-muted-foreground uppercase tracking-wider px-1">置顶</div>
-            <div className="rounded-md px-2 py-1 bg-surface-raised text-foreground font-medium truncate">
-              营销活动月度复盘...
-            </div>
-            <div className="text-[10px] text-muted-foreground uppercase tracking-wider px-1 pt-2">项目</div>
-            <div className="flex items-center gap-1 px-1 text-foreground font-semibold">
-              <ChevronDown className="size-3" />
-              <Folder className="size-3.5 text-muted-foreground" />
-              <span>{projectName}</span>
-            </div>
-            <div className="ml-4 space-y-1 border-l border-border-visible/50 pl-2 text-[11px] text-muted-foreground">
-              <div className="text-foreground font-medium truncate">完善我的报告- 【Part 1】</div>
-              <div className="truncate">2026年第一季度...</div>
-            </div>
-          </div>
-        </div>
-
-        <div className="border-t border-border pt-2 space-y-1 font-mono text-xs text-muted-foreground">
-          <div className="flex items-center gap-2 px-1">
-            <Zap className="size-3.5" />
-            <span>技能·插件</span>
-          </div>
-          <div className="flex items-center justify-between border-t border-border/60 pt-2 px-1 text-foreground">
-            <span className="text-xs">李 · Jason · io</span>
-            <Settings className="size-3.5 text-muted-foreground" />
-          </div>
-        </div>
-      </div>
-
-      {/* Main Welcome Area */}
-      <div className="flex-1 flex flex-col items-center justify-center p-8 bg-background">
+      {/* 右侧主工作区 (无顶部多余灰色条，纯净居中) */}
+      <div className="flex-1 flex flex-col items-center justify-center p-8 bg-background relative overflow-hidden">
         <div className="w-full max-w-xl space-y-6">
-          {/* Welcome Header */}
-          <div className="text-center space-y-2">
-            <div className="inline-flex size-12 items-center justify-center rounded-2xl border border-border-visible bg-surface text-foreground shadow-2xs">
-              <Bot className="size-7" />
+            {/* 迎宾徽标与大字标语 */}
+            <div className="text-center space-y-2">
+              <div className="inline-flex size-12 items-center justify-center rounded-xl border border-border-visible bg-surface text-foreground shadow-2xs">
+                <Bot className="size-6" />
+              </div>
+              <h2 className="text-xl font-bold tracking-tight text-foreground font-sans">
+                {welcomeTitle}
+              </h2>
+              <div className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">
+                帝王蟹 智能体客户端
+              </div>
             </div>
-            <h2 className="text-xl font-bold tracking-tight text-foreground font-sans">{welcomeTitle}</h2>
-          </div>
 
-          {/* Central Input Box */}
-          <div className="rounded-xl border border-border-visible bg-surface p-3.5 space-y-4 shadow-sm">
-            <div className="text-xs text-muted-foreground/80 font-sans leading-relaxed min-h-[48px]">
-              {promptPlaceholder}
-            </div>
+            {/* 居中核心输入框 */}
+            <div className="rounded-xl border border-border-visible bg-surface p-4 space-y-3.5">
+              <div className="text-xs text-muted-foreground/80 font-sans leading-relaxed min-h-[44px]">
+                {promptPlaceholder}
+              </div>
 
-            <div className="flex items-center justify-between pt-2 border-t border-border/60">
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  className="flex size-7 items-center justify-center rounded-full border border-border-visible bg-surface-raised text-foreground"
-                >
-                  <Plus className="size-3.5" />
-                </button>
-                <div className="flex items-center gap-1.5 rounded-full border border-border-visible/80 bg-surface-raised/60 px-2.5 py-1 text-[11px] font-mono text-foreground">
-                  <ShieldCheck className="size-3 text-muted-foreground" />
-                  <span>默认权限</span>
-                  <ChevronDown className="size-2.5 text-muted-foreground" />
+              <div className="flex items-center justify-between pt-2 border-t border-border/60">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    className="flex size-7 items-center justify-center rounded-full border border-border-visible bg-surface-raised text-foreground hover:bg-surface cursor-pointer transition-colors"
+                  >
+                    <Plus className="size-3.5" />
+                  </button>
+                  <div className="flex items-center gap-1.5 rounded-full border border-border-visible bg-surface-raised px-2.5 py-1 text-[11px] font-mono text-foreground cursor-pointer">
+                    <ShieldCheck className="size-3 text-muted-foreground" />
+                    <span>默认权限</span>
+                    <ChevronDown className="size-2.5 text-muted-foreground" />
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 rounded-full border border-border-visible bg-surface-raised px-2.5 py-1 text-[11px] font-mono text-foreground cursor-pointer">
+                    <Sparkles className="size-3 text-muted-foreground" />
+                    <span>{modelName}</span>
+                    <ChevronDown className="size-2.5 text-muted-foreground" />
+                  </div>
+                  <button
+                    type="button"
+                    className="flex size-7 items-center justify-center rounded-full bg-foreground text-background hover:opacity-90 cursor-pointer transition-opacity"
+                  >
+                    <ArrowUp className="size-3.5" />
+                  </button>
                 </div>
               </div>
-
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1.5 rounded-full border border-border-visible/80 bg-surface-raised/60 px-2.5 py-1 text-[11px] font-mono text-foreground">
-                  <Sparkles className="size-3 text-muted-foreground" />
-                  <span>{modelName}</span>
-                </div>
-                <button
-                  type="button"
-                  className="flex size-7 items-center justify-center rounded-full bg-foreground text-background"
-                >
-                  <ArrowUp className="size-3.5" />
-                </button>
-              </div>
             </div>
-          </div>
 
-          {/* Quick suggestions */}
-          <div className="flex items-center justify-center gap-2 flex-wrap">
-            {["👍 推荐使用", "📖 内容创作", "📊 数据分析", "@ 邮件处理", "📑 学习研究"].map((item, idx) => (
-              <div
-                key={idx}
-                className="rounded-full border border-border-visible bg-surface px-3 py-1 text-xs text-foreground/85 font-mono cursor-pointer hover:border-foreground/60"
-              >
-                {item}
-              </div>
-            ))}
+            {/* 底部快速场景意图胶囊 */}
+            <div className="flex items-center justify-center gap-2 flex-wrap">
+              {["👍 推荐使用", "📖 内容创作", "📊 数据分析", "🔍 市场调研", "💻 脚本开发"].map((item, idx) => (
+                <div
+                  key={idx}
+                  className="rounded-full border border-border-visible bg-surface px-3 py-1 text-xs text-foreground/85 font-mono cursor-pointer hover:border-foreground/60 transition-colors"
+                >
+                  {item}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  );
-}
+    );
+  }
 
 /**
- * 2.2 Agent 执行流会话页模版 (agent-chat-stream-layout) - 对应截图 2
+ * 2.2 开始对话之后的对话组件 (agent-client-chat)
+ * 标准 1080x680 外框，不参考截图被挤压的窄比例（主视区宽屏自适应），完整还原截图内容
  */
-export function AgentChatStreamLayoutPreview({ props = {} }: { props?: Props }) {
+export function AgentClientChatPreview({ props = {} }: { props?: Props }) {
+  const appName = String(val(props, "appName", "帝王蟹"));
   const sessionTitle = String(val(props, "sessionTitle", "营销活动月度复盘分析报告"));
   const userPrompt = String(
-    val(props, "userPrompt", "/Skill maker 帮我整理最近关于 OpenClaw 的热门讨论，顺便参考我上传的需求说明和截图。"),
+    val(
+      props,
+      "userPrompt",
+      "/Skill maker 帮我整理最近关于 OpenClaw 的热门讨论，顺便参考我上传的需求说明和截图。",
+    ),
   );
   const agentName = String(val(props, "agentName", "ClawHive 总管"));
   const consumedPoints = String(val(props, "consumedPoints", "21"));
   const elapsedTime = String(val(props, "elapsedTime", "2m 39s"));
+  const modelName = String(val(props, "modelName", "高级模型"));
+  const userName = String(val(props, "userName", "李·Jason·io"));
 
   return (
-    <div className="flex h-full w-full rounded-2xl border border-border-visible bg-surface text-foreground overflow-hidden font-sans select-none shadow-sm">
-      {/* Left Sidebar */}
-      <div className="w-56 shrink-0 border-r border-border bg-surface flex flex-col justify-between p-3">
-        <div className="space-y-3 font-mono text-xs">
-          <div className="flex items-center gap-2">
-            <div className="flex gap-1.5">
-              <span className="size-2.5 rounded-full bg-border-visible" />
-              <span className="size-2.5 rounded-full bg-border-visible" />
-              <span className="size-2.5 rounded-full bg-border-visible" />
-            </div>
-            <span className="ml-1 text-xs font-bold uppercase tracking-wider">AGENT DESKTOP</span>
-          </div>
-          <div className="rounded-md px-2 py-1 bg-surface-raised text-foreground font-medium truncate">
-            {sessionTitle}
-          </div>
-        </div>
+    <div className="flex h-full w-full rounded-xl border border-border-visible bg-background text-foreground overflow-hidden font-sans select-none">
+      {/* 统一 240px 左侧边栏 */}
+      <AgentUnifiedSidebar appName={appName} userName={userName} />
 
-        <div className="border-t border-border pt-2 font-mono text-xs text-muted-foreground">
-          <span>李 · Jason · io</span>
-        </div>
-      </div>
-
-      {/* Main Execution Stream */}
+      {/* 主对话工作区 (自适应宽屏舒适比例，840px 视区) */}
       <div className="flex-1 flex flex-col justify-between bg-background overflow-hidden">
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-border bg-surface px-4 py-2.5">
-          <span className="text-xs font-bold text-foreground truncate">{sessionTitle}</span>
-          <span className="font-mono text-[10px] text-muted-foreground uppercase">[ STREAM ACTIVE ]</span>
+        {/* 顶部会话标题栏 */}
+        <div className="flex h-10 shrink-0 items-center justify-between border-b border-border bg-surface px-4">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-foreground font-mono truncate">{sessionTitle}</span>
+            <button type="button" className="text-muted-foreground hover:text-foreground cursor-pointer">
+              <MoreHorizontal className="size-3.5" />
+            </button>
+          </div>
+          <div className="flex items-center gap-3">
+            <span className="font-mono text-[10px] text-muted-foreground uppercase tracking-wider">
+              [ STREAM ACTIVE ]
+            </span>
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <button type="button" className="hover:text-foreground cursor-pointer" title="图层">
+                <Layers className="size-3.5" />
+              </button>
+              <button type="button" className="hover:text-foreground cursor-pointer" title="展开右侧任务栏">
+                <PanelRight className="size-3.5" />
+              </button>
+            </div>
+          </div>
         </div>
 
-        {/* Messages Stream Area */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          {/* User message */}
-          <div className="flex flex-col items-end space-y-1.5">
+        {/* 对话消息流视区 */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {/* 用户提问区 */}
+          <div className="flex flex-col items-end space-y-1.5 max-w-2xl ml-auto">
+            {/* 附件胶囊 */}
             <div className="flex gap-2">
-              <span className="rounded-md border border-border-visible bg-surface px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
-                openclaw-report.md
+              <span className="flex items-center gap-1.5 rounded-md border border-border-visible bg-surface px-2.5 py-1 font-mono text-[10px] text-foreground">
+                <FileText className="size-3 text-muted-foreground" />
+                <span>openclaw-report.docx</span>
               </span>
-              <span className="rounded-md border border-border-visible bg-surface px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
-                issue_imgs.png
+              <span className="flex items-center gap-1.5 rounded-md border border-border-visible bg-surface px-2.5 py-1 font-mono text-[10px] text-foreground">
+                <ImageIcon className="size-3 text-muted-foreground" />
+                <span>issue_imgs.png</span>
               </span>
             </div>
-            <div className="max-w-lg rounded-xl bg-surface-raised border border-border-visible p-3 text-xs text-foreground leading-relaxed">
+            {/* 提问气泡 */}
+            <div className="rounded-xl border border-border-visible bg-surface-raised p-3.5 text-xs text-foreground leading-relaxed">
               {userPrompt}
             </div>
             <span className="font-mono text-[10px] text-muted-foreground">5月10日 · 11:45</span>
           </div>
 
-          {/* Agent execution card */}
-          <div className="space-y-2 rounded-xl border border-border-visible bg-surface p-3.5">
-            <div className="flex items-center justify-between border-b border-border/80 pb-2">
+          {/* Agent 执行响应流卡片 */}
+          <div className="max-w-2xl space-y-3 rounded-xl border border-border-visible bg-surface p-4">
+            {/* 卡片头部 */}
+            <div className="flex items-center justify-between border-b border-border/70 pb-2.5">
               <div className="flex items-center gap-2">
-                <Bot className="size-4 text-foreground" />
-                <span className="text-xs font-bold">{agentName}</span>
+                <div className="flex size-6 items-center justify-center rounded-md border border-border-visible bg-surface-raised text-foreground">
+                  <Bot className="size-3.5" />
+                </div>
+                <span className="text-xs font-bold font-mono text-foreground">{agentName}</span>
               </div>
-              <div className="flex items-center gap-2 font-mono text-[10px] text-muted-foreground">
-                <span>消耗 {consumedPoints} 积分</span>
+              <div className="flex items-center gap-2 font-mono text-[11px] text-muted-foreground">
+                <div className="flex items-center gap-1">
+                  <Sparkles className="size-3 text-muted-foreground" />
+                  <span>消耗 {consumedPoints} 积分</span>
+                </div>
                 <span>·</span>
-                <span>已处理 {elapsedTime}</span>
+                <div className="flex items-center gap-1">
+                  <Clock className="size-3 text-muted-foreground" />
+                  <span>已处理 {elapsedTime}</span>
+                </div>
+                <ChevronDown className="size-3 text-muted-foreground/80 cursor-pointer" />
               </div>
             </div>
 
-            <div className="space-y-1.5 text-xs text-muted-foreground/90 font-sans">
-              <p>我会先判断资料类型和完整性，把会议纪要、任务清单和补充说明分开读，避免一上来就混成散文。</p>
+            {/* 推理阐述 */}
+            <div className="text-xs text-foreground/90 font-sans leading-relaxed space-y-1.5">
+              <p>
+                我会先判断资料类型和完整性，把会议纪要、任务清单、表格和补充说明分开读，避免一上来就混成散文。
+                判断依据：我会先确认输入材料是否完整、是否和当前任务目标匹配；这样后续步骤不会把缺失材料、动态数据或无关附件误当成问题来源。
+              </p>
             </div>
 
-            {/* Steps */}
-            <div className="space-y-1.5 pt-1">
-              <div className="flex items-center justify-between rounded-md border border-border-visible bg-surface-raised px-2.5 py-1 text-xs font-mono">
-                <span className="text-foreground">📄 读取输入文件</span>
-                <span className="text-[9px] text-[#4A9E5C] uppercase font-bold">[DONE]</span>
+            {/* 工具步骤 1 */}
+            <div className="space-y-1 rounded-lg border border-border-visible bg-surface-raised/40 p-2.5 font-mono text-xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-foreground font-medium">
+                  <FileText className="size-3.5 text-muted-foreground" />
+                  <span>读取输入文件</span>
+                  <ChevronRight className="size-3 text-muted-foreground" />
+                </div>
+                <span className="font-mono text-[9px] text-[#4A9E5C] border border-[#4A9E5C]/40 bg-[#4A9E5C]/10 px-1.5 py-0.2 rounded-2xs uppercase font-bold">
+                  [DONE]
+                </span>
               </div>
-              <div className="flex items-center justify-between rounded-md border border-border-visible bg-surface-raised px-2.5 py-1 text-xs font-mono">
-                <span className="text-foreground">🔍 检索相关内容</span>
-                <span className="text-[9px] text-[#4A9E5C] uppercase font-bold">[DONE]</span>
+              <p className="text-[11px] text-muted-foreground font-sans leading-normal">
+                报告不是摘抄资料，我会先反复出现的目标、风险、结论和待办，再判断哪些值得进入正文。
+              </p>
+            </div>
+
+            {/* 工具步骤 2 */}
+            <div className="space-y-1 rounded-lg border border-border-visible bg-surface-raised/40 p-2.5 font-mono text-xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-foreground font-medium">
+                  <Search className="size-3.5 text-muted-foreground" />
+                  <span>检索相关内容</span>
+                  <ChevronRight className="size-3 text-muted-foreground" />
+                </div>
+                <span className="font-mono text-[9px] text-[#4A9E5C] border border-[#4A9E5C]/40 bg-[#4A9E5C]/10 px-1.5 py-0.2 rounded-2xs uppercase font-bold">
+                  [DONE]
+                </span>
               </div>
-              <div className="flex items-center justify-between rounded-md border border-border-visible bg-surface-raised px-2.5 py-1 text-xs font-mono">
-                <span className="text-foreground">🗂 参考历史记忆</span>
-                <span className="text-[9px] text-[#4A9E5C] uppercase font-bold">[DONE]</span>
+              <p className="text-[11px] text-muted-foreground font-sans leading-normal">
+                我会检查历史上下文里是否有命名、结构、语气或流程约定，并只引用和当前任务直接相关的部分，避免旧结论过度。
+              </p>
+            </div>
+
+            {/* 工具步骤 3 */}
+            <div className="space-y-1 rounded-lg border border-border-visible bg-surface-raised/40 p-2.5 font-mono text-xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5 text-foreground font-medium">
+                  <FolderTree className="size-3.5 text-muted-foreground" />
+                  <span>参考历史记忆</span>
+                  <ChevronRight className="size-3 text-muted-foreground" />
+                </div>
+                <span className="font-mono text-[9px] text-[#4A9E5C] border border-[#4A9E5C]/40 bg-[#4A9E5C]/10 px-1.5 py-0.2 rounded-2xs uppercase font-bold">
+                  [DONE]
+                </span>
               </div>
             </div>
 
-            {/* Thinking status */}
-            <div className="flex items-center gap-2 pt-2 text-[11px] font-mono text-muted-foreground">
-              <Loader2 className="size-3 animate-spin" />
-              <span>思考中...</span>
+            {/* 思考中状态指示 */}
+            <div className="flex items-center gap-2 pt-1 font-mono text-[11px] text-muted-foreground">
+              <Loader2 className="size-3.5 animate-spin text-foreground" />
+              <span className="uppercase tracking-wider">思考中...</span>
             </div>
           </div>
         </div>
 
-        {/* Bottom Input */}
-        <div className="p-3 border-t border-border bg-surface">
-          <div className="flex items-center justify-between rounded-xl border border-border-visible bg-surface-raised px-3 py-2">
-            <span className="text-xs text-muted-foreground font-sans">有什么问题请问我吧，输入 / 可调用技能</span>
-            <button type="button" className="size-7 rounded-full bg-foreground text-background flex items-center justify-center">
-              <ArrowUp className="size-3.5" />
-            </button>
+        {/* 底部交互输入框 */}
+        <div className="p-4 border-t border-border bg-surface">
+          <div className="flex flex-col gap-2 rounded-xl border border-border-visible bg-surface-raised p-3">
+            <div className="text-xs text-muted-foreground font-sans">
+              有什么问题问我吧，输入/可用技能
+            </div>
+            <div className="flex items-center justify-between pt-1 border-t border-border/40 font-mono text-xs">
+              <div className="flex items-center gap-2">
+                <button type="button" className="p-1 text-muted-foreground hover:text-foreground cursor-pointer">
+                  <MoreHorizontal className="size-3.5" />
+                </button>
+                <div className="flex items-center gap-1 text-muted-foreground hover:text-foreground cursor-pointer text-[11px]">
+                  <ShieldCheck className="size-3" />
+                  <span>安全沙箱</span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 rounded-full border border-border-visible bg-surface px-2 py-0.5 text-[11px] text-foreground cursor-pointer">
+                  <Sparkles className="size-3 text-muted-foreground" />
+                  <span>{modelName}</span>
+                </div>
+                <button type="button" className="p-1 text-muted-foreground hover:text-foreground cursor-pointer">
+                  <Mic className="size-3.5" />
+                </button>
+                <button type="button" className="size-6 rounded-full bg-foreground text-background flex items-center justify-center hover:opacity-90 cursor-pointer transition-opacity">
+                  <ArrowUp className="size-3" />
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -1187,103 +1580,192 @@ export function AgentChatStreamLayoutPreview({ props = {} }: { props?: Props }) 
 }
 
 /**
- * 2.3 Agent 分栏工作台模版 (agent-split-workspace-layout) - 对应截图 3
+ * 2.3 带任务展栏展开组件 (agent-client-split)
+ * 标准 1080x680 外框，左中右三栏结构，右侧专注于容器框架骨架（无需复杂具体报表）
  */
-export function AgentSplitWorkspaceLayoutPreview({ props = {} }: { props?: Props }) {
+export function AgentClientSplitPreview({ props = {} }: { props?: Props }) {
+  const appName = String(val(props, "appName", "帝王蟹"));
   const sessionTitle = String(val(props, "sessionTitle", "营销活动月度复盘分析报告"));
   const editingFile = String(val(props, "editingFile", "file:///workspace/northstar-dashboard.html"));
+  const activeArtifactTab = String(val(props, "activeArtifactTab", "news-aggregator"));
+  const userName = String(val(props, "userName", "李·Jason·io"));
 
   return (
-    <div className="flex h-full w-full rounded-2xl border border-border-visible bg-surface text-foreground overflow-hidden font-sans select-none shadow-sm">
-      {/* 1. Left Nav Sidebar (180px) */}
-      <div className="w-44 shrink-0 border-r border-border bg-surface p-2.5 flex flex-col justify-between font-mono text-xs">
-        <div className="space-y-2">
-          <span className="font-bold text-xs">AGENT CLAW</span>
-          <div className="rounded bg-surface-raised px-2 py-1 truncate text-foreground">{sessionTitle}</div>
-        </div>
-        <div className="text-[10px] text-muted-foreground">李 · Jason · io</div>
-      </div>
+    <div className="flex h-full w-full rounded-xl border border-border-visible bg-background text-foreground overflow-hidden font-sans select-none">
+      {/* 1. 左侧统一导航栏 (240px) */}
+      <AgentUnifiedSidebar appName={appName} userName={userName} />
 
-      {/* 2. Middle Stream Pane (360px) */}
-      <div className="w-80 shrink-0 border-r border-border bg-background p-3 flex flex-col justify-between overflow-hidden">
-        <div className="space-y-3 overflow-y-auto">
-          <div className="font-bold text-xs">{sessionTitle}</div>
-          <div className="rounded-lg border border-border-visible bg-surface p-2.5 space-y-2 text-xs">
-            <div className="flex items-center justify-between text-[10px] font-mono text-muted-foreground">
-              <span>ClawHive 总管</span>
-              <span>2m 39s</span>
+      {/* 2. 中间会话执行流 (420px，宽敞舒适比例) */}
+      <div className="w-[420px] shrink-0 border-r border-border bg-background flex flex-col justify-between overflow-hidden">
+        {/* 会话标题栏 */}
+        <div className="flex h-10 shrink-0 items-center justify-between border-b border-border bg-surface px-3">
+          <span className="text-xs font-bold font-mono text-foreground truncate">{sessionTitle}</span>
+          <span className="font-mono text-[9px] text-[#4A9E5C] border border-[#4A9E5C]/30 bg-[#4A9E5C]/10 px-1.5 py-0.2 rounded-2xs uppercase font-bold">
+            ACTIVE
+          </span>
+        </div>
+
+        {/* 紧凑消息摘要 */}
+        <div className="flex-1 overflow-y-auto p-3 space-y-3">
+          {/* 用户提问摘要 */}
+          <div className="rounded-lg border border-border-visible bg-surface-raised p-2.5 text-xs space-y-1">
+            <div className="flex items-center gap-1 font-mono text-[9px] text-muted-foreground">
+              <FileText className="size-2.5" />
+              <span>openclaw-report.docx</span>
             </div>
-            <div className="text-[11px] text-muted-foreground">正在为您的项目生成看板控制台代码与监控组件...</div>
-            <div className="rounded border border-border-visible bg-surface-raised p-1.5 text-[10px] font-mono">
-              [ 写入文件 northstar-dashboard.html ]
+            <p className="text-foreground leading-snug line-clamp-2">
+              /Skill maker 帮我整理最近关于 OpenClaw 的热门讨论，顺便参考我上传的需求说明和截图。
+            </p>
+          </div>
+
+          {/* Agent 执行卡片摘要 */}
+          <div className="rounded-lg border border-border-visible bg-surface p-3 space-y-2">
+            <div className="flex items-center justify-between text-[11px] font-mono border-b border-border/60 pb-1.5">
+              <span className="font-semibold text-foreground">ClawHive 总管</span>
+              <span className="text-muted-foreground">2m 39s</span>
+            </div>
+            <p className="text-[11px] text-muted-foreground font-sans leading-relaxed">
+              我会先判断资料类型和完整性，把会议纪要、任务清单、表格和补充说明分开读...
+            </p>
+            <div className="space-y-1 font-mono text-[10px]">
+              <div className="flex items-center justify-between rounded bg-surface-raised px-2 py-1">
+                <span>📄 读取输入文件</span>
+                <span className="text-[#4A9E5C] font-bold">[DONE]</span>
+              </div>
+              <div className="flex items-center justify-between rounded bg-surface-raised px-2 py-1">
+                <span>🔍 检索相关内容</span>
+                <span className="text-[#4A9E5C] font-bold">[DONE]</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-1.5 pt-1 text-[10px] font-mono text-muted-foreground">
+              <Loader2 className="size-2.5 animate-spin" />
+              <span>思考中...</span>
             </div>
           </div>
         </div>
 
-        <div className="rounded-lg border border-border-visible bg-surface p-2 text-xs text-muted-foreground">
-          输入指令...
+        {/* 紧凑输入栏 */}
+        <div className="p-2.5 border-t border-border bg-surface">
+          <div className="flex items-center justify-between rounded-lg border border-border-visible bg-surface-raised px-2.5 py-1.5 text-xs text-muted-foreground">
+            <span className="truncate">输入指令 / 追问...</span>
+            <ArrowUp className="size-3 text-foreground" />
+          </div>
         </div>
       </div>
 
-      {/* 3. Right Artifact & Live Console Workspace */}
+      {/* 3. 右侧任务展栏展开框架 (按规范专注于框架骨架，宽敞自适应) */}
       <div className="flex-1 flex flex-col bg-surface overflow-hidden">
-        {/* Tab & Action Bar */}
-        <div className="flex items-center justify-between border-b border-border px-3 py-1.5 bg-surface-raised/40">
-          <div className="flex items-center gap-2 font-mono text-xs">
-            <span className="rounded bg-surface px-2 py-0.5 border border-border-visible font-bold">
-              northstar-dashboard.html
-            </span>
-            <span className="text-muted-foreground text-[10px]">issue_imgs.png</span>
+        {/* 顶部标签栏 (严格对齐图 4: 极简纯净工件标签) */}
+        <div className="flex h-10 shrink-0 items-center justify-between border-b border-border px-2.5 bg-surface">
+          <div className="flex items-center gap-1.5 font-sans text-xs overflow-x-auto">
+            {/* Tab 1: news-aggregator (active) */}
+            <div
+              className={cn(
+                "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors cursor-pointer",
+                activeArtifactTab === "news-aggregator"
+                  ? "bg-surface-raised text-foreground font-medium shadow-2xs"
+                  : "text-muted-foreground hover:bg-surface-raised/40 hover:text-foreground"
+              )}
+            >
+              <div className="flex size-4 shrink-0 items-center justify-center rounded-xs bg-muted-foreground/30 text-foreground font-bold text-[9px]">
+                M
+              </div>
+              <span>news-aggregator</span>
+            </div>
+            {/* Tab 2: issue_imgs */}
+            <div
+              className={cn(
+                "flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs transition-colors cursor-pointer",
+                activeArtifactTab === "issue_imgs"
+                  ? "bg-surface-raised text-foreground font-medium shadow-2xs"
+                  : "text-muted-foreground hover:bg-surface-raised/40 hover:text-foreground"
+              )}
+            >
+              <div className="flex size-4 shrink-0 items-center justify-center rounded-xs bg-[#2B579A] text-white font-bold text-[9px]">
+                W
+              </div>
+              <span>issue_imgs</span>
+            </div>
+            {/* Plus tab */}
+            <button
+              type="button"
+              className="p-1 text-muted-foreground hover:text-foreground cursor-pointer transition-colors"
+              title="新建标签"
+            >
+              <Plus className="size-3.5" />
+            </button>
           </div>
-          <div className="flex items-center gap-2">
-            <button type="button" className="rounded-full bg-foreground px-3 py-0.5 font-mono text-[10px] text-background uppercase">
-              保存并运行
+
+          <div className="flex items-center gap-1 text-muted-foreground">
+            <button
+              type="button"
+              className="text-muted-foreground hover:text-foreground cursor-pointer p-1 transition-colors"
+              title="折叠任务栏"
+            >
+              <PanelRight className="size-4" />
             </button>
           </div>
         </div>
 
-        {/* Live Preview Container */}
-        <div className="flex-1 p-4 space-y-4 overflow-y-auto bg-background">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-foreground font-sans">Growth Data Overview</h3>
-            <span className="font-mono text-[10px] text-[#4A9E5C] border border-[#4A9E5C]/30 bg-[#4A9E5C]/10 px-2 py-0.5 rounded-2xs">
-              SAFE SANDBOX 100%
-            </span>
+        {/* 工作区骨架容器 (纯净 Nothing-design 工业风线框骨架) */}
+        <div className="flex-1 p-4 flex flex-col gap-3 overflow-y-auto bg-background">
+          {/* 容器框架状态条 */}
+          <div className="flex items-center justify-between font-mono text-[10px] text-muted-foreground uppercase border-b border-border/60 pb-2">
+            <span>[ WORKSPACE CONTAINER FRAMEWORK ]</span>
+            <span>SLOT 01 / ARTIFACT DOCK</span>
           </div>
 
-          {/* Metric Cards */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="rounded-xl border border-border-visible bg-surface p-3 space-y-1">
-              <div className="font-mono text-[10px] text-muted-foreground uppercase">Safe Sandbox Protection</div>
-              <div className="font-mono text-lg font-bold text-foreground">100%</div>
-              <div className="text-[10px] text-muted-foreground">17 of 17 protected</div>
+          {/* 主工作区线框插槽 */}
+          <div className="flex-1 flex flex-col items-center justify-center rounded-lg border border-dashed border-border-visible p-6 text-center space-y-2 bg-surface/30">
+            <div className="flex size-10 items-center justify-center rounded-md border border-border-visible bg-surface-raised text-muted-foreground">
+              <LayoutGrid className="size-5" />
             </div>
-            <div className="rounded-xl border border-border-visible bg-surface p-3 space-y-1">
-              <div className="font-mono text-[10px] text-muted-foreground uppercase">Safe Prompt Protection</div>
-              <div className="font-mono text-lg font-bold text-foreground">100%</div>
-              <div className="text-[10px] text-muted-foreground">Active monitoring</div>
+            <div className="font-mono text-xs font-semibold text-foreground uppercase tracking-wider">
+              [ 实时任务工作区 · 画板挂载槽 ]
             </div>
+            <p className="font-mono text-[10px] text-muted-foreground max-w-xs leading-relaxed">
+              此区域为任务展栏框架容器，用于实时挂载 Agent 生成的代码文件、可视化看板、原型页面或数据图表。
+            </p>
           </div>
 
-          {/* Data Table */}
-          <div className="rounded-xl border border-border-visible bg-surface overflow-hidden">
-            <div className="grid grid-cols-3 border-b border-border px-3 py-1.5 font-mono text-[10px] text-muted-foreground uppercase">
-              <span>Agent Name</span>
-              <span>Host:Port</span>
-              <span className="text-right">Status</span>
+          {/* 底部检查器骨架插槽 */}
+          <div className="h-24 rounded-lg border border-dashed border-border-visible p-3 flex flex-col justify-between bg-surface/20 font-mono text-[10px]">
+            <div className="flex items-center justify-between text-muted-foreground uppercase">
+              <span>[ 参数与状态检查器框架 ]</span>
+              <span>INSPECTOR READY</span>
             </div>
-            {["openclaw", "closetmoon", "silentwave"].map((name, i) => (
-              <div key={i} className="grid grid-cols-3 border-b border-border/40 px-3 py-2 text-xs font-mono">
-                <span className="text-foreground font-medium">{name}</span>
-                <span className="text-muted-foreground text-[11px]">10.242.69.{248 + i}:18789</span>
-                <div className="text-right font-bold text-[#4A9E5C] text-[10px]">[ONLINE]</div>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="rounded border border-border/80 bg-surface px-2 py-1 text-muted-foreground">
+                STATUS: <span className="text-foreground">STABLE</span>
               </div>
-            ))}
+              <div className="rounded border border-border/80 bg-surface px-2 py-1 text-muted-foreground">
+                SANDBOX: <span className="text-foreground">PROTECTED</span>
+              </div>
+              <div className="rounded border border-border/80 bg-surface px-2 py-1 text-muted-foreground">
+                DIFF: <span className="text-foreground">CLEAN</span>
+              </div>
+            </div>
           </div>
         </div>
       </div>
     </div>
   );
+}
+
+// =========================================================================
+// 向后兼容别名 (Aliases for Existing Templates)
+// =========================================================================
+
+export function AgentHomeLayoutPreview({ props = {} }: { props?: Props }) {
+  return <AgentClientHomePreview props={props} />;
+}
+
+export function AgentChatStreamLayoutPreview({ props = {} }: { props?: Props }) {
+  return <AgentClientChatPreview props={props} />;
+}
+
+export function AgentSplitWorkspaceLayoutPreview({ props = {} }: { props?: Props }) {
+  return <AgentClientSplitPreview props={props} />;
 }
 
 /**
@@ -1493,6 +1975,125 @@ export function AgentEmployeeMarketLayoutPreview({ props = {} }: { props?: Props
   );
 }
 
+export function AgentKnowledgeBaseLayoutPreview({
+  props = {},
+  context,
+}: {
+  props?: Props;
+  context?: ComponentRenderContext;
+}) {
+  const title = String(val(props, "title", "智能体 RAG 知识库与语料索引"));
+  const activeCategory = String(val(props, "activeCategory", "核心白皮书"));
+
+  const categories = [
+    { name: "全部语料库", count: 18, key: "all" },
+    { name: "核心白皮书", count: 6, key: "whitepaper" },
+    { name: "客户服务FAQ", count: 4, key: "faq" },
+    { name: "行业数据研报", count: 5, key: "report" },
+    { name: "生成交付成果", count: 3, key: "artifacts" },
+  ];
+
+  return (
+    <div className="flex h-full w-full flex-col rounded-xl border border-border-visible bg-background p-4 gap-3 font-sans select-none shadow-sm">
+      {/* 1. Header Bar */}
+      <div className="flex items-center justify-between border-b border-border pb-3">
+        <div className="flex items-center gap-2.5">
+          <Database className="size-4 text-foreground" />
+          <span className="text-sm font-bold text-foreground">{title}</span>
+          <span className="rounded border border-border-visible bg-surface-raised px-2 py-0.5 text-[10px] font-mono text-muted-foreground uppercase">
+            [RAG 向量引擎: BGE-Large-ZH 在线]
+          </span>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            className="flex h-8 items-center gap-1.5 rounded-full bg-foreground px-3.5 text-xs font-mono uppercase tracking-wider font-bold text-background hover:opacity-90 transition-opacity"
+          >
+            <Plus className="size-3.5" />
+            <span>上传语料文档</span>
+          </button>
+          <button
+            type="button"
+            className="flex h-8 items-center gap-1.5 rounded-full border border-border-visible bg-transparent px-3 text-xs font-mono uppercase tracking-wider text-foreground hover:bg-surface-raised transition-colors"
+          >
+            <RotateCw className="size-3" />
+            <span>重新构建索引</span>
+          </button>
+        </div>
+      </div>
+
+      {/* 2. Metrics Strip (4 Chunks) */}
+      <div className="grid grid-cols-4 gap-2.5">
+        <div className="flex items-center justify-between rounded-lg border border-border bg-surface p-2.5">
+          <span className="text-[11px] font-mono text-muted-foreground uppercase">已挂载文档</span>
+          <span className="text-sm font-mono font-bold text-foreground">8 <span className="text-[10px] text-muted-foreground font-normal">篇</span></span>
+        </div>
+        <div className="flex items-center justify-between rounded-lg border border-border bg-surface p-2.5">
+          <span className="text-[11px] font-mono text-muted-foreground uppercase">向量分块</span>
+          <span className="text-sm font-mono font-bold text-foreground">1,420 <span className="text-[10px] text-muted-foreground font-normal">chunks</span></span>
+        </div>
+        <div className="flex items-center justify-between rounded-lg border border-border bg-surface p-2.5">
+          <span className="text-[11px] font-mono text-muted-foreground uppercase">消耗 TOKEN</span>
+          <span className="text-sm font-mono font-bold text-foreground">284.5 <span className="text-[10px] text-muted-foreground font-normal">k</span></span>
+        </div>
+        <div className="flex items-center justify-between rounded-lg border border-border bg-surface p-2.5">
+          <span className="text-[11px] font-mono text-muted-foreground uppercase">召回命中率</span>
+          <span className="text-sm font-mono font-bold text-emerald-500">98.4%</span>
+        </div>
+      </div>
+
+      {/* 3. Main Body Split: Category Tree on Left + FileList on Right */}
+      <div className="flex flex-1 gap-3 min-h-0">
+        {/* Left Categories */}
+        <div className="w-48 shrink-0 flex flex-col rounded-lg border border-border-visible bg-surface p-2 gap-1">
+          <div className="px-2 py-1 text-[10px] font-mono uppercase tracking-wider text-muted-foreground/70">
+            语料集合分类
+          </div>
+          {categories.map((cat) => {
+            const isActive = cat.name === activeCategory || (cat.key === "whitepaper" && activeCategory.includes("白皮书"));
+            return (
+              <div
+                key={cat.key}
+                className={cn(
+                  "flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs transition-colors cursor-pointer font-sans",
+                  isActive
+                    ? "bg-surface-raised font-semibold text-foreground border border-border-visible"
+                    : "text-muted-foreground hover:bg-surface-raised/50 hover:text-foreground"
+                )}
+              >
+                <span>{cat.name}</span>
+                <span className="font-mono text-[10px] text-muted-foreground">{cat.count}</span>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Right Main Table */}
+        <div className="flex-1 min-h-0 flex flex-col">
+          <FileListPreview props={props} context={context} mode="agent" />
+        </div>
+      </div>
+
+      {/* 4. Bottom Test Query Prompt Input */}
+      <div className="flex items-center gap-2 rounded-lg border border-border-visible bg-surface p-2">
+        <Search className="size-3.5 text-muted-foreground ml-1 shrink-0" />
+        <input
+          type="text"
+          readOnly
+          placeholder="输入测试 Prompt 检验已挂载语料的向量相似度与检索召回匹配..."
+          className="flex-1 bg-transparent text-xs text-foreground placeholder:text-muted-foreground/60 outline-none"
+        />
+        <button
+          type="button"
+          className="h-7 px-3 rounded-md bg-surface-raised border border-border-visible text-[11px] font-mono uppercase text-foreground hover:bg-surface transition-colors"
+        >
+          召回检验
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // =========================================================================
 // 3. Agent 渲染分发器 (Dispatcher)
 // =========================================================================
@@ -1505,16 +2106,30 @@ export function renderAgentLibraryComponent(
 ): React.ReactNode | null {
   switch (type) {
     // 完整模版
-    case "agent-home-layout":
-      return <AgentHomeLayoutPreview props={props} />;
-    case "agent-chat-stream-layout":
-      return <AgentChatStreamLayoutPreview props={props} />;
-    case "agent-split-workspace-layout":
-      return <AgentSplitWorkspaceLayoutPreview props={props} />;
+    case "agent-knowledge-base-layout":
+      return <AgentKnowledgeBaseLayoutPreview props={props} context={context} />;
     case "agent-employee-workspace-layout":
       return <AgentEmployeeWorkspaceLayoutPreview props={props} />;
     case "agent-employee-market-layout":
       return <AgentEmployeeMarketLayoutPreview props={props} />;
+    // 框架与容器 (核心 3 态客户端及底座)
+    case "agent-client-home":
+    case "agent-home-layout":
+      return <AgentClientHomePreview props={props} />;
+    case "agent-client-chat":
+    case "agent-chat-stream-layout":
+      return <AgentClientChatPreview props={props} />;
+    case "agent-client-split":
+    case "agent-split-workspace-layout":
+      return <AgentClientSplitPreview props={props} />;
+    case "agent-desktop-frame":
+      return <AgentDesktopFramePreview props={props} />;
+
+    // 目录、列表与操作
+    case "agent-directory-tree":
+      return <AgentDirectoryTreePreview props={props} />;
+    case "agent-filter-bar":
+      return <AgentFilterBarPreview props={props} />;
 
     // 侧栏与导航
     case "agent-nav-sidebar":
@@ -1569,6 +2184,8 @@ export function renderAgentLibraryComponent(
       return <AgentArtifactTabsPreview props={props} />;
     case "agent-console-table":
       return <AgentConsoleTablePreview props={props} />;
+    case "agent-knowledge-files":
+      return <FileListPreview props={props} context={context} mode="agent" />;
 
     default:
       return null;

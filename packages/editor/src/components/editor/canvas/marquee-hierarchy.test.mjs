@@ -28,13 +28,14 @@ function rectsIntersect(r1, r2) {
 }
 
 const CONTAINER_TYPES = new Set([
-  "card", "group", "modal-dialog", "mobile-frame", "browser-frame", "sidebar", "header", "footer"
+  "card", "modal-dialog", "mobile-frame", "browser-frame", "sidebar", "header", "footer"
 ]);
 
 function isContainerElement(el) {
   return (
-    CONTAINER_TYPES.has(el.type) ||
-    (Boolean(el.children) && el.children.length > 0)
+    el.type !== "group" &&
+    (CONTAINER_TYPES.has(el.type) ||
+      (Boolean(el.children) && el.children.length > 0))
   );
 }
 
@@ -131,7 +132,7 @@ function getMarqueeHitElementIds(marqueeBox, allElementsFlat, options) {
   }
 
   for (const el of candidates) {
-    if (isContainerElement(el)) {
+    if (el.type !== "group" && isContainerElement(el)) {
       const bounds = getElementDynamicBounds(el, allElementsFlat);
       const containerArea = bounds.width * bounds.height;
       if (
@@ -166,8 +167,24 @@ function getMarqueeHitElementIds(marqueeBox, allElementsFlat, options) {
     return leafOnly.map((el) => el.id);
   }
 
-  const candidateIds = activeCandidates.map((el) => el.id);
-  return filterOutDescendantIds(candidateIds, allElementsFlat);
+  const candidateIds = activeCandidates.map((el) => {
+    let curr = el;
+    let groupAncestor = null;
+    const visited = new Set([el.id]);
+    while (curr.parentId) {
+      if (visited.has(curr.parentId)) break;
+      visited.add(curr.parentId);
+      const parent = allElementsFlat.find((p) => p.id === curr.parentId);
+      if (!parent) break;
+      if (parent.type === "group") {
+        groupAncestor = parent;
+      }
+      curr = parent;
+    }
+    return groupAncestor ? groupAncestor.id : el.id;
+  });
+
+  return filterOutDescendantIds(Array.from(new Set(candidateIds)), allElementsFlat);
 }
 
 test("filterOutDescendantIds removes child IDs when parent ID is present", () => {
@@ -297,3 +314,100 @@ test("getMarqueeHitElementIds selects only inner elements when marquee is inside
 
   assert.deepEqual(hitIds, ["btn-1", "btn-2"], "Should return the 2 inner buttons and exclude the enclosing card");
 });
+
+test("getMarqueeHitElementIds selects only the Group even when marquee is inside the group bounds", () => {
+  const group = {
+    id: "group-1",
+    type: "group",
+    x: 200,
+    y: 200,
+    width: 600,
+    height: 400,
+    visible: true,
+    locked: false,
+    parentId: null,
+  };
+  const btn1 = {
+    id: "inner-btn-1",
+    type: "button",
+    x: 30,
+    y: 30,
+    width: 100,
+    height: 36,
+    visible: true,
+    locked: false,
+    parentId: "group-1",
+  };
+  const btn2 = {
+    id: "inner-btn-2",
+    type: "button",
+    x: 150,
+    y: 30,
+    width: 100,
+    height: 36,
+    visible: true,
+    locked: false,
+    parentId: "group-1",
+  };
+
+  const allElements = [group, btn1, btn2];
+
+  // Marquee box entirely within the group bounds covering only btn1
+  const marqueeBox = {
+    x: 220,
+    y: 220,
+    width: 120,
+    height: 50,
+  };
+
+  const hitIds = getMarqueeHitElementIds(marqueeBox, allElements);
+  assert.deepEqual(hitIds, ["group-1"], "Should return the Group as an indivisible unit, never inner children");
+});
+
+test("resolveClickTargetId always resolves child of group to group ancestor", () => {
+  function resolveClickTargetId(elId, allElementsFlat, isDeepSelect = false) {
+    const el = allElementsFlat.find((item) => item.id === elId);
+    if (!el) return elId;
+    let targetSelectId = elId;
+    if (el.parentId && !isDeepSelect) {
+      let curr = el;
+      let groupAncestor = null;
+      const visited = new Set([el.id]);
+      while (curr.parentId) {
+        if (visited.has(curr.parentId)) break;
+        visited.add(curr.parentId);
+        const parent = allElementsFlat.find((p) => p.id === curr.parentId);
+        if (!parent) break;
+        if (parent.type === "group") {
+          groupAncestor = parent;
+        }
+        curr = parent;
+      }
+      if (groupAncestor) {
+        targetSelectId = groupAncestor.id;
+      }
+    }
+    return targetSelectId;
+  }
+
+  const allElements = [
+    { id: "group-1", type: "group", parentId: null },
+    { id: "child-1", type: "button", parentId: "group-1" },
+    { id: "standalone-rect", type: "rectangle", parentId: null },
+  ];
+
+  assert.equal(resolveClickTargetId("child-1", allElements), "group-1", "Click on child-1 must target group-1");
+  assert.equal(resolveClickTargetId("standalone-rect", allElements), "standalone-rect", "Click on standalone rect targets rect");
+  assert.equal(resolveClickTargetId("child-1", allElements, true), "child-1", "Deep select with Cmd/Ctrl targets child-1");
+});
+
+test("isContainerElement returns false for rectangle and group", () => {
+  const rect = { id: "r1", type: "rectangle", children: [] };
+  const group = { id: "g1", type: "group", children: [{ id: "c1" }] };
+  const card = { id: "cd1", type: "card", children: [] };
+
+  assert.equal(isContainerElement(rect), false, "Rectangle is not a container");
+  assert.equal(isContainerElement(group), false, "Group is not an enclosing background container");
+  assert.equal(isContainerElement(card), true, "Card is a container");
+});
+

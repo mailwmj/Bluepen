@@ -33,8 +33,51 @@ function makeChild(
   };
 }
 
+function makeUnifiedSidebarChildren(groupId: string, height: number = 800): EditorElement[] {
+  return [
+    makeChild("rectangle", "侧栏底框", 0, 0, 240, height, groupId, {
+      fill: "var(--surface)",
+      stroke: "var(--border)",
+      borderWidth: 1,
+      radius: 0,
+    }),
+    makeChild("agent-sidebar-header", "侧栏窗口头部", 12, 12, 216, 28, groupId, {
+      appName: "帝王蟹",
+      showDots: true,
+    }),
+    makeChild("agent-mode-switch", "模式切换分段器", 12, 48, 216, 32, groupId, {
+      options: "对话,AI员工",
+      active: "对话",
+    }),
+    makeChild("agent-new-task-button", "新建任务按钮", 12, 88, 216, 34, groupId, {
+      text: "新建任务",
+      icon: "Plus",
+    }),
+    makeChild("agent-session-list", "置顶会话列表", 12, 130, 216, 96, groupId, {
+      title: "置顶",
+      items: "营销活动月度复盘分析报告:active,市场趋势与竞争分析",
+    }),
+    makeChild("agent-project-tree", "项目与会话树", 12, 234, 216, 68, groupId, {
+      title: "项目",
+      items: "Project-B,Project-c",
+    }),
+    makeChild("agent-session-list", "任务列表", 12, 310, 216, 170, groupId, {
+      title: "任务",
+      items: "营销活动月度复盘分析报告:loading,完善我的报告- 【Part 1】:dot,2026年第一季度营销,优化一个Skill:dot",
+    }),
+    makeChild("agent-sidebar-nav", "侧栏快捷导航组", 12, Math.max(540, height - 160), 216, 88, groupId, {
+      items: "技能·插件:Zap,知识库:FileText,定时任务:Clock",
+    }),
+    makeChild("agent-user-footer", "用户身份与设置底栏", 12, Math.max(636, height - 58), 216, 44, groupId, {
+      userName: "李 · Jason · io",
+      role: "Pro Workspace",
+    }),
+  ];
+}
+
 export const BLOCK_TEMPLATE_TYPES = new Set<string>([
   // Web 业务模版
+  "web-file-manager-layout",
   "web-button-group",
   "web-admin-layout",
   "web-filter-bar",
@@ -48,7 +91,12 @@ export const BLOCK_TEMPLATE_TYPES = new Set<string>([
   "web-faq-section",
 
   // Agent 完整模版与复合侧栏
+  "agent-knowledge-base-layout",
   "agent-nav-sidebar",
+  "agent-client-home",
+  "agent-client-chat",
+  "agent-client-split",
+  "agent-desktop-frame",
   "agent-home-layout",
   "agent-chat-stream-layout",
   "agent-split-workspace-layout",
@@ -72,6 +120,174 @@ export function createBlockTemplateGroup(
   const groupId = genId();
 
   switch (type) {
+    // 0. 云盘文档工作台 (文件与资源管理中心)
+    case "web-file-manager-layout": {
+      const width = 1080;
+      const height = 640;
+      const children: EditorElement[] = [
+        makeChild("rectangle", "工作台底板", 0, 0, width, height, groupId, {
+          fill: "var(--surface)",
+          stroke: "var(--border-visible)",
+          borderWidth: 1,
+          radius: 12,
+        }),
+        makeChild("text", "工作台标题", 20, 16, 220, 28, groupId, {
+          text: "企业云盘与文档中心",
+          fontSize: 16,
+          fontWeight: 700,
+        }),
+        makeChild("web-breadcrumb", "文件路径导航", 250, 18, 380, 24, groupId, {
+          path: "全部文件 / 研发部门 / 2026架构规划",
+        }),
+        makeChild("web-button", "上传文件按钮", 810, 14, 110, 32, groupId, {
+          text: "上传文件",
+          variant: "primary",
+          shape: "pill",
+          icon: "Plus",
+        }),
+        makeChild("web-button", "新建文件夹按钮", 930, 14, 130, 32, groupId, {
+          text: "新建文件夹",
+          variant: "secondary",
+          shape: "pill",
+          icon: "FolderPlus",
+        }),
+        makeChild("web-input", "搜索过滤栏", 20, 58, 320, 34, groupId, {
+          label: "",
+          placeholder: "搜索文档、文件夹或文件格式...",
+        }),
+        makeChild("file-list", "云盘文件列表", 20, 104, 1040, 480, groupId, {
+          columns: "名称,所有者,位置,最近访问",
+          items: "未命名文件夹:folder:leo:我的资料:15 小时前\n未命名文档:doc:leo:我的资料:15 小时前\n未命名文件夹:folder:leo:我的资料:16 小时前\n未命名文件夹:folder:leo:我的资料:18 小时前\nWB资料库功能调研文档:doc:leo:我的资料:4 天前\n品牌设计规范与组件库.fig:image:leo:设计资产:2 天前\n核心运营分析数据.xlsx:sheet:leo:统计归档:1 天前\n系统核心路由配置.ts:code:leo:代码仓库:3 天前",
+          showHeader: true,
+          showCheckbox: true,
+        }),
+        makeChild("text", "存储用量统计底栏", 20, 598, 420, 20, groupId, {
+          text: "已使用 24.8 GB / 100 GB (24.8%) · 共 8 项资源已就绪",
+          fontSize: 11,
+          textColor: "var(--text-secondary)",
+        }),
+      ];
+
+      return {
+        id: groupId,
+        type: "group",
+        name: "云盘文档工作台",
+        x: posX,
+        y: posY,
+        width,
+        height,
+        rotation: 0,
+        opacity: 1,
+        visible: true,
+        locked: false,
+        autoLayout: null,
+        parentId,
+        props: {},
+        children,
+      };
+    }
+
+    // 智能体知识库与语料工作台
+    case "agent-knowledge-base-layout": {
+      const width = 1080;
+      const height = 640;
+      const children: EditorElement[] = [
+        makeChild("rectangle", "工作台底板", 0, 0, width, height, groupId, {
+          fill: "var(--surface)",
+          stroke: "var(--border-visible)",
+          borderWidth: 1,
+          radius: 12,
+        }),
+        makeChild("text", "工作台标题", 20, 16, 280, 28, groupId, {
+          text: "智能体 RAG 知识库与语料索引",
+          fontSize: 16,
+          fontWeight: 700,
+        }),
+        makeChild("agent-status-badge", "引擎状态徽标", 310, 18, 180, 24, groupId, {
+          label: "向量引擎在线",
+          status: "ready",
+        }),
+        makeChild("web-button", "上传语料按钮", 780, 14, 130, 32, groupId, {
+          text: "上传语料文档",
+          variant: "primary",
+          shape: "pill",
+          icon: "Plus",
+        }),
+        makeChild("web-button", "重建索引按钮", 920, 14, 140, 32, groupId, {
+          text: "重新构建索引",
+          variant: "secondary",
+          shape: "pill",
+          icon: "RotateCw",
+        }),
+        makeChild("web-statistic-card", "已挂载文档指标", 20, 58, 245, 60, groupId, {
+          title: "已挂载语料文档",
+          value: "8 篇",
+          delta: "100% 同步",
+          isPositive: true,
+        }),
+        makeChild("web-statistic-card", "向量分块指标", 285, 58, 245, 60, groupId, {
+          title: "有效向量切片",
+          value: "1,420 chunks",
+          delta: "BGE-Large",
+          isPositive: true,
+        }),
+        makeChild("web-statistic-card", "Token消耗指标", 550, 58, 245, 60, groupId, {
+          title: "已索引 TOKEN",
+          value: "284.5 k",
+          delta: "上下文额度内",
+          isPositive: true,
+        }),
+        makeChild("web-statistic-card", "召回命中率指标", 815, 58, 245, 60, groupId, {
+          title: "检索命中率",
+          value: "98.4%",
+          delta: "+3.2%",
+          isPositive: true,
+        }),
+        makeChild("rectangle", "分类侧栏底框", 20, 128, 200, 444, groupId, {
+          fill: "var(--surface-raised)",
+          stroke: "var(--border-visible)",
+          borderWidth: 1,
+          radius: 6,
+        }),
+        makeChild("agent-sidebar-nav", "语料分类导航", 26, 136, 188, 280, groupId, {
+          items: "全部语料库:Database,技术白皮书:FileText,客户服务FAQ:HelpCircle,行业数据研报:FileSpreadsheet,生成交付成果:Package",
+        }),
+        makeChild("file-list", "知识库语料清单", 230, 128, 830, 444, groupId, {
+          columns: "语料名称,维护者,挂载状态,最近索引",
+          items: "企业产品白皮书_v3.pdf:doc:Claw Agent:已向量化 (14.2k tokens):10 分钟前\n客户常见支持问答.jsonl:database:客服知识库:已向量化 (8.5k tokens):1 小时前\nAPI架构参考手册.md:code:工程架构组:解析中 [88%]:刚刚\n用户需求调研录音.txt:doc:体验设计部:排队中:2 小时前\n行业竞品分析矩阵.xlsx:sheet:战略规划组:已向量化 (6.1k tokens):1 天前\n核心术语标准字典.docx:doc:标准化委员会:已向量化 (3.4k tokens):3 天前",
+          showHeader: true,
+          showCheckbox: true,
+        }),
+        makeChild("web-input", "召回测试输入", 20, 584, 920, 36, groupId, {
+          label: "",
+          placeholder: "输入测试 Prompt 检验已挂载语料的向量相似度与检索召回匹配...",
+        }),
+        makeChild("web-button", "测试按钮", 950, 584, 110, 36, groupId, {
+          text: "召回检验",
+          variant: "secondary",
+          shape: "rectangle",
+        }),
+      ];
+
+      return {
+        id: groupId,
+        type: "group",
+        name: "智能体知识库工作台",
+        x: posX,
+        y: posY,
+        width,
+        height,
+        rotation: 0,
+        opacity: 1,
+        visible: true,
+        locked: false,
+        autoLayout: null,
+        parentId,
+        props: {},
+        children,
+      };
+    }
+
     // 0. 操作按钮组 (标准操作按钮组合)
     case "web-button-group": {
       const width = 340;
@@ -911,10 +1127,57 @@ export function createBlockTemplateGroup(
       };
     }
 
-    // 11. Agent 对话主页
+    // 11. Agent 桌面底座骨架 (agent-desktop-frame)
+    case "agent-desktop-frame": {
+      const width = 1280;
+      const height = 800;
+      const children: EditorElement[] = [
+        makeChild("rectangle", "桌面窗口底框", 0, 0, width, height, groupId, {
+          fill: "var(--background)",
+          stroke: "var(--border-visible)",
+          borderWidth: 1,
+          radius: 16,
+        }),
+        ...makeUnifiedSidebarChildren(groupId, height),
+        makeChild("rectangle", "主工作区框架插槽", 260, 48, 1000, 732, groupId, {
+          fill: "var(--surface)",
+          stroke: "var(--border-visible)",
+          borderWidth: 1,
+          radius: 8,
+          strokeStyle: "dashed",
+        }),
+        makeChild("text", "插槽说明", 460, 390, 600, 32, groupId, {
+          text: "[ 主工作视区框架容器 · CANVAS MOUNT POINT ]",
+          fontSize: 14,
+          align: "center",
+          textColor: "var(--muted-foreground)",
+        }),
+      ];
+
+      return {
+        id: groupId,
+        type: "group",
+        name: "Agent桌面分栏底座",
+        x: posX,
+        y: posY,
+        width,
+        height,
+        rotation: 0,
+        opacity: 1,
+        visible: true,
+        locked: false,
+        autoLayout: null,
+        parentId,
+        props: {},
+        children,
+      };
+    }
+
+    // 12. Agent 通用首页 (agent-client-home)
+    case "agent-client-home":
     case "agent-home-layout": {
-      const width = 1080;
-      const height = 680;
+      const width = 1280;
+      const height = 800;
       const children: EditorElement[] = [
         makeChild("rectangle", "应用窗口底框", 0, 0, width, height, groupId, {
           fill: "var(--background)",
@@ -922,69 +1185,34 @@ export function createBlockTemplateGroup(
           borderWidth: 1,
           radius: 16,
         }),
-        // 左侧栏子元素
-        makeChild("rectangle", "侧栏底框", 0, 0, 240, height, groupId, {
-          fill: "var(--surface)",
-          stroke: "var(--border)",
-          borderWidth: 1,
-          radius: 0,
-        }),
-        makeChild("agent-sidebar-header", "侧栏窗口头部", 12, 12, 216, 28, groupId, {
-          appName: "AGENT DESKTOP",
-          showDots: true,
-        }),
-        makeChild("agent-mode-switch", "模式切换分段器", 12, 48, 216, 32, groupId, {
-          options: "对话,AI员工",
-          active: "对话",
-        }),
-        makeChild("agent-new-task-button", "新建任务按钮", 12, 88, 216, 34, groupId, {
-          text: "新建任务",
-          icon: "Plus",
-        }),
-        makeChild("agent-session-list", "置顶会话列表", 12, 130, 216, 96, groupId, {
-          title: "置顶会话",
-          items: "完善我的报告- 【Part 1】:active,市场趋势与竞争分析",
-        }),
-        makeChild("agent-project-tree", "项目与会话树", 12, 234, 216, 200, groupId, {
-          projectName: "Project-A",
-          items: "完善我的报告- 【Part 1】:active,2026年第一季度规划:loading,编辑我的演示文档",
-        }),
-        makeChild("agent-sidebar-nav", "侧栏快捷导航组", 12, 530, 216, 88, groupId, {
-          items: "技能·插件:Zap,知识库:FileText,定时任务:Clock",
-        }),
-        makeChild("agent-user-footer", "用户身份与设置底栏", 12, 626, 216, 44, groupId, {
-          userName: "李 · Jason · io",
-          role: "Pro Workspace",
-        }),
-
-        // 中间主区域
-        makeChild("circle", "智能体标志底座", 620, 120, 80, 80, groupId, {
+        ...makeUnifiedSidebarChildren(groupId, height),
+        makeChild("circle", "智能体标志底座", 736, 180, 48, 48, groupId, {
           fill: "var(--surface)",
           stroke: "var(--border-visible)",
           borderWidth: 1,
         }),
-        makeChild("text", "欢迎主标题", 400, 214, 520, 36, groupId, {
+        makeChild("text", "欢迎主标题", 480, 244, 560, 36, groupId, {
           text: "Hi, 有什么可以帮你？",
-          fontSize: 20,
+          fontSize: 22,
           fontWeight: 700,
           align: "center",
           textColor: "var(--foreground)",
         }),
-        makeChild("agent-prompt-box", "核心对话输入框", 380, 270, 560, 140, groupId, {
-          placeholder: "有什么问题请问我吧，输入 / 可调用技能",
+        makeChild("agent-prompt-box", "核心对话输入框", 480, 304, 560, 140, groupId, {
+          placeholder: "有什么问题问我吧，输入/可用技能",
           permissionText: "默认权限",
-          modelName: "高级推理模型",
+          modelName: "高级模型",
           projectScope: "Project-A",
         }),
-        makeChild("agent-prompt-suggestions", "快捷建议技能组", 380, 428, 560, 38, groupId, {
-          items: "👍 推荐使用,📖 内容创作,📊 数据分析,@ 邮件处理,📑 学习研究,🔍 市场调研",
+        makeChild("agent-prompt-suggestions", "快捷建议技能组", 480, 464, 560, 38, groupId, {
+          items: "👍 推荐使用,📖 内容创作,📊 数据分析,🔍 市场调研,💻 脚本开发",
         }),
       ];
 
       return {
         id: groupId,
         type: "group",
-        name: "Agent对话主页",
+        name: "Agent客户端 - 通用首页",
         x: posX,
         y: posY,
         width,
@@ -1000,10 +1228,11 @@ export function createBlockTemplateGroup(
       };
     }
 
-    // 12. Agent 执行流会话页
+    // 13. Agent 执行流会话页 (agent-client-chat)
+    case "agent-client-chat":
     case "agent-chat-stream-layout": {
-      const width = 1080;
-      const height = 680;
+      const width = 1280;
+      const height = 800;
       const children: EditorElement[] = [
         makeChild("rectangle", "会话窗口底框", 0, 0, width, height, groupId, {
           fill: "var(--background)",
@@ -1011,84 +1240,54 @@ export function createBlockTemplateGroup(
           borderWidth: 1,
           radius: 16,
         }),
-        // 左侧栏
-        makeChild("rectangle", "侧栏底框", 0, 0, 240, height, groupId, {
-          fill: "var(--surface)",
-          stroke: "var(--border)",
-          borderWidth: 1,
-          radius: 0,
-        }),
-        makeChild("agent-sidebar-header", "侧栏窗口头部", 12, 12, 216, 28, groupId, {
-          appName: "AGENT DESKTOP",
-          showDots: true,
-        }),
-        makeChild("agent-mode-switch", "模式切换分段器", 12, 48, 216, 32, groupId, {
-          options: "对话,AI员工",
-          active: "对话",
-        }),
-        makeChild("agent-new-task-button", "新建任务按钮", 12, 88, 216, 34, groupId, {
-          text: "新建任务",
-          icon: "Plus",
-        }),
-        makeChild("agent-session-list", "置顶会话列表", 12, 130, 216, 96, groupId, {
-          title: "置顶会话",
-          items: "营销活动月度复盘分析报告:active,市场趋势与竞争分析",
-        }),
-        makeChild("agent-project-tree", "项目与会话树", 12, 234, 216, 200, groupId, {
-          projectName: "Project-A",
-          items: "完善我的报告- 【Part 1】:active,2026年第一季度规划:loading,编辑我的演示文档",
-        }),
-        makeChild("agent-sidebar-nav", "侧栏快捷导航组", 12, 530, 216, 88, groupId, {
-          items: "技能·插件:Zap,知识库:FileText,定时任务:Clock",
-        }),
-        makeChild("agent-user-footer", "用户身份与设置底栏", 12, 626, 216, 44, groupId, {
-          userName: "李 · Jason · io",
-          role: "Pro Workspace",
-        }),
-
-        // 中间主区域
-        makeChild("agent-session-header", "顶部会话标题栏", 240, 0, 840, 48, groupId, {
+        ...makeUnifiedSidebarChildren(groupId, height),
+        makeChild("agent-session-header", "顶部会话标题栏", 240, 0, 1040, 40, groupId, {
           title: "营销活动月度复盘分析报告",
           badge: "STREAM ACTIVE",
         }),
-        makeChild("agent-file-attachments", "用户上下文附件组", 620, 64, 420, 36, groupId, {
-          files: "openclaw-report.md:doc,issue_imgs.png:img",
+        makeChild("agent-file-attachments", "用户上下文附件组", 800, 56, 440, 36, groupId, {
+          files: "openclaw-report.docx:doc,issue_imgs.png:img",
         }),
-        makeChild("agent-user-message", "用户提问气泡", 520, 108, 520, 68, groupId, {
+        makeChild("agent-user-message", "用户提问气泡", 640, 100, 600, 72, groupId, {
           prompt: "/Skill maker 帮我整理最近关于 OpenClaw 的热门讨论，顺便参考我上传的需求说明和截图。",
           projectScope: "Project-A",
         }),
-        makeChild("agent-stream-header", "智能体响应头部", 260, 186, 780, 44, groupId, {
+        makeChild("agent-stream-header", "智能体响应头部", 264, 192, 976, 44, groupId, {
           agentName: "ClawHive 总管",
           consumedPoints: "21",
           elapsedTime: "2m 39s",
         }),
-        makeChild("agent-thought-stream", "思考推理流", 260, 238, 780, 72, groupId, {
+        makeChild("agent-thought-stream", "思考推理流", 264, 244, 976, 72, groupId, {
           statusText: "思考中...",
           thoughtContent: "我会先判断资料类型和完整性，把会议纪要、任务清单和补充说明分开读，避免一上来就混成散文...",
           isThinking: true,
         }),
-        makeChild("agent-tool-step", "步骤1-读取输入文件", 260, 318, 780, 38, groupId, {
+        makeChild("agent-tool-step", "步骤1-读取输入文件", 264, 324, 976, 38, groupId, {
           toolType: "file",
           toolLabel: "读取输入文件",
-          detail: "已解析 openclaw-report.docx (1.2MB)",
+          detail: "报告不是摘抄资料，我会先反复出现的目标、风险、结论和待办，再判断哪些值得进入正文。",
           status: "done",
         }),
-        makeChild("agent-tool-step", "步骤2-检索全网讨论", 260, 364, 780, 38, groupId, {
+        makeChild("agent-tool-step", "步骤2-检索全网讨论", 264, 370, 976, 38, groupId, {
           toolType: "search",
           toolLabel: "检索全网热门讨论与社区反馈",
           detail: "检索全网最新 24 条相关讨论",
           status: "done",
         }),
-        makeChild("agent-tool-step", "步骤3-参考历史记忆", 260, 410, 780, 38, groupId, {
+        makeChild("agent-tool-step", "步骤3-参考历史记忆", 264, 416, 976, 38, groupId, {
           toolType: "memory",
           toolLabel: "参考历史复盘记忆库",
-          detail: "命中 3 个关联上下文片段",
+          detail: "已命中历史复盘记忆库",
           status: "done",
         }),
-        makeChild("agent-prompt-box", "底部核心输入框", 260, 532, 780, 128, groupId, {
-          placeholder: "有什么问题请问我吧，输入 / 可调用技能",
-          modelName: "高级推理模型",
+        makeChild("text", "思考中状态指示", 264, 464, 200, 24, groupId, {
+          text: "⟳ 思考中...",
+          fontSize: 11,
+          textColor: "var(--muted-foreground)",
+        }),
+        makeChild("agent-prompt-box", "底部核心输入框", 264, 636, 976, 136, groupId, {
+          placeholder: "有什么问题问我吧，输入/可用技能",
+          modelName: "高级模型",
           permissionText: "默认权限",
         }),
       ];
@@ -1096,7 +1295,7 @@ export function createBlockTemplateGroup(
       return {
         id: groupId,
         type: "group",
-        name: "Agent执行流会话页",
+        name: "Agent客户端 - 对话执行态",
         x: posX,
         y: posY,
         width,
@@ -1112,10 +1311,11 @@ export function createBlockTemplateGroup(
       };
     }
 
-    // 13. Agent 分栏工作台
+    // 14. Agent 任务展开态 (agent-client-split)
+    case "agent-client-split":
     case "agent-split-workspace-layout": {
-      const width = 1200;
-      const height = 680;
+      const width = 1280;
+      const height = 800;
       const children: EditorElement[] = [
         makeChild("rectangle", "分栏工作台底框", 0, 0, width, height, groupId, {
           fill: "var(--background)",
@@ -1123,110 +1323,77 @@ export function createBlockTemplateGroup(
           borderWidth: 1,
           radius: 16,
         }),
-        // 左侧栏组件群
-        makeChild("rectangle", "侧栏底框", 0, 0, 200, height, groupId, {
+        ...makeUnifiedSidebarChildren(groupId, height),
+        makeChild("rectangle", "中间会话分栏底框", 240, 0, 420, height, groupId, {
           fill: "var(--surface)",
           stroke: "var(--border)",
           borderWidth: 1,
           radius: 0,
         }),
-        makeChild("agent-sidebar-header", "侧栏窗口头部", 8, 12, 184, 28, groupId, {
-          appName: "AGENT CLAW",
-          showDots: true,
-        }),
-        makeChild("agent-mode-switch", "模式切换分段器", 8, 48, 184, 32, groupId, {
-          options: "对话,AI员工",
-          active: "对话",
-        }),
-        makeChild("agent-new-task-button", "新建任务按钮", 8, 88, 184, 34, groupId, {
-          text: "新建任务",
-          icon: "Plus",
-        }),
-        makeChild("agent-session-list", "置顶会话列表", 8, 130, 184, 96, groupId, {
-          title: "置顶会话",
-          items: "营销活动月度复盘分析...:active,市场趋势与竞争分析",
-        }),
-        makeChild("agent-project-tree", "项目与会话树", 8, 234, 184, 200, groupId, {
-          projectName: "Project-A",
-          items: "完善我的报告- 【Part 1】:active,2026年第一季度规划:loading,编辑我的演示文档",
-        }),
-        makeChild("agent-sidebar-nav", "侧栏快捷导航组", 8, 530, 184, 88, groupId, {
-          items: "技能·插件:Zap,知识库:FileText,定时任务:Clock",
-        }),
-        makeChild("agent-user-footer", "用户身份与设置底栏", 8, 626, 184, 44, groupId, {
-          userName: "李 · Jason · io",
-          role: "Pro Workspace",
-        }),
-
-        // 中间会话分栏
-        makeChild("rectangle", "中间会话分栏底框", 200, 0, 380, height, groupId, {
-          fill: "var(--surface)",
-          stroke: "var(--border)",
-          borderWidth: 1,
-          radius: 0,
-        }),
-        makeChild("agent-session-header", "会话标题状态栏", 200, 0, 380, 42, groupId, {
+        makeChild("agent-session-header", "会话标题状态栏", 240, 0, 420, 40, groupId, {
           title: "营销活动月度复盘分析报告",
-          badge: "",
+          badge: "ACTIVE",
         }),
-        makeChild("agent-stream-header", "执行流头部", 216, 48, 348, 42, groupId, {
-          agentName: "ClawHive 总管",
-          consumedPoints: "16",
-          elapsedTime: "2m 39s",
+        makeChild("agent-user-message", "用户提问摘要", 252, 50, 396, 68, groupId, {
+          prompt: "/Skill maker 帮我整理最近关于 OpenClaw 的热门讨论...",
         }),
-        makeChild("agent-thought-stream", "推理思考过程", 216, 98, 348, 72, groupId, {
-          statusText: "生成代码中...",
-          thoughtContent: "正在为您的项目生成看板控制台代码与监控组件...",
+        makeChild("agent-thought-stream", "推理思考过程", 252, 126, 396, 76, groupId, {
+          statusText: "ClawHive 总管 (2m 39s)",
+          thoughtContent: "我会先判断资料类型和完整性，把会议纪要、任务清单和补充说明分开读...",
         }),
-        makeChild("agent-tool-step", "工件写入步骤", 216, 178, 348, 40, groupId, {
-          toolType: "code",
-          toolLabel: "写入文件 northstar-dashboard.html",
-          detail: "已生成 3 个控制台图表与防护卡片",
+        makeChild("agent-tool-step", "步骤1-读取输入文件", 252, 210, 396, 36, groupId, {
+          toolType: "file",
+          toolLabel: "读取输入文件",
           status: "done",
         }),
-        makeChild("agent-prompt-box", "中间底部快速输入框", 216, 546, 348, 114, groupId, {
-          placeholder: "输入指令继续调整...",
-          modelName: "高级推理模型",
+        makeChild("agent-tool-step", "步骤2-检索相关内容", 252, 252, 396, 36, groupId, {
+          toolType: "search",
+          toolLabel: "检索相关内容",
+          status: "done",
         }),
-
-        // 右侧工件与控制台
-        makeChild("agent-artifact-tabs", "工件多标签工作栏", 580, 0, 620, 46, groupId, {
-          tabs: "northstar-dashboard.html:active,issue_imgs.png,summary-spec.md",
-          filePath: "file:///workspace/northstar-dashboard.html",
+        makeChild("text", "思考中状态", 252, 296, 200, 20, groupId, {
+          text: "⟳ 思考中...",
+          fontSize: 10,
+          textColor: "var(--muted-foreground)",
         }),
-        makeChild("text", "工件预览大标题", 604, 64, 360, 28, groupId, {
-          text: "Growth Data Overview",
-          fontSize: 16,
-          fontWeight: 700,
+        makeChild("agent-prompt-box", "中间底部快速输入框", 252, 676, 396, 104, groupId, {
+          placeholder: "输入指令 / 追问...",
+          modelName: "高级模型",
+        }),
+        makeChild("agent-artifact-tabs", "任务展开标签栏", 660, 0, 620, 40, groupId, {
+          tabs: "news-aggregator:active,issue_imgs",
+        }),
+        makeChild("rectangle", "实时任务工作区挂载槽", 680, 52, 580, 560, groupId, {
+          fill: "var(--surface)",
+          stroke: "var(--border-visible)",
+          borderWidth: 1,
+          radius: 8,
+          strokeStyle: "dashed",
+        }),
+        makeChild("text", "挂载槽说明", 700, 310, 540, 28, groupId, {
+          text: "[ 实时任务工作区 · 画板挂载槽 ]",
+          align: "center",
+          fontSize: 13,
           textColor: "var(--foreground)",
         }),
-        makeChild("web-statistic-card", "沙箱安全防护指标卡", 604, 104, 284, 100, groupId, {
-          title: "SAFE SANDBOX PROTECTION",
-          value: "100%",
-          delta: "17 of 17 protected",
-          isPositive: true,
+        makeChild("rectangle", "参数与状态检查器框架", 680, 628, 580, 148, groupId, {
+          fill: "var(--surface)",
+          stroke: "var(--border-visible)",
+          borderWidth: 1,
+          radius: 8,
+          strokeStyle: "dashed",
         }),
-        makeChild("web-statistic-card", "Prompt安全防护指标卡", 896, 104, 284, 100, groupId, {
-          title: "SAFE PROMPT PROTECTION",
-          value: "100%",
-          delta: "Active monitoring",
-          isPositive: true,
-        }),
-        makeChild("agent-console-table", "实例运行监控表格", 604, 216, 576, 390, groupId, {
-          title: "Agentic CAS 实例监控",
-          rowCount: 5,
-        }),
-        makeChild("web-button", "保存并运行操作按钮", 1064, 622, 116, 36, groupId, {
-          text: "保存并运行",
-          variant: "primary",
-          shape: "pill",
+        makeChild("text", "检查器说明", 700, 642, 540, 24, groupId, {
+          text: "[ 参数与状态检查器框架 · INSPECTOR READY ]",
+          fontSize: 11,
+          textColor: "var(--muted-foreground)",
         }),
       ];
 
       return {
         id: groupId,
         type: "group",
-        name: "Agent分栏工作台",
+        name: "Agent客户端 - 任务展开态",
         x: posX,
         y: posY,
         width,

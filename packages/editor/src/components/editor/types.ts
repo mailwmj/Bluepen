@@ -14,31 +14,33 @@ export type ComponentType =
   | "flow-display" | "flow-manual-op" | "flow-preparation" | "flow-loop-limit"
   // ================= 3. Web 模版与高级组件 (Web Templates & Components) =================
   // Web 导航
-  | "web-dropdown" | "web-menu" | "web-top-nav" | "web-tabs" | "web-breadcrumb" | "web-pagination" | "web-steps"
+  | "web-dropdown" | "web-menu" | "web-top-nav" | "web-page-header" | "web-tabs" | "web-segmented" | "web-breadcrumb" | "web-pagination" | "web-steps"
   // Web 表单
   | "web-button" | "web-button-group" | "web-input" | "web-input-number" | "web-textarea" | "web-select"
   | "web-cascader" | "web-tree-select" | "web-auto-complete" | "web-tag-input"
   | "web-date-picker" | "web-date-range-picker" | "web-time-picker"
   | "web-radio-group" | "web-checkbox-group" | "web-switch" | "web-slider" | "web-transfer" | "web-upload" | "web-color-picker"
   // Web 数据展示
-  | "web-table" | "web-descriptions" | "web-tree" | "web-collapse" | "web-statistic-card" | "web-tag" | "web-timeline" | "web-badge" | "web-avatar-group"
+  | "file-list" | "web-file-list" | "web-table" | "web-descriptions" | "web-tree" | "web-collapse" | "web-statistic-card" | "web-tag" | "web-timeline" | "web-badge" | "web-avatar-group"
   | "web-card" | "web-chart" | "web-kanban" | "web-calendar"
   // Web 消息反馈与浮层
   | "web-modal" | "web-drawer" | "web-alert" | "web-popconfirm" | "web-notification" | "web-tips" | "web-message" | "web-skeleton" | "web-empty-state"
   // Web 页面与业务模版 (Page Blocks & Templates)
-  | "web-admin-layout" | "web-filter-bar" | "web-crud-table" | "web-form-layout" | "web-login-card" | "web-steps-form"
+  | "web-file-manager-layout" | "web-admin-layout" | "web-filter-bar" | "web-crud-table" | "web-form-layout" | "web-login-card" | "web-steps-form"
   | "web-dashboard-page" | "web-settings-page" | "web-pricing-table" | "web-faq-section"
   // ================= 4. Agent 桌面客户端模版与组件 (Agent Desktop Templates & Components) =================
   // Agent 完整模版
-  | "agent-home-layout" | "agent-chat-stream-layout" | "agent-split-workspace-layout" | "agent-employee-workspace-layout" | "agent-employee-market-layout"
-  // Agent 侧栏与导航
-  | "agent-nav-sidebar" | "agent-sidebar-header" | "agent-mode-switch" | "agent-new-task-button" | "agent-session-list" | "agent-project-tree" | "agent-sidebar-nav" | "agent-user-footer"
+  | "agent-knowledge-base-layout" | "agent-home-layout" | "agent-chat-stream-layout" | "agent-split-workspace-layout" | "agent-employee-workspace-layout" | "agent-employee-market-layout"
+  // Agent 框架与容器
+  | "agent-client-home" | "agent-client-chat" | "agent-client-split" | "agent-desktop-frame"
+  // Agent 侧栏、目录与导航
+  | "agent-directory-tree" | "agent-filter-bar" | "agent-nav-sidebar" | "agent-sidebar-header" | "agent-mode-switch" | "agent-new-task-button" | "agent-session-list" | "agent-project-tree" | "agent-sidebar-nav" | "agent-user-footer"
   // Agent 输入与参数
   | "agent-prompt-box" | "agent-prompt-toolbar" | "agent-prompt-suggestions" | "agent-model-badge"
   // Agent 执行流与消息
   | "agent-user-message" | "agent-session-header" | "agent-status-badge" | "agent-stream-header" | "agent-tool-step" | "agent-thought-stream" | "agent-file-attachments"
   // Agent 角色、工件与控制台
-  | "agent-employee-card" | "agent-template-card" | "agent-artifact-tabs" | "agent-console-table"
+  | "agent-knowledge-files" | "agent-employee-card" | "agent-template-card" | "agent-artifact-tabs" | "agent-console-table"
   // Legacy / 兼容别名
   | "input" | "textarea" | "select" | "file-upload" | "radio" | "checkbox"
   | "switch-android" | "switch-ios" | "switch" | "slider" | "stepper" | "date-picker" | "search"
