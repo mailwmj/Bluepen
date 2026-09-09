@@ -3,19 +3,16 @@ import { baseLibrary, webLibrary, agentLibrary, type LibraryComponent } from "./
 export const libraryModes = {
   components: {
     label: "基础模式",
-    description: "从图元、控件和流程开始绘制。",
     items: baseLibrary,
     categories: ["基础图元", "基础控件", "流程图元", "结构容器"],
   },
   web: {
     label: "Web 模板",
-    description: "从完整业务页面开始，再补充控件。",
     items: webLibrary,
     categories: ["Web模版", "Web导航", "Web表单", "Web展示", "Web反馈"],
   },
   agent: {
     label: "Agent 客户端模板",
-    description: "搭建对话、任务和分栏工作台。",
     items: agentLibrary,
     categories: ["Agent场景模版", "Agent框架容器", "Agent基础图元", "Agent结构与数据", "Agent核心交互"],
   },

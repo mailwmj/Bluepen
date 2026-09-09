@@ -1912,7 +1912,7 @@ export function Editor() {
             <span className={cn("truncate", notice.type === "error" ? "text-destructive" : "text-muted-foreground")}>[{notice.title}]{notice.description ? ` ${notice.description}` : ""}</span>
             <Button variant="ghost" size="icon-xs" aria-label="关闭状态消息" onClick={dismissEditorNotice}><X aria-hidden="true" /></Button>
           </div>
-        ) : <span className="truncate text-muted-foreground">{previewing ? "原型预览 · Esc 返回编辑" : "自动保存到本机 · Shift 1 适应全部 · Shift 2 适应选中"}</span>}
+        ) : previewing ? <span className="truncate text-muted-foreground">原型预览 · Esc 返回编辑</span> : null}
       </footer>
 
       {/* Floating toolbar */}

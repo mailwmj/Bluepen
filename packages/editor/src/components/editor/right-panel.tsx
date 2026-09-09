@@ -62,6 +62,7 @@ import { useIsMac } from "./hooks/use-desktop";
 import { showToast } from "./hooks/use-toast";
 import { parseItems, parseMenuCategories } from "./library/web-renderers";
 import { processImageFile } from "./utils/image";
+import { parseEditableOptions } from "./utils/options-list";
 import {
   calculateAlign,
   calculateDistribute,
@@ -552,11 +553,7 @@ function OptionsListEditor({
   mode?: "single" | "multiple" | "none";
   placeholder?: string;
 }) {
-  const items = useMemo(() => {
-    if (!value) return ["选项1", "选项2"];
-    const raw = value.split(value.includes("\n") ? "\n" : ",");
-    return raw.map((s) => s.trim()).filter((s, idx) => s.length > 0 || idx === 0);
-  }, [value]);
+  const items = useMemo(() => parseEditableOptions(value), [value]);
 
   const updateItems = (newItems: string[]) => {
     const sep = value?.includes("\n") ? "\n" : ",";

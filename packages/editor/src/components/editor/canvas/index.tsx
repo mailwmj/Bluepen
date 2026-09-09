@@ -166,18 +166,6 @@ type Interaction =
       corner?: "nw" | "ne" | "se" | "sw";
     }
   | {
-      type: "corner-radius";
-      id: string;
-      corner: "nw" | "ne" | "se" | "sw";
-      startX: number;
-      startY: number;
-      startRadius: number;
-      elW: number;
-      elH: number;
-      rotation?: number;
-      props: Record<string, string | number | boolean>;
-    }
-  | {
       type: "line-endpoint";
       id: string;
       endpoint: "start" | "end";
@@ -1393,7 +1381,6 @@ interface ElementNodeProps {
   onElementMouseDown: (e: React.MouseEvent, elId: string) => void;
   onResizeMouseDown: (e: React.MouseEvent, elId: string, handle: string) => void;
   onRotateMouseDown: (e: React.MouseEvent, el: EditorElement, corner?: "nw" | "ne" | "se" | "sw") => void;
-  onRadiusMouseDown: (e: React.MouseEvent, el: EditorElement, corner: "nw" | "ne" | "se" | "sw") => void;
   onLineEndpointMouseDown: (e: React.MouseEvent, el: EditorElement, endpoint: "start" | "end") => void;
   onAnchorMouseDown: (e: React.MouseEvent, el: EditorElement, port: AnchorPort) => void;
   onSelect: (id: string | null) => void;
@@ -1417,7 +1404,6 @@ const ElementNode = memo(function ElementNode({
   onElementMouseDown,
   onResizeMouseDown,
   onRotateMouseDown,
-  onRadiusMouseDown,
   onLineEndpointMouseDown,
   onAnchorMouseDown,
   onSelect,
@@ -1430,15 +1416,6 @@ const ElementNode = memo(function ElementNode({
   if (!el.visible) return null;
   const locked = el.locked || ancestorLocked;
   const isLineLike = el.type === "line" || el.type === "arrow";
-  const hasCornerRadius =
-    el.type === "rectangle" ||
-    el.type === "card" ||
-    el.type === "mobile-frame" ||
-    el.type === "browser-frame" ||
-    el.type === "placeholder" ||
-    el.type === "modal-dialog" ||
-    el.type === "image";
-
   const isConnecting = interaction?.type === "create-connector" || interaction?.type === "connector-endpoint";
   const isConnectorMode = activeTool === "connector" || isConnecting;
 
@@ -1547,7 +1524,6 @@ const ElementNode = memo(function ElementNode({
               onElementMouseDown={onElementMouseDown}
               onResizeMouseDown={onResizeMouseDown}
               onRotateMouseDown={onRotateMouseDown}
-              onRadiusMouseDown={onRadiusMouseDown}
               onLineEndpointMouseDown={onLineEndpointMouseDown}
               onAnchorMouseDown={onAnchorMouseDown}
               onSelect={onSelect}
@@ -1725,80 +1701,6 @@ const ElementNode = memo(function ElementNode({
                       onMouseDown={(e) => onRotateMouseDown(e, el, item.id)}
                     />
                   ))}
-
-                  {/* Live radius badge during active radius dragging */}
-                  {interaction?.type === "corner-radius" && interaction.id === el.id && (
-                    <div
-                      className={cn(
-                        "pointer-events-none absolute z-50 rounded bg-blue-600 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-white shadow-md select-none whitespace-nowrap",
-                        interaction.corner === "se"
-                          ? "bottom-[-28px] right-0"
-                          : interaction.corner === "sw"
-                          ? "bottom-[-28px] left-0"
-                          : interaction.corner === "ne"
-                          ? "top-[-28px] right-0"
-                          : "top-[-28px] left-0"
-                      )}
-                    >
-                      {`R: ${Number(
-                        (Boolean(el.props.radiusIndependent)
-                          ? (interaction.corner === "nw"
-                              ? el.props.radiusTopLeft
-                              : interaction.corner === "ne"
-                              ? el.props.radiusTopRight
-                              : interaction.corner === "se"
-                              ? el.props.radiusBottomRight
-                              : el.props.radiusBottomLeft)
-                          : el.props.radius) ?? 0
-                      )}px`}
-                    </div>
-                  )}
-
-                  {/* 4 corner radius inner dots with stable hit target container */}
-                  {hasCornerRadius &&
-                    !isConnectorMode &&
-                    (isHovered || (interaction?.type === "corner-radius" && interaction.id === el.id)) &&
-                    (() => {
-                      const isRadiusEnabled = el.props.radiusEnabled !== false && el.props.radiusEnabled !== "false";
-                      const isIndependent = Boolean(el.props.radiusIndependent);
-                      const baseRadius = isRadiusEnabled ? Number(el.props.radius ?? 4) : 0;
-                      const nwRadius = isRadiusEnabled ? Number((isIndependent ? el.props.radiusTopLeft : undefined) ?? baseRadius) : 0;
-                      const neRadius = isRadiusEnabled ? Number((isIndependent ? el.props.radiusTopRight : undefined) ?? baseRadius) : 0;
-                      const swRadius = isRadiusEnabled ? Number((isIndependent ? el.props.radiusBottomLeft : undefined) ?? baseRadius) : 0;
-                      const seRadius = isRadiusEnabled ? Number((isIndependent ? el.props.radiusBottomRight : undefined) ?? baseRadius) : 0;
-
-                      const maxR = Math.min(el.width, el.height) / 2;
-                      const minOffset = Math.min(16, maxR);
-                      const getOffset = (r: number) => Math.max(minOffset, Math.min(r, maxR));
-
-                      const nwOffset = getOffset(nwRadius);
-                      const neOffset = getOffset(neRadius);
-                      const swOffset = getOffset(swRadius);
-                      const seOffset = getOffset(seRadius);
-
-                      const radiusCorners = [
-                        { id: "nw" as const, x: nwOffset, y: nwOffset },
-                        { id: "ne" as const, x: el.width - neOffset, y: nwOffset },
-                        { id: "sw" as const, x: swOffset, y: el.height - swOffset },
-                        { id: "se" as const, x: el.width - seOffset, y: el.height - seOffset },
-                      ];
-                      return (
-                        <>
-                          {radiusCorners.map((c) => (
-                            <div
-                              key={`radius-${c.id}`}
-                              data-handle
-                              className="absolute z-25 size-5 -translate-x-1/2 -translate-y-1/2 flex items-center justify-center cursor-crosshair group/radius pointer-events-auto"
-                              style={{ left: c.x, top: c.y }}
-                              title="调节圆角"
-                              onMouseDown={(e) => onRadiusMouseDown(e, el, c.id)}
-                            >
-                              <div className="size-2 rounded-full border border-primary bg-background shadow-xs pointer-events-none group-hover/radius:scale-125 transition-transform" />
-                            </div>
-                          ))}
-                        </>
-                      );
-                    })()}
 
                   {/* 4 border edge drag hit areas */}
                   {[
@@ -2437,39 +2339,6 @@ export function Canvas({
             y: Math.round(newStartY),
             width: Math.max(10, Math.round(rawLen)),
             rotation: Math.round(rawAngle),
-          });
-        }
-      } else if (curInter.type === "corner-radius") {
-        const maxRadius = Math.floor(Math.min(curInter.elW, curInter.elH) / 2);
-        const rotRad = (-(curInter.rotation ?? 0) * Math.PI) / 180;
-        const cos = Math.cos(rotRad);
-        const sin = Math.sin(rotRad);
-        const localDx = dx * cos - dy * sin;
-        const localDy = dx * sin + dy * cos;
-
-        let delta = 0;
-        if (curInter.corner === "nw") delta = (localDx + localDy) / 2;
-        else if (curInter.corner === "ne") delta = (-localDx + localDy) / 2;
-        else if (curInter.corner === "se") delta = (-localDx - localDy) / 2;
-        else if (curInter.corner === "sw") delta = (localDx - localDy) / 2;
-
-        const nextRadius = Math.max(0, Math.min(maxRadius, Math.round(curInter.startRadius + delta)));
-        const isIndependent = Boolean(curInter.props.radiusIndependent);
-        if (isIndependent) {
-          const cornerPropKey =
-            curInter.corner === "nw"
-              ? "radiusTopLeft"
-              : curInter.corner === "ne"
-              ? "radiusTopRight"
-              : curInter.corner === "se"
-              ? "radiusBottomRight"
-              : "radiusBottomLeft";
-          onUpdateElement(curInter.id, {
-            props: { ...curInter.props, [cornerPropKey]: nextRadius, radiusEnabled: true },
-          });
-        } else {
-          onUpdateElement(curInter.id, {
-            props: { ...curInter.props, radius: nextRadius, radiusEnabled: true },
           });
         }
       } else if (curInter.type === "rotate") {
@@ -3171,48 +3040,6 @@ export function Canvas({
     [allElementsFlat, screenToCanvas, onSelect, onSelectIds, previewing],
   );
 
-  const handleRadiusMouseDown = useCallback(
-    (e: React.MouseEvent, el: EditorElement, corner: "nw" | "ne" | "se" | "sw") => {
-      if (previewing) return;
-      e.stopPropagation();
-      e.preventDefault();
-      if (el.locked) return;
-      onSelect(el.id);
-      onSelectIds?.([el.id]);
-      const pos = screenToCanvas(e.clientX, e.clientY);
-      const isIndependent = Boolean(el.props.radiusIndependent);
-      const isRadiusEnabled = el.props.radiusEnabled !== false && el.props.radiusEnabled !== "false";
-      const baseRadius = isRadiusEnabled ? Number(el.props.radius ?? 4) : 0;
-      const currentCornerRadius = isIndependent
-        ? Number(
-            (corner === "nw"
-              ? el.props.radiusTopLeft
-              : corner === "ne"
-              ? el.props.radiusTopRight
-              : corner === "se"
-              ? el.props.radiusBottomRight
-              : el.props.radiusBottomLeft) ?? baseRadius
-          )
-        : baseRadius;
-
-      const inter: Interaction = {
-        type: "corner-radius",
-        id: el.id,
-        corner,
-        startX: pos.x,
-        startY: pos.y,
-        startRadius: currentCornerRadius,
-        elW: el.width,
-        elH: el.height,
-        rotation: el.rotation ?? 0,
-        props: { ...el.props },
-      };
-      interactionRef.current = inter;
-      setInteraction(inter);
-    },
-    [screenToCanvas, onSelect, onSelectIds, previewing],
-  );
-
   const handleLineEndpointMouseDown = useCallback(
     (e: React.MouseEvent, el: EditorElement, endpoint: "start" | "end") => {
       if (previewing) return;
@@ -3602,7 +3429,6 @@ export function Canvas({
                 onElementMouseDown={handleElementMouseDown}
                 onResizeMouseDown={handleResizeMouseDown}
                 onRotateMouseDown={handleRotateMouseDown}
-                onRadiusMouseDown={handleRadiusMouseDown}
                 onLineEndpointMouseDown={handleLineEndpointMouseDown}
                 onAnchorMouseDown={handleAnchorMouseDown}
                 onSelect={onSelect}

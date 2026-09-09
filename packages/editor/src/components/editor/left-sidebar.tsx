@@ -872,9 +872,7 @@ export const LeftSidebar = memo(function LeftSidebar({
               <div className="flex shrink-0 flex-col gap-3 border-b border-border p-3">
                 <div className="flex items-center justify-between gap-2">
                   <h2 className="text-sm font-medium">{mode.label}</h2>
-                  <span className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground" aria-live="polite">{filteredItems.length} 项</span>
                 </div>
-                <p className="text-xs leading-relaxed text-muted-foreground">{mode.description}</p>
                 <div className="relative">
                   <Input
                     type="search"
@@ -943,7 +941,6 @@ export const LeftSidebar = memo(function LeftSidebar({
                   </div>
                 )}
               </div>
-              <p className="shrink-0 border-t border-border px-3 py-2 text-[11px] text-muted-foreground">点击添加到视野中央 · 拖拽指定位置</p>
             </div>
           )}
 
