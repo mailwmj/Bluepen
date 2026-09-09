@@ -21,6 +21,7 @@ import {
   Square,
   Copy,
   X,
+  PenLine,
 } from "lucide-react";
 
 const ZOOM_PRESETS = [50, 75, 100, 125, 150, 200];
@@ -28,10 +29,13 @@ const ZOOM_PRESETS = [50, 75, 100, 125, 150, 200];
 interface TopBarProps {
   projectName: string;
   dirty?: boolean;
+  saveState?: "loading" | "saved" | "pending" | "saving" | "error";
+  onRetrySave?: () => void;
   zoom: number;
   showGrid: boolean;
   canUndo: boolean;
   canRedo: boolean;
+  hasContent: boolean;
   activeTool?: string;
   previewing: boolean;
   demo?: boolean;
@@ -48,6 +52,8 @@ interface TopBarProps {
   onZoomIn: () => void;
   onZoomOut: () => void;
   onZoomTo: (zoom: number) => void;
+  onFitContent: () => void;
+  onFitSelection: () => void;
   onSave: () => void;
   onNew: () => void;
   onOpen: () => void;
@@ -62,9 +68,12 @@ interface TopBarProps {
 export function TopBar({
   projectName,
   dirty = false,
+  saveState = "saved",
+  onRetrySave,
   zoom,
   canUndo,
   canRedo,
+  hasContent,
   previewing,
   showGrid,
   theme = "dark",
@@ -79,6 +88,8 @@ export function TopBar({
   onZoomIn,
   onZoomOut,
   onZoomTo,
+  onFitContent,
+  onFitSelection,
   onSave,
   onNew,
   onOpen,
@@ -90,6 +101,8 @@ export function TopBar({
 }: TopBarProps) {
   const showMacTrafficLightSpacer = isTauri && isMac && !fullscreen;
   const showWindowsControls = isTauri && !isMac && onMinimize && onMaximize && onClose;
+  const status = dirty && saveState === "saved" ? "pending" : saveState;
+  const statusLabel = { loading: "读取中", saved: "已保存", pending: "待保存", saving: "保存中", error: "保存失败" }[status];
 
   return (
     <header
@@ -104,12 +117,7 @@ export function TopBar({
       <div className="flex items-center gap-1.5 min-w-0" onDoubleClick={(e) => e.stopPropagation()}>
         {/* Brand Icon & Name */}
         <div className="flex items-center gap-1.5 shrink-0 pr-1">
-          <img
-            src="/brand/bluepen-icon.svg"
-            alt="Bluepen"
-            className="size-3.5 grayscale invert dark:invert-0"
-            draggable={false}
-          />
+          <PenLine aria-hidden="true" strokeWidth={1.5} className="size-3.5" />
           <span className="font-mono text-xs font-bold tracking-wider uppercase text-foreground">
             BLUEPEN
           </span>
@@ -122,15 +130,12 @@ export function TopBar({
           <span className="font-mono text-xs font-bold tracking-tight text-foreground uppercase truncate max-w-[160px]">
             {projectName}
           </span>
-          <div
-            className="flex items-center justify-center shrink-0"
-            title={dirty ? "Unsaved changes" : "All changes saved"}
-            aria-label={dirty ? "Unsaved changes" : "All changes saved"}
-          >
-            {dirty ? (
-              <span className="size-2 rounded-full bg-accent animate-pulse shadow-[0_0_6px_var(--accent)]" />
-            ) : (
-              <span className="size-1.5 rounded-full bg-success/80" />
+          <div className="flex shrink-0 items-center gap-1 font-mono text-[11px] uppercase" role="status" aria-live="polite">
+            <span className={cn("text-muted-foreground", status === "error" && "text-destructive")}>
+              [{statusLabel}]
+            </span>
+            {status === "error" && (
+              <Button variant="outline" size="xs" onClick={onRetrySave} aria-label="重试自动保存">重试</Button>
             )}
           </div>
         </div>
@@ -141,7 +146,7 @@ export function TopBar({
           variant="ghost"
           size="icon-xs"
           onClick={onUndo}
-          disabled={!canUndo}
+          disabled={!canUndo || previewing}
           aria-label="撤销"
           title="撤销 (Ctrl+Z)"
         >
@@ -151,7 +156,7 @@ export function TopBar({
           variant="ghost"
           size="icon-xs"
           onClick={onRedo}
-          disabled={!canRedo}
+          disabled={!canRedo || previewing}
           aria-label="重做"
           title="重做 (Ctrl+Y / Ctrl+Shift+Z)"
         >
@@ -198,6 +203,7 @@ export function TopBar({
           variant={previewing ? "default" : "ghost"}
           size="icon-xs"
           onClick={onPreview}
+          disabled={!hasContent && !previewing}
           aria-label={previewing ? "退出原型预览 (Esc)" : "原型预览"}
           title={previewing ? "退出原型预览 (Esc)" : "原型预览"}
           className={cn(
@@ -216,6 +222,7 @@ export function TopBar({
           variant="ghost"
           size="icon-xs"
           onClick={onExport}
+          disabled={!hasContent}
           aria-label="导出为 PNG"
           title="导出为 PNG"
         >
@@ -253,6 +260,13 @@ export function TopBar({
             }
           />
           <MenuPopup align="end">
+            <MenuItem closeOnClick onClick={onFitContent} className="justify-between font-mono text-xs">
+              <span>适应全部内容</span><span className="text-muted-foreground">SHIFT 1</span>
+            </MenuItem>
+            <MenuItem closeOnClick onClick={onFitSelection} className="justify-between font-mono text-xs">
+              <span>适应选中内容</span><span className="text-muted-foreground">SHIFT 2</span>
+            </MenuItem>
+            <Separator className="my-1 bg-border" />
             <MenuItem onClick={onZoomIn} className="justify-between font-mono text-xs">
               <span>放大</span>
               <span className="text-[10px] text-muted-foreground">CTRL +</span>

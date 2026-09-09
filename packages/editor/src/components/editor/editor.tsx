@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect, useMemo } from "react";
 import type { EditorElement, ComponentType, Page } from "./types";
-import { Canvas } from "./canvas/index";
+import { Canvas, type CanvasHandle } from "./canvas/index";
 import { TopBar } from "./top-bar";
 import { LeftSidebar } from "./left-sidebar";
 import { RightPanel } from "./right-panel";
@@ -18,7 +18,7 @@ import {
 import {
   Copy, CopyPlus, Scissors, Trash2, Lock, Unlock, EyeOff, Square, Maximize2, ClipboardPaste,
   MousePointer2, Hand, Type, ArrowUp, ArrowDown, ArrowUpToLine, ArrowDownToLine,
-  Boxes, Ungroup,
+  Boxes, Ungroup, X,
 } from "lucide-react";
 import {
   Toolbar as CossToolbar,
@@ -31,7 +31,7 @@ import { library, type LibraryComponent } from "./library/index";
 import { groupElements, ungroupElements, canGroupElements, canUngroupElements } from "./utils/grouping";
 import { isBlockTemplate, createBlockTemplateGroup } from "./library/block-templates";
 import { confirmLocal } from "./hooks/use-desktop";
-import { showToast } from "./hooks/use-toast";
+import { showToast, useEditorNotice, dismissEditorNotice } from "./hooks/use-toast";
 import { loadProjectLocal, saveProjectLocal, loadSettingsLocal, saveSettingsLocal } from "./hooks/local-store";
 import { processImageFile, extractImageFromClipboardData, dataUrlToBlob } from "./utils/image";
 import {
@@ -44,6 +44,10 @@ import {
   getInternalClipboard,
   isEditableTarget,
 } from "./utils/clipboard";
+import { patchElements } from "./utils/element-updates";
+import { createHistory, appendHistory, moveHistory, type EditHistory } from "./utils/history";
+import { Button } from "@bluepen/editor/components/ui/button";
+import { libraryModes, type LibraryMode } from "./library/catalog";
 import { cn } from "@bluepen/editor/lib/utils";
 
 function genId() {
@@ -100,10 +104,11 @@ const defaultPages: Page[] = [
 ];
 
 export function Editor() {
+  const notice = useEditorNotice();
   const [pages, setPages] = useState<Page[]>(defaultPages);
   const [activePageId, setActivePageId] = useState("page-1");
-  const [history, setHistory] = useState<EditorElement[][]>([defaultPages[0].elements]);
-  const [historyIndex, setHistoryIndex] = useState(0);
+  const pageHistoriesRef = useRef(new Map<string, EditHistory<EditorElement[]>>());
+  const [, refreshHistory] = useState(0);
   const [showGrid, setShowGrid] = useState(true);
   const [zoom, setZoom] = useState(1);
   const [activeTool, setActiveTool] = useState<string>("select");
@@ -112,9 +117,18 @@ export function Editor() {
   const [contextOpen, setContextOpen] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [previewing, setPreviewing] = useState(false);
+  const canvasApiRef = useRef<CanvasHandle>(null);
+  const pagePansRef = useRef(new Map<string, { x: number; y: number }>());
+  const pageZoomsRef = useRef(new Map<string, number>());
+  const rememberPan = useCallback((pan: { x: number; y: number }) => {
+    pagePansRef.current.set(activePageId, pan);
+    pageZoomsRef.current.set(activePageId, zoom);
+  }, [activePageId, zoom]);
 
   const activePage = pages.find((p) => p.id === activePageId) || pages[0] || null;
   const elements = activePage?.elements ?? [];
+  const history = pageHistoriesRef.current.get(activePageId) ?? createHistory(elements);
+  const historyIndex = history.index;
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const selectedId = selectedIds[selectedIds.length - 1] ?? null;
 
@@ -146,6 +160,16 @@ export function Editor() {
   const [projectName, setProjectName] = useState("Untitled");
   const [currentFilePath, setCurrentFilePath] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
+  const [saveState, setSaveState] = useState<"loading" | "saved" | "pending" | "saving" | "error">("loading");
+  const [saveRetry, setSaveRetry] = useState(0);
+  const [manualSaving, setManualSaving] = useState(false);
+  const manualSavingRef = useRef(false);
+  // Each project owns its binding, including when an older write finishes after switching.
+  const fileBindingRef = useRef<{ path: string | null }>({ path: null });
+  const autosaveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+  const currentProjectRef = useRef({ pages, name: projectName });
+  currentProjectRef.current = { pages, name: projectName };
+  const [libraryTab, setLibraryTab] = useState<"pages" | "components" | "web" | "agent">("components");
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [leftDrawerCollapsed, setLeftDrawerCollapsed] = useState(false);
 
@@ -176,16 +200,19 @@ export function Editor() {
         setProjectName(project.name || "Untitled");
         if (project.filePath) {
           setCurrentFilePath(project.filePath);
+          fileBindingRef.current.path = project.filePath;
         }
-        const first = uniquePages[0];
+        const first = uniquePages.find((page) => page.id === settings?.activePageId) ?? uniquePages[0];
         if (first) {
           setActivePageId(first.id);
-          setHistory([JSON.parse(JSON.stringify(first.elements))]);
-          setHistoryIndex(0);
+          pageHistoriesRef.current.set(first.id, createHistory(first.elements));
         }
       }
       if (settings) {
-        setZoom(settings.zoom ?? 1);
+        if (["pages", "components", "web", "agent"].includes(settings.libraryTab ?? "")) {
+          setLibraryTab(settings.libraryTab!);
+        }
+        setZoom(typeof settings.zoom === "number" && Number.isFinite(settings.zoom) ? Math.max(0.1, Math.min(4, settings.zoom)) : 1);
         setShowGrid(settings.showGrid ?? true);
         if (typeof settings.leftDrawerCollapsed === "boolean") {
           setLeftDrawerCollapsed(settings.leftDrawerCollapsed);
@@ -199,6 +226,7 @@ export function Editor() {
         }
       }
       setDirty(false);
+      setSaveState("saved");
       setHydrated(true);
     })();
     return () => {
@@ -207,19 +235,44 @@ export function Editor() {
   }, []);
 
 
-  // Auto-save project (debounced) when changes happen
+  // Only acknowledge the exact revision that reached durable storage.
   useEffect(() => {
-    if (!hydrated) return;
+    if (!hydrated || !dirty || manualSaving) return;
+    let cancelled = false;
+    const binding = fileBindingRef.current;
+    setSaveState("pending");
     const t = setTimeout(() => {
-      void saveProjectLocal({
-        version: 3,
-        name: projectName,
-        pages,
-        savedAt: Date.now(),
-      }, currentFilePath).then(() => setDirty(false));
+      if (manualSavingRef.current) return;
+      setSaveState("saving");
+      const save = async () => {
+        const path = await saveProjectLocal({
+          version: 3, name: projectName, pages, savedAt: Date.now(),
+        }, binding.path);
+        if (path) binding.path = path;
+        if (binding === fileBindingRef.current && path) setCurrentFilePath(path);
+        if (!cancelled && binding === fileBindingRef.current && currentProjectRef.current.pages === pages && currentProjectRef.current.name === projectName) {
+          setDirty(false);
+          setSaveState("saved");
+        }
+      };
+      const pending = autosaveQueueRef.current.then(save, save);
+      autosaveQueueRef.current = pending.catch((error) => {
+        console.error("自动保存失败:", error);
+        if (!cancelled) setSaveState("error");
+      });
     }, 600);
-    return () => clearTimeout(t);
-  }, [pages, projectName, currentFilePath, hydrated]);
+    return () => { cancelled = true; clearTimeout(t); };
+  }, [pages, projectName, currentFilePath, hydrated, dirty, saveRetry, manualSaving]);
+
+  useEffect(() => {
+    if (!dirty) return;
+    const guard = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", guard);
+    return () => window.removeEventListener("beforeunload", guard);
+  }, [dirty]);
 
   // Auto-save settings (debounced)
   useEffect(() => {
@@ -230,35 +283,26 @@ export function Editor() {
         showGrid,
         theme,
         leftDrawerCollapsed,
+        libraryTab,
+        activePageId,
       });
     }, 600);
     return () => clearTimeout(t);
-  }, [zoom, showGrid, theme, leftDrawerCollapsed, hydrated]);
+  }, [zoom, showGrid, theme, leftDrawerCollapsed, libraryTab, activePageId, hydrated]);
 
   const latestElementsRef = useRef(elements);
   latestElementsRef.current = elements;
 
-  const pushHistory = useCallback(
-    (next: EditorElement[]) => {
-      setHistory((prev) => {
-        const trimmed = prev.slice(0, historyIndex + 1);
-        const snapshot =
-          typeof structuredClone === "function"
-            ? structuredClone(next)
-            : JSON.parse(JSON.stringify(next));
-        trimmed.push(snapshot);
-        if (trimmed.length > 50) {
-          trimmed.shift();
-        }
-        return trimmed;
-      });
-      setHistoryIndex((prev) => Math.min(prev + 1, 50));
-    },
-    [historyIndex],
-  );
+  const pushHistory = useCallback((next: EditorElement[]) => {
+    const previous = pageHistoriesRef.current.get(activePageId) ?? createHistory(elements);
+    pageHistoriesRef.current.set(activePageId, appendHistory(previous, next));
+    refreshHistory((version) => version + 1);
+  }, [activePageId, elements]);
 
   const setElements = useCallback(
     (next: EditorElement[]) => {
+      if (next === latestElementsRef.current) return;
+      latestElementsRef.current = next;
       setPages((prev) =>
         prev.map((p) => (p.id === activePageId ? { ...p, elements: next } : p)),
       );
@@ -269,102 +313,29 @@ export function Editor() {
 
   const commit = useCallback(
     (next: EditorElement[]) => {
+      if (next === latestElementsRef.current) return;
       setElements(next);
       pushHistory(next);
     },
     [setElements, pushHistory],
   );
 
-  // Live update for dragging, resizing, rotating on canvas (does not push history on every tick)
-  const updateElementLive = useCallback(
-    (id: string, patch: Partial<EditorElement>) => {
-      const updateRecursive = (list: EditorElement[]): EditorElement[] => {
-        return list.map((node) => {
-          if (node.id === id) {
-            return { ...node, ...patch };
-          }
-          if (node.children && node.children.length > 0) {
-            return {
-              ...node,
-              children: updateRecursive(node.children),
-            };
-          }
-          return node;
-        });
-      };
-      setElements(updateRecursive(latestElementsRef.current));
-    },
-    [setElements],
-  );
+  // Keep untouched branches stable so memoized canvas elements can skip renders.
+  const updateElementLive = useCallback((id: string, patch: Partial<EditorElement>) => {
+    setElements(patchElements(latestElementsRef.current, [{ id, patch }]));
+  }, [setElements]);
 
-  // Discrete element updates (e.g. from RightPanel/Sidebar/Context-Menu), commits to history
-  const updateElement = useCallback(
-    (id: string, patch: Partial<EditorElement>) => {
-      const updateRecursive = (list: EditorElement[]): EditorElement[] => {
-        return list.map((node) => {
-          if (node.id === id) {
-            return { ...node, ...patch };
-          }
-          if (node.children && node.children.length > 0) {
-            return {
-              ...node,
-              children: updateRecursive(node.children),
-            };
-          }
-          return node;
-        });
-      };
-      const next = updateRecursive(latestElementsRef.current);
-      commit(next);
-    },
-    [commit],
-  );
+  const updateElement = useCallback((id: string, patch: Partial<EditorElement>) => {
+    commit(patchElements(latestElementsRef.current, [{ id, patch }]));
+  }, [commit]);
 
-  // Live batch update for multi-element dragging/moving on canvas
-  const batchUpdateElementsLive = useCallback(
-    (patches: Array<{ id: string; patch: Partial<EditorElement> }>) => {
-      if (!patches || patches.length === 0) return;
-      const patchMap = new Map(patches.map((p) => [p.id, p.patch]));
-      const updateRecursive = (list: EditorElement[]): EditorElement[] => {
-        return list.map((node) => {
-          const patch = patchMap.get(node.id);
-          const updated = patch ? { ...node, ...patch } : node;
-          if (node.children && node.children.length > 0) {
-            return {
-              ...updated,
-              children: updateRecursive(node.children),
-            };
-          }
-          return updated;
-        });
-      };
-      setElements(updateRecursive(latestElementsRef.current));
-    },
-    [setElements],
-  );
+  const batchUpdateElementsLive = useCallback((patches: Array<{ id: string; patch: Partial<EditorElement> }>) => {
+    setElements(patchElements(latestElementsRef.current, patches));
+  }, [setElements]);
 
-  const commitBatchUpdateElements = useCallback(
-    (patches: Array<{ id: string; patch: Partial<EditorElement> }>) => {
-      if (!patches || patches.length === 0) return;
-      const patchMap = new Map(patches.map((p) => [p.id, p.patch]));
-      const updateRecursive = (list: EditorElement[]): EditorElement[] => {
-        return list.map((node) => {
-          const patch = patchMap.get(node.id);
-          const updated = patch ? { ...node, ...patch } : node;
-          if (node.children && node.children.length > 0) {
-            return {
-              ...updated,
-              children: updateRecursive(node.children),
-            };
-          }
-          return updated;
-        });
-      };
-      const next = updateRecursive(latestElementsRef.current);
-      commit(next);
-    },
-    [commit],
-  );
+  const commitBatchUpdateElements = useCallback((patches: Array<{ id: string; patch: Partial<EditorElement> }>) => {
+    commit(patchElements(latestElementsRef.current, patches));
+  }, [commit]);
 
   const handleCommitCanvasGesture = useCallback(() => {
     pushHistory(latestElementsRef.current);
@@ -419,7 +390,7 @@ export function Editor() {
           commit(next);
           setSelectedId(groupEl.id);
           setSelectedIds([groupEl.id]);
-          return;
+          return groupEl;
         }
       }
 
@@ -449,6 +420,7 @@ export function Editor() {
       commit(next);
       setSelectedId(el.id);
       setSelectedIds([el.id]);
+      return el;
     },
     [elements, commit],
   );
@@ -651,21 +623,17 @@ export function Editor() {
     setSelectedIds(newSelectedIds);
   }, [contextOpen, contextElementId, selectedIds, commit]);
 
-  const undo = useCallback(() => {
-    if (historyIndex > 0) {
-      const newIndex = historyIndex - 1;
-      setHistoryIndex(newIndex);
-      setElements(JSON.parse(JSON.stringify(history[newIndex])));
-    }
-  }, [historyIndex, history, setElements]);
-
-  const redo = useCallback(() => {
-    if (historyIndex < history.length - 1) {
-      const newIndex = historyIndex + 1;
-      setHistoryIndex(newIndex);
-      setElements(JSON.parse(JSON.stringify(history[newIndex])));
-    }
-  }, [historyIndex, history, setElements]);
+  const stepHistory = useCallback((direction: -1 | 1) => {
+    const previous = pageHistoriesRef.current.get(activePageId);
+    if (!previous) return;
+    const next = moveHistory(previous, direction);
+    if (next === previous) return;
+    pageHistoriesRef.current.set(activePageId, next);
+    setElements(next.snapshots[next.index]);
+    setSelectedIds([]);
+  }, [activePageId, setElements]);
+  const undo = useCallback(() => stepHistory(-1), [stepHistory]);
+  const redo = useCallback(() => stepHistory(1), [stepHistory]);
 
   const handleCanvasClick = useCallback(
     (_e: React.MouseEvent, canvasX: number, canvasY: number) => {
@@ -1196,7 +1164,7 @@ export function Editor() {
     "Escape": () => {
       if (previewing) {
         setPreviewing(false);
-        showToast({ title: "Editing mode", id: "exit-preview" });
+        showToast({ title: "编辑模式", id: "exit-preview" });
       } else {
         setSelectedId(null);
         setActiveTool("select");
@@ -1227,50 +1195,44 @@ export function Editor() {
     "Alt+Shift+ArrowDown": () => nudgeResize(0, 10),
     "Alt+Shift+ArrowLeft": () => nudgeResize(-10, 0),
     "Alt+Shift+ArrowRight": () => nudgeResize(10, 0),
-  });
+  }, !previewing);
 
-  const handleSidebarAdd = useCallback(
-    (asset: ComponentType | LibraryComponent) => {
-      let parentId: string | null = null;
-      let px = 120;
-      let py = 120;
-      const parent = elements.find((el) => el.id === selectedId && (el.type === "mobile-frame" || el.type === "browser-frame"));
-      if (parent) {
-        parentId = parent.id;
-        px = 24 + (parent.children.length % 5) * 24;
-        py = 24 + (parent.children.length % 5) * 24;
-      } else {
-        const offset = (elements.length % 6) * 24;
-        px = 120 + offset;
-        py = 120 + offset;
-      }
-
-      if (typeof asset === "object" && asset !== null) {
-        addElement(
-          asset.type,
-          px,
-          py,
-          parentId,
-          asset.defaultWidth,
-          asset.defaultHeight,
-          0,
-          asset.defaultProps,
-          asset.label,
-        );
-      } else {
-        addElement(asset, px, py, parentId);
-      }
-    },
-    [addElement, elements, selectedId],
-  );
+  const handleSidebarAdd = useCallback((asset: ComponentType | LibraryComponent) => {
+    const item = typeof asset === "string" ? library.find((candidate) => candidate.type === asset) : asset;
+    if (!item) return;
+    const nodes = latestElementsRef.current;
+    const parent = nodes.find((element) => element.id === selectedId && !element.locked && element.visible &&
+      (element.type === "mobile-frame" || element.type === "browser-frame"));
+    const viewport = canvasApiRef.current?.getViewport();
+    const offset = (nodes.length % 6) * 20;
+    let x = viewport ? viewport.x + (viewport.width - item.defaultWidth) / 2 + offset : 120;
+    let y = viewport ? viewport.y + (viewport.height - item.defaultHeight) / 2 + offset : 120;
+    const template = isBlockTemplate(item.type);
+    if (template && nodes.some((element) => element.visible && x < element.x + element.width && x + item.defaultWidth > element.x && y < element.y + element.height && y + item.defaultHeight > element.y)) {
+      x = Math.max(...nodes.filter((element) => element.visible).map((element) => element.x + element.width)) + 80;
+    }
+    const container = template ? null : parent;
+    if (container) {
+      x = 24 + (container.children.length % 5) * 24;
+      y = 24 + (container.children.length % 5) * 24;
+    }
+    const inserted = addElement(item.type, Math.round(x / 20) * 20, Math.round(y / 20) * 20,
+      container?.id ?? null, item.defaultWidth, item.defaultHeight, 0, item.defaultProps, item.label);
+    if (inserted && !container && (template || (viewport && (inserted.width > viewport.width || inserted.height > viewport.height)))) {
+      canvasApiRef.current?.focusBounds(inserted);
+    }
+    setActiveTool("select");
+  }, [addElement, selectedId]);
 
   const handlePageSelect = useCallback(
     (id: string) => {
+      setZoom(pageZoomsRef.current.get(id) ?? 1);
       setActivePageId(id);
       const page = pages.find((p) => p.id === id);
       if (page) {
-        setHistory([JSON.parse(JSON.stringify(page.elements))]);
-        setHistoryIndex(0);
+        if (!pageHistoriesRef.current.has(id)) {
+          pageHistoriesRef.current.set(id, createHistory(page.elements));
+        }
         setSelectedId(null);
       }
     },
@@ -1280,22 +1242,25 @@ export function Editor() {
   const handlePageAdd = useCallback(() => {
     const newPage: Page = { id: genId(), name: `Page ${pages.length + 1}`, elements: [] };
     setPages((prev) => [...prev, newPage]);
+    setZoom(1);
     setActivePageId(newPage.id);
-    setHistory([[]]);
-    setHistoryIndex(0);
+    pageHistoriesRef.current.set(newPage.id, createHistory(newPage.elements));
     setSelectedId(null);
     setDirty(true);
   }, [pages.length]);
 
   const handlePageDelete = useCallback(
     (id: string) => {
+      if (pages.length <= 1) return;
       const next = pages.filter((p) => p.id !== id);
+      pageHistoriesRef.current.delete(id);
+      pagePansRef.current.delete(id);
+      pageZoomsRef.current.delete(id);
       setPages(next);
       if (activePageId === id) {
         const first = next[0];
         setActivePageId(first ? first.id : "");
-        setHistory(first ? [JSON.parse(JSON.stringify(first.elements))] : [[]]);
-        setHistoryIndex(0);
+        setZoom(first ? pageZoomsRef.current.get(first.id) ?? 1 : 1);
         setSelectedId(null);
       }
       setDirty(true);
@@ -1317,17 +1282,19 @@ export function Editor() {
       setPages(loadedPages);
       setProjectName(data.name || "Untitled");
       setCurrentFilePath(data.filePath ?? null);
-      if (loadedPages[0]) {
-        setActivePageId(loadedPages[0].id);
-        setHistory([JSON.parse(JSON.stringify(loadedPages[0].elements))]);
-      } else {
-        setActivePageId("");
-        setHistory([[]]);
-      }
-      setHistoryIndex(0);
+      fileBindingRef.current = { path: data.filePath ?? null };
+      pageHistoriesRef.current.clear();
+      pagePansRef.current.clear();
+      pageZoomsRef.current.clear();
+      setZoom(1);
+      setPreviewing(false);
+      setActiveTool("select");
+      setActivePageId(loadedPages[0].id);
+      pageHistoriesRef.current.set(loadedPages[0].id, createHistory(loadedPages[0].elements));
+      setSaveState("pending");
       setSelectedId(null);
       setSelectedIds([]);
-      setDirty(false);
+      setDirty(true);
     },
     [],
   );
@@ -1357,53 +1324,59 @@ export function Editor() {
     windowControls,
     windowMaximized,
     windowFullscreen,
-  } = useDesktop(getProject, loadProject);
+  } = useDesktop(getProject, loadProject, async () => {
+    if (!dirty) return true;
+    return confirmLocal("当前修改尚未保存成功。关闭客户端将丢失这些修改，仍要关闭吗？");
+  });
+
+  const saveDesktopFile = useCallback(async (saveAs: boolean) => {
+    if (!fileApi || manualSavingRef.current) return;
+    manualSavingRef.current = true;
+    setManualSaving(true);
+    const binding = fileBindingRef.current;
+    try {
+      // Finish previous writes before choosing a new destination; resume autosave afterwards.
+      await autosaveQueueRef.current;
+      const result = saveAs ? await fileApi.saveFileAs() : await fileApi.saveFile(binding.path);
+      if (!result.ok || !result.path || binding !== fileBindingRef.current) return;
+      fileBindingRef.current = { path: result.path };
+      setCurrentFilePath(result.path);
+      const name = result.path.split(/[\\/]/).pop()?.replace(/\.(bluepen|json)$/, "") || projectName;
+      setProjectName(name);
+      const matches = result.project?.pages === currentProjectRef.current.pages &&
+        result.project?.name === currentProjectRef.current.name && result.project?.name === name;
+      setDirty(!matches);
+      setSaveState(matches ? "saved" : "pending");
+      showToast({ type: "success", title: saveAs ? "项目已另存为" : "项目已保存", description: name, id: "save-file" });
+    } finally {
+      manualSavingRef.current = false;
+      setManualSaving(false);
+    }
+  }, [fileApi, projectName]);
 
   const handleSaveShortcut = useCallback(async () => {
     if (isTauri) {
-      if (!fileApi) return;
-      const res = await fileApi.saveFile(currentFilePath);
-      if (res.ok) {
-        if (res.path) {
-          setCurrentFilePath(res.path);
-          const baseName = res.path.split(/[\\/]/).pop()?.replace(/\.(bluepen|json)$/, "");
-          if (baseName) setProjectName(baseName);
-        }
-        setDirty(false);
-        showToast({ type: "success", title: "Project saved", id: "save-file" });
-      }
-    } else {
-      const blob = new Blob([JSON.stringify(getProject(), null, 2)], { type: "application/json" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${projectName || "Untitled"}.bluepen`;
-      a.click();
-      URL.revokeObjectURL(url);
-      setDirty(false);
-      showToast({ type: "success", title: "Project downloaded", id: "save-file" });
+      await saveDesktopFile(false);
+      return;
     }
-  }, [isTauri, fileApi, currentFilePath, getProject, projectName]);
+    const blob = new Blob([JSON.stringify({ ...getProject(), version: 3, savedAt: Date.now() }, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${projectName || "Untitled"}.bluepen`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast({ type: "success", title: "项目副本已下载", id: "save-file" });
+  }, [isTauri, saveDesktopFile, getProject, projectName]);
 
   const handleSaveAsShortcut = useCallback(async () => {
-    if (isTauri) {
-      if (!fileApi) return;
-      const res = await fileApi.saveFileAs();
-      if (res.ok && res.path) {
-        setCurrentFilePath(res.path);
-        const baseName = res.path.split(/[\\/]/).pop()?.replace(/\.(bluepen|json)$/, "");
-        if (baseName) setProjectName(baseName);
-        setDirty(false);
-        showToast({ type: "success", title: "Project saved as", description: baseName, id: "save-file-as" });
-      }
-    } else {
-      void handleSaveShortcut();
-    }
-  }, [isTauri, fileApi, handleSaveShortcut]);
+    if (isTauri) await saveDesktopFile(true);
+    else await handleSaveShortcut();
+  }, [isTauri, saveDesktopFile, handleSaveShortcut]);
 
   const handleNewShortcut = useCallback(async () => {
     if (dirty) {
-      const ok = await confirmLocal("Current project has unsaved changes. Create a new project anyway?");
+      const ok = await confirmLocal("当前修改尚未保存成功。仍要新建项目吗？");
       if (!ok) return;
     }
     loadProject({
@@ -1411,12 +1384,12 @@ export function Editor() {
       name: "Untitled",
       filePath: null,
     });
-    showToast({ title: "New project created", id: "new-project" });
+    showToast({ title: "已新建项目", id: "new-project" });
   }, [dirty, loadProject]);
 
   const handleOpenShortcut = useCallback(async () => {
     if (dirty) {
-      const ok = await confirmLocal("Current project has unsaved changes. Open another project anyway?");
+      const ok = await confirmLocal("当前修改尚未保存成功。仍要打开其他项目吗？");
       if (!ok) return;
     }
     if (isTauri) {
@@ -1432,7 +1405,7 @@ export function Editor() {
           const text = await file.text();
           const data = JSON.parse(text);
           if (!data || !Array.isArray(data.pages)) {
-            showToast({ type: "error", title: "Invalid project file", id: "open-file-invalid" });
+            showToast({ type: "error", title: "项目文件格式无效", id: "open-file-invalid" });
             return;
           }
           const baseName = file.name.replace(/\.(bluepen|json)$/, "") || "Untitled";
@@ -1441,10 +1414,10 @@ export function Editor() {
             name: data.name ?? baseName,
             filePath: null,
           });
-          showToast({ type: "success", title: "Project opened", description: baseName, id: "open-file" });
+          showToast({ type: "success", title: "项目已打开", description: baseName, id: "open-file" });
         } catch (err) {
           console.error("Failed to parse project file:", err);
-          showToast({ type: "error", title: "Could not parse project file", id: "open-file-error" });
+          showToast({ type: "error", title: "无法解析项目文件", id: "open-file-error" });
         }
       };
       input.click();
@@ -1469,12 +1442,12 @@ export function Editor() {
               name: data.name ?? baseName,
               filePath: null,
             });
-            showToast({ type: "success", title: "Project opened", description: baseName, id: "open-file" });
+            showToast({ type: "success", title: "项目已打开", description: baseName, id: "open-file" });
             return;
           }
         } catch (err) {
           console.error("Failed to parse dropped project:", err);
-          showToast({ type: "error", title: "Could not parse project file", id: "open-file-error" });
+          showToast({ type: "error", title: "无法解析项目文件", id: "open-file-error" });
           return;
         }
       }
@@ -1579,7 +1552,7 @@ export function Editor() {
         await writeFile(path, new Uint8Array(await blob.arrayBuffer()));
       } catch (e) {
         console.error("Failed to export:", e);
-        showToast({ type: "error", title: "Could not export image", id: "export-error" });
+        showToast({ type: "error", title: "图片导出失败", id: "export-error" });
         return;
       }
     } else {
@@ -1590,7 +1563,7 @@ export function Editor() {
       a.click();
       URL.revokeObjectURL(url);
     }
-    showToast({ type: "success", title: "Image exported", description: `${baseName}.png`, id: "export-png" });
+    showToast({ type: "success", title: "图片已导出", description: `${baseName}.png`, id: "export-png" });
   }, [elements, isTauri, projectName]);
 
   useKeyboard({
@@ -1599,6 +1572,9 @@ export function Editor() {
     "Ctrl+O": handleOpenShortcut,
     "Ctrl+N": handleNewShortcut,
     "Ctrl+B": toggleLeftDrawer,
+    "Shift+1": () => canvasApiRef.current?.fitContent(),
+    "Shift+2": () => canvasApiRef.current?.fitContent(true),
+    "Escape": () => { setPreviewing(false); setSelectedIds([]); setActiveTool("select"); },
     "F11": toggleFullscreen,
     "V": () => setActiveTool("select"),
     "H": () => setActiveTool("hand"),
@@ -1624,10 +1600,13 @@ export function Editor() {
       <TopBar
         projectName={projectName}
         dirty={dirty}
+        saveState={saveState}
+        onRetrySave={() => setSaveRetry((attempt) => attempt + 1)}
         zoom={zoom}
         showGrid={showGrid}
+        hasContent={elements.some((element) => element.visible)}
         canUndo={historyIndex > 0}
-        canRedo={historyIndex < history.length - 1}
+        canRedo={historyIndex < history.snapshots.length - 1}
         activeTool={activeTool}
         previewing={previewing}
         demo={!isTauri}
@@ -1644,6 +1623,8 @@ export function Editor() {
         onZoomIn={() => setZoom((z) => Math.min(4, z + 0.1))}
         onZoomOut={() => setZoom((z) => Math.max(0.1, z - 0.1))}
         onZoomTo={(z) => setZoom(Math.min(4, Math.max(0.1, z)))}
+        onFitContent={() => canvasApiRef.current?.fitContent()}
+        onFitSelection={() => canvasApiRef.current?.fitContent(true)}
         onSave={handleSaveShortcut}
         onNew={handleNewShortcut}
         onOpen={handleOpenShortcut}
@@ -1652,7 +1633,7 @@ export function Editor() {
           const next = !previewing;
           setPreviewing(next);
           setSelectedId(null);
-          showToast({ title: next ? "Preview mode" : "Editing mode", id: "preview-toggle" });
+          showToast({ title: next ? "原型预览" : "编辑模式", id: "preview-toggle" });
         }}
         onExport={() => void exportPng()}
         onMinimize={() => windowControls("minimize")}
@@ -1663,6 +1644,10 @@ export function Editor() {
       {previewing ? (
         <div className="flex min-h-0 w-full flex-1 overflow-hidden">
           <Canvas
+            ref={canvasApiRef}
+            key={activePageId}
+            initialPan={pagePansRef.current.get(activePageId)}
+            onPanChange={rememberPan}
             elements={elements}
             selectedId={null}
             showGrid={false}
@@ -1681,6 +1666,8 @@ export function Editor() {
         <div className="flex min-h-0 w-full flex-1 overflow-hidden">
           <LeftSidebar
             pages={pages}
+            activeTab={libraryTab}
+            onTabChange={setLibraryTab}
             activePageId={activePageId}
             onPageSelect={handlePageSelect}
             onPageAdd={handlePageAdd}
@@ -1712,6 +1699,27 @@ export function Editor() {
           >
             <ContextMenuTrigger className="flex flex-1 min-w-0 overflow-hidden" onContextMenu={handleContextMenu}>
               <Canvas
+                ref={canvasApiRef}
+                key={activePageId}
+                initialPan={pagePansRef.current.get(activePageId)}
+                onPanChange={rememberPan}
+                emptyContent={
+                  <div className="max-w-md space-y-4 text-left">
+                    <span className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">BLUEPEN / 开始绘制</span>
+                    <h1 className="text-2xl font-medium">从一个想法开始</h1>
+                    <p className="text-xs leading-relaxed text-muted-foreground">选择基础组件自由绘制，或从 Web、Agent 客户端模板开始。</p>
+                    <div className="pointer-events-auto flex flex-wrap gap-2">
+                      {(Object.keys(libraryModes) as LibraryMode[]).map((mode) => (
+                        <Button key={mode} variant={libraryTab === mode ? "default" : "outline"} className="rounded-full font-mono" onMouseDown={(event) => event.stopPropagation()} onClick={(event) => {
+                          event.stopPropagation();
+                          setLibraryTab(mode);
+                          setLeftDrawerCollapsed(false);
+                        }}>{libraryModes[mode].label}</Button>
+                      ))}
+                    </div>
+                    <p className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">R 矩形 · T 文字 · 空格拖动画布</p>
+                  </div>
+                }
                 elements={elements}
                 selectedId={selectedId}
                 selectedIds={selectedIds}
@@ -1895,11 +1903,21 @@ export function Editor() {
       </div>
       )}
 
+      <footer className="flex h-7 shrink-0 items-center justify-between gap-4 border-t border-border bg-surface px-3 text-[11px]">
+        <span className="truncate font-mono uppercase tracking-wider text-muted-foreground">{activePage?.name} · {allElementsFlat.length} 个图层</span>
+        {notice ? (
+          <div className="flex min-w-0 items-center gap-2" role={notice.type === "error" ? "alert" : "status"}>
+            <span className={cn("truncate", notice.type === "error" ? "text-destructive" : "text-muted-foreground")}>[{notice.title}]{notice.description ? ` ${notice.description}` : ""}</span>
+            <Button variant="ghost" size="icon-xs" aria-label="关闭状态消息" onClick={dismissEditorNotice}><X aria-hidden="true" /></Button>
+          </div>
+        ) : <span className="truncate text-muted-foreground">{previewing ? "原型预览 · Esc 返回编辑" : "自动保存到本机 · Shift 1 适应全部 · Shift 2 适应选中"}</span>}
+      </footer>
+
       {/* Floating toolbar */}
       {!previewing && (
-        <div className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2 select-none">
+        <div className="fixed bottom-12 left-1/2 z-50 -translate-x-1/2 select-none">
         <div className="animate-fade-up">
-          <CossToolbar className="rounded-full border border-border-visible bg-surface/90 px-1.5 py-1 shadow-2xs backdrop-blur-md">
+          <CossToolbar className="rounded-full border border-border-visible bg-surface px-1.5 py-1">
           <ToolbarGroup>
             <ToolbarButton className={toolClass("select")} onClick={() => setActiveTool("select")} title="选择 (V)">
               <MousePointer2 aria-hidden="true" className="size-3" />
@@ -1936,5 +1954,5 @@ export function Editor() {
     </div>
     );
 
-  return <div className="h-svh w-full overflow-hidden bg-background text-foreground">{content}</div>;
+  return <div className="h-svh w-full overflow-hidden bg-background text-foreground">{hydrated ? content : <div className="flex h-full items-center justify-center font-mono text-xs text-muted-foreground" role="status">[正在恢复本地项目…]</div>}</div>;
 }

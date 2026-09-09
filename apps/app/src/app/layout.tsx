@@ -56,7 +56,7 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="en"
+      lang="zh-CN"
       suppressHydrationWarning
       className={cn("h-full antialiased dark overscroll-none", spaceGrotesk.variable, spaceMono.variable)}
     >

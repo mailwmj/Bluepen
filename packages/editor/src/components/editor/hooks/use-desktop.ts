@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Page } from "../types";
 import { showToast } from "./use-toast";
-import { getProjectsDir, projectFileName } from "./local-store";
+import { getProjectsDir, projectFileName, saveProjectLocal } from "./local-store";
 
 export function isDesktop() {
   if (typeof window === "undefined") return false;
@@ -55,15 +55,22 @@ export function confirmLocal(message: string): Promise<boolean> {
   return Promise.resolve(window.confirm(message));
 }
 
+interface DesktopSaveResult {
+  ok: boolean;
+  path?: string;
+  project?: { pages: Page[]; name: string };
+}
+
 export interface DesktopFileApi {
   openFile: () => Promise<void>;
-  saveFile: (currentFilePath?: string | null) => Promise<{ ok: boolean; path?: string }>;
-  saveFileAs: () => Promise<{ ok: boolean; path?: string }>;
+  saveFile: (currentFilePath?: string | null) => Promise<DesktopSaveResult>;
+  saveFileAs: () => Promise<DesktopSaveResult>;
 }
 
 export function useDesktop(
   getProject: () => { pages: Page[]; name: string },
   onLoadProject: (data: { pages: Page[]; name: string; filePath?: string }) => void,
+  beforeClose: () => Promise<boolean>,
 ) {
   const [isTauri, setIsTauri] = useState(false);
   const [platform, setPlatform] = useState<Platform>("web");
@@ -73,6 +80,8 @@ export function useDesktop(
   getProjectRef.current = getProject;
   const onLoadProjectRef = useRef(onLoadProject);
   onLoadProjectRef.current = onLoadProject;
+  const beforeCloseRef = useRef(beforeClose);
+  beforeCloseRef.current = beforeClose;
 
   const [fileApi, setFileApi] = useState<DesktopFileApi | null>(null);
 
@@ -88,39 +97,59 @@ export function useDesktop(
       const { getCurrentWindow } = await import("@tauri-apps/api/window");
       const { listen } = await import("@tauri-apps/api/event");
       const { open, save } = await import("@tauri-apps/plugin-dialog");
-      const { readTextFile, writeTextFile } = await import("@tauri-apps/plugin-fs");
+      const { readTextFile } = await import("@tauri-apps/plugin-fs");
 
       const appWindow = getCurrentWindow();
-
-      const saveFileAs = async (): Promise<{ ok: boolean; path?: string }> => {
+      if (cancelled) return;
+      let checkingClose = false;
+      const unlistenClose = await appWindow.onCloseRequested(async (event) => {
+        event.preventDefault();
+        if (checkingClose) return;
+        checkingClose = true;
         try {
-          const data = getProjectRef.current();
+          if (await beforeCloseRef.current()) {
+            await appWindow.destroy();
+          }
+        } catch (error) {
+          console.error("关闭窗口失败:", error);
+          showToast({ type: "error", title: "无法关闭窗口，请保存项目后重试" });
+        } finally {
+          checkingClose = false;
+        }
+      });
+      if (cancelled) { unlistenClose(); return; }
+      unlistenFns.push(unlistenClose);
+
+      const saveFileAs = async (): Promise<DesktopSaveResult> => {
+        try {
+          const suggestedProject = getProjectRef.current();
           const projectsDir = await getProjectsDir();
           const path = await save({
-            defaultPath: `${projectsDir}/${projectFileName(data.name || "Untitled")}`,
+            defaultPath: `${projectsDir}/${projectFileName(suggestedProject.name || "Untitled")}`,
             filters: [{ name: "Bluepen Project", extensions: ["bluepen", "json"] }],
           });
           if (typeof path !== "string") return { ok: false };
-          await writeTextFile(path, JSON.stringify(data, null, 2));
-          return { ok: true, path };
+          const data = getProjectRef.current();
+          await saveProjectLocal({ ...data, version: 3, savedAt: Date.now() }, path);
+          return { ok: true, path, project: data };
         } catch (e) {
           console.error("Failed to save file as:", e);
-          showToast({ type: "error", title: "Could not save file", id: "save-file-error" });
+          showToast({ type: "error", title: "文件保存失败，请检查写入权限和磁盘空间", id: "save-file-error" });
           return { ok: false };
         }
       };
 
-      const saveFile = async (currentFilePath?: string | null): Promise<{ ok: boolean; path?: string }> => {
+      const saveFile = async (currentFilePath?: string | null): Promise<DesktopSaveResult> => {
         if (!currentFilePath) {
           return saveFileAs();
         }
         try {
           const data = getProjectRef.current();
-          await writeTextFile(currentFilePath, JSON.stringify(data, null, 2));
-          return { ok: true, path: currentFilePath };
+          await saveProjectLocal({ ...data, version: 3, savedAt: Date.now() }, currentFilePath);
+          return { ok: true, path: currentFilePath, project: data };
         } catch (e) {
           console.error("Failed to save file:", e);
-          showToast({ type: "error", title: "Could not save file", id: "save-file-error" });
+          showToast({ type: "error", title: "文件保存失败，请检查写入权限和磁盘空间", id: "save-file-error" });
           return { ok: false };
         }
       };
@@ -142,14 +171,14 @@ export function useDesktop(
             name: data.name ?? baseName,
             filePath: path,
           });
-          showToast({ type: "success", title: "Project opened", description: baseName, id: "open-file" });
+          showToast({ type: "success", title: "项目已打开", description: baseName, id: "open-file" });
         } catch (e) {
           console.error("Failed to open file:", e);
-          showToast({ type: "error", title: "Could not open file", id: "open-file-error" });
+          showToast({ type: "error", title: "无法打开项目文件", id: "open-file-error" });
         }
       };
 
-      setFileApi({ openFile, saveFile, saveFileAs });
+      if (!cancelled) setFileApi({ openFile, saveFile, saveFileAs });
 
       if (!cancelled) {
         setWindowMaximized(await appWindow.isMaximized());
@@ -160,8 +189,12 @@ export function useDesktop(
         void appWindow.isMaximized().then((m) => { if (!cancelled) setWindowMaximized(m); });
         void appWindow.isFullscreen().then((f) => { if (!cancelled) setWindowFullscreen(f); });
       });
-      unlistenFns.push(unlistenResize);
-    })();
+      if (cancelled) unlistenResize();
+      else unlistenFns.push(unlistenResize);
+    })().catch((error) => {
+      console.error("桌面文件服务初始化失败:", error);
+      if (!cancelled) showToast({ type: "error", title: "桌面文件服务不可用，请重新打开客户端" });
+    });
 
     return () => {
       cancelled = true;

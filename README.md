@@ -84,7 +84,9 @@ web repository or synchronization step.
 1. Push the commit to release and confirm it is available on GitHub.
 2. Open the repository's **Actions** tab and select **Build Release**.
 3. Select **Run workflow**, enter a release tag such as `v0.1.1`, and enter
-   the Git ref to build, such as `main` or a commit SHA.
+   the Git ref to build, such as `main` or a commit SHA. Provide a concise,
+   user-facing release summary in Chinese; this text becomes the release's
+   **更新说明** section.
 4. Wait for the Linux, macOS, and Windows build jobs to finish. A successful
    run publishes or updates the GitHub Release for the chosen tag.
 

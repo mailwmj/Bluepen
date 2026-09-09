@@ -1,8 +1,26 @@
 "use client";
 
-import { toastManager } from "@bluepen/editor/components/ui/toast";
+import { useSyncExternalStore } from "react";
 
 export type ToastType = "info" | "success" | "error" | "warning";
+
+type EditorNotice = { type: ToastType; title: string; description?: string };
+let notice: EditorNotice | null = null;
+let timer: ReturnType<typeof setTimeout> | undefined;
+const listeners = new Set<() => void>();
+const subscribe = (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; };
+const getSnapshot = () => notice;
+const getServerSnapshot = () => null;
+
+export function useEditorNotice() {
+  return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+}
+
+export function dismissEditorNotice() {
+  clearTimeout(timer);
+  notice = null;
+  listeners.forEach((listener) => listener());
+}
 
 export function showToast({
   type = "info",
@@ -17,12 +35,9 @@ export function showToast({
   id?: string;
   duration?: number;
 }) {
-  const toastId = toastManager.add({
-    ...(id ? { id } : {}),
-    type,
-    title,
-    ...(description ? { description } : {}),
-    timeout: duration,
-  });
-  window.setTimeout(() => toastManager.close(toastId), duration + 500);
+  // Preserve existing callers while presenting feedback in the editor's status bar.
+  clearTimeout(timer);
+  notice = { type, title, description };
+  listeners.forEach((listener) => listener());
+  if (type !== "error" && type !== "warning") timer = setTimeout(dismissEditorNotice, duration);
 }

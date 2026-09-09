@@ -1,6 +1,7 @@
 "use client";
 
-import { useRef, useCallback, useState, useEffect, useMemo, memo } from "react";
+import { useRef, useCallback, useState, useEffect, useMemo, useImperativeHandle, memo, type Ref, type ReactNode } from "react";
+import { fitBounds, combineBounds, type Bounds } from "../utils/viewport";
 import type { AnchorPort, ComponentType, EditorElement } from "../types";
 import { cn } from "@bluepen/editor/lib/utils";
 import { Lock } from "lucide-react";
@@ -37,7 +38,17 @@ import {
   type Rect,
 } from "./connector-utils";
 
+export interface CanvasHandle {
+  getViewport: () => Bounds | null;
+  focusBounds: (bounds: Bounds) => void;
+  fitContent: (selectionOnly?: boolean) => void;
+}
+
 interface CanvasProps {
+  ref?: Ref<CanvasHandle>;
+  emptyContent?: ReactNode;
+  initialPan?: { x: number; y: number };
+  onPanChange?: (pan: { x: number; y: number }) => void;
   elements: EditorElement[];
   selectedId: string | null;
   selectedIds?: string[];
@@ -1855,6 +1866,10 @@ const ElementNode = memo(function ElementNode({
 });
 
 export function Canvas({
+  ref,
+  emptyContent,
+  initialPan,
+  onPanChange,
   elements,
   selectedId,
   selectedIds,
@@ -1879,7 +1894,21 @@ export function Canvas({
 }: CanvasProps) {
   const canvasRef = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [pan, setPan] = useState(initialPan ?? { x: 0, y: 0 });
+  const initialViewRef = useRef({ pan: initialPan, elements });
+  useEffect(() => {
+    if (initialViewRef.current.pan) return;
+    const rect = canvasRef.current?.getBoundingClientRect();
+    const bounds = combineBounds(initialViewRef.current.elements.filter((element) => element.visible));
+    if (rect && bounds) {
+      const view = fitBounds(bounds, rect);
+      setPan(view.pan);
+      onZoomChange(view.zoom);
+    }
+  }, [onZoomChange]);
+  useEffect(() => { onPanChange?.(pan); }, [pan, onPanChange]);
+  // Thin the visible grid when zooming out; snapping still uses the original grid.
+  const gridSpacing = GRID_SIZE * zoom * Math.max(1, 2 ** Math.ceil(Math.log2(12 / (GRID_SIZE * zoom))));
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [spaceHeld, setSpaceHeld] = useState(false);
@@ -1908,6 +1937,28 @@ export function Canvas({
     return allElementsFlat.filter((el) => effectiveSelectedIds.includes(el.id));
   }, [allElementsFlat, effectiveSelectedIds]);
 
+  useImperativeHandle(ref, () => {
+    const focusBounds = (bounds: Bounds) => {
+      const rect = canvasRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const next = fitBounds(bounds, rect);
+      setPan(next.pan);
+      onZoomChange(next.zoom);
+    };
+    return {
+      getViewport: () => {
+        const rect = canvasRef.current?.getBoundingClientRect();
+        return rect ? { x: -pan.x / zoom, y: -pan.y / zoom, width: rect.width / zoom, height: rect.height / zoom } : null;
+      },
+      focusBounds,
+      fitContent: (selectionOnly = false) => {
+        const targets = (selectionOnly ? selectedElements : elements).filter((element) => element.visible);
+        const bounds = combineBounds(targets.map((element) => getElementWorldBounds(element, allElementsFlat)));
+        if (bounds) focusBounds(bounds);
+      },
+    };
+  }, [pan, zoom, onZoomChange, elements, selectedElements, allElementsFlat]);
+
   const screenToCanvas = useCallback(
     (clientX: number, clientY: number) => {
       const rect = canvasRef.current?.getBoundingClientRect();
@@ -1922,7 +1973,7 @@ export function Canvas({
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (isEditableTarget(e.target)) return;
+      if (isEditableTarget(e.target) || e.isComposing || (e.target as HTMLElement)?.closest?.("button, [role=button]")) return;
       if (e.code === "Space" && !e.repeat) {
         e.preventDefault();
         setSpaceHeld(true);
@@ -3463,6 +3514,9 @@ export function Canvas({
       tabIndex={0}
       data-canvas
     >
+      {!previewing && elements.length === 0 && emptyContent && (
+        <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center px-8 pb-16">{emptyContent}</div>
+      )}
       {/* Infinite Dot Grid */}
       {showGrid && (
         <svg
@@ -3472,11 +3526,11 @@ export function Canvas({
           <defs>
             <pattern
               id="canvas-grid-pattern"
-              width={GRID_SIZE * zoom}
-              height={GRID_SIZE * zoom}
+              width={gridSpacing}
+              height={gridSpacing}
               patternUnits="userSpaceOnUse"
-              x={((pan.x % (GRID_SIZE * zoom)) + (GRID_SIZE * zoom)) % (GRID_SIZE * zoom)}
-              y={((pan.y % (GRID_SIZE * zoom)) + (GRID_SIZE * zoom)) % (GRID_SIZE * zoom)}
+              x={((pan.x % (gridSpacing)) + (gridSpacing)) % (gridSpacing)}
+              y={((pan.y % (gridSpacing)) + (gridSpacing)) % (gridSpacing)}
             >
               <circle
                 cx={0}
@@ -3485,20 +3539,20 @@ export function Canvas({
                 fill="var(--border-visible)"
               />
               <circle
-                cx={GRID_SIZE * zoom}
+                cx={gridSpacing}
                 cy={0}
                 r={Math.max(1, 1 * Math.min(1.5, zoom))}
                 fill="var(--border-visible)"
               />
               <circle
                 cx={0}
-                cy={GRID_SIZE * zoom}
+                cy={gridSpacing}
                 r={Math.max(1, 1 * Math.min(1.5, zoom))}
                 fill="var(--border-visible)"
               />
               <circle
-                cx={GRID_SIZE * zoom}
-                cy={GRID_SIZE * zoom}
+                cx={gridSpacing}
+                cy={gridSpacing}
                 r={Math.max(1, 1 * Math.min(1.5, zoom))}
                 fill="var(--border-visible)"
               />

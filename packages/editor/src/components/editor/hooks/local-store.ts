@@ -17,6 +17,8 @@ export interface StoredSettings {
   theme?: "dark" | "light" | "system";
   lastFile?: string;
   leftDrawerCollapsed?: boolean;
+  libraryTab?: "pages" | "components" | "web" | "agent";
+  activePageId?: string;
 }
 
 const STORE_FILE = "bluepen.json";
@@ -41,7 +43,10 @@ function openIndexedDB(): Promise<IDBDatabase> {
         db.createObjectStore(IDB_STORE);
       }
     };
-    request.onsuccess = () => resolve(request.result);
+    request.onsuccess = () => {
+      request.result.onversionchange = () => request.result.close();
+      resolve(request.result);
+    };
     request.onerror = () => reject(request.error);
   });
 }
@@ -49,12 +54,13 @@ function openIndexedDB(): Promise<IDBDatabase> {
 async function idbGet<T>(key: string): Promise<T | null> {
   try {
     const db = await openIndexedDB();
-    return new Promise((resolve, reject) => {
+    return await new Promise((resolve, reject) => {
       const tx = db.transaction(IDB_STORE, "readonly");
       const store = tx.objectStore(IDB_STORE);
       const req = store.get(key);
-      req.onsuccess = () => resolve((req.result as T) ?? null);
-      req.onerror = () => reject(req.error);
+      tx.oncomplete = () => { db.close(); resolve((req.result as T) ?? null); };
+      tx.onabort = () => { db.close(); reject(tx.error ?? new Error("读取本地数据失败")); };
+      tx.onerror = () => { db.close(); reject(tx.error ?? req.error); };
     });
   } catch {
     return null;
@@ -67,8 +73,10 @@ async function idbSet(key: string, value: unknown): Promise<void> {
     const tx = db.transaction(IDB_STORE, "readwrite");
     const store = tx.objectStore(IDB_STORE);
     const req = store.put(value, key);
-    req.onsuccess = () => resolve();
-    req.onerror = () => reject(req.error);
+    // A successful request can still be rolled back by its transaction.
+    tx.oncomplete = () => { db.close(); resolve(); };
+    tx.onabort = () => { db.close(); reject(tx.error ?? new Error("本地保存事务被取消")); };
+    tx.onerror = () => { db.close(); reject(tx.error ?? req.error); };
   });
 }
 
@@ -88,7 +96,10 @@ function getTauriStore() {
         set: (k: string, v: unknown) => store.set(k, v),
         save: () => store.save(),
       };
-    })();
+    })().catch((error) => {
+      storePromise = null;
+      throw error;
+    });
   }
   return storePromise;
 }
@@ -109,7 +120,7 @@ export function projectFileName(name: string): string {
 
 async function ensureProjectsDir(): Promise<void> {
   const { mkdir, BaseDirectory } = await import("@tauri-apps/plugin-fs");
-  await mkdir(PROJECTS_DIR, { baseDir: BaseDirectory.Document, recursive: true }).catch(() => {});
+  await mkdir(PROJECTS_DIR, { baseDir: BaseDirectory.Document, recursive: true });
 }
 
 async function getStoredSettings(): Promise<StoredSettings | null> {
@@ -144,24 +155,25 @@ export async function loadProjectLocal(): Promise<StoredProject | null> {
     } else {
       // 1. Try IndexedDB (handles large projects with images seamlessly)
       const idbProject = await idbGet<StoredProject>(LS_PROJECT_KEY);
-      if (idbProject && idbProject.version === PROJECT_VERSION) {
-        return idbProject;
-      }
-
-      // 2. Migration fallback from legacy localStorage
+      // A fallback write may be newer than the last successful IndexedDB write.
       try {
         const raw = localStorage.getItem(LS_PROJECT_KEY);
         if (raw) {
           const parsed = JSON.parse(raw) as StoredProject;
-          if (parsed.version === PROJECT_VERSION) {
-            await idbSet(LS_PROJECT_KEY, parsed).catch(() => {});
-            localStorage.removeItem(LS_PROJECT_KEY);
+          if (parsed.version === PROJECT_VERSION && (!idbProject || parsed.savedAt > idbProject.savedAt)) {
+            try {
+              await idbSet(LS_PROJECT_KEY, parsed);
+              localStorage.removeItem(LS_PROJECT_KEY);
+            } catch {
+              // Retain the only recoverable copy if migration cannot commit.
+            }
             return parsed;
           }
         }
       } catch {
         // Ignore localStorage errors
       }
+      if (idbProject && idbProject.version === PROJECT_VERSION) return idbProject;
     }
   } catch (e) {
     console.error("Failed to load project:", e);
@@ -169,10 +181,18 @@ export async function loadProjectLocal(): Promise<StoredProject | null> {
   return null;
 }
 
-export async function saveProjectLocal(project: StoredProject, explicitFilePath?: string | null): Promise<void> {
-  try {
+// Serialize file writes and settings merges; a slow older save must never win.
+let writeQueue: Promise<unknown> = Promise.resolve();
+function enqueueWrite<T>(write: () => Promise<T>): Promise<T> {
+  const result = writeQueue.then(write, write);
+  writeQueue = result.catch(() => {});
+  return result;
+}
+
+export function saveProjectLocal(project: StoredProject, explicitFilePath?: string | null): Promise<string | null> {
+  return enqueueWrite(async () => {
     if (isDesktop()) {
-      const { writeTextFile, BaseDirectory } = await import("@tauri-apps/plugin-fs");
+      const { writeTextFile, exists } = await import("@tauri-apps/plugin-fs");
       let savedFullPath: string;
 
       if (explicitFilePath) {
@@ -180,13 +200,15 @@ export async function saveProjectLocal(project: StoredProject, explicitFilePath?
         await writeTextFile(explicitFilePath, JSON.stringify(project, null, 2));
         savedFullPath = explicitFilePath;
       } else {
-        // Save to default workspace cache file
+        // Bind each new project to its own file, even when names are identical.
         await ensureProjectsDir();
-        const fileName = projectFileName(project.name);
-        savedFullPath = `${await getProjectsDir()}/${fileName}`;
-        await writeTextFile(`${PROJECTS_DIR}/${fileName}`, JSON.stringify(project, null, 2), {
-          baseDir: BaseDirectory.Document,
-        });
+        const directory = await getProjectsDir();
+        savedFullPath = `${directory}/${projectFileName(project.name)}`;
+        let suffix = 2;
+        while (await exists(savedFullPath)) {
+          savedFullPath = `${directory}/${projectFileName(`${project.name} (${suffix++})`)}`;
+        }
+        await writeTextFile(savedFullPath, JSON.stringify(project, null, 2));
       }
 
       const settings = await getStoredSettings();
@@ -196,22 +218,19 @@ export async function saveProjectLocal(project: StoredProject, explicitFilePath?
         lastFile: savedFullPath,
       });
       await store.save();
+      return savedFullPath;
     } else {
-      // Save to IndexedDB (virtually unlimited quota for canvas assets)
       try {
         await idbSet(LS_PROJECT_KEY, project);
+        try { localStorage.removeItem(LS_PROJECT_KEY); } catch { /* Optional legacy cleanup. */ }
       } catch (err) {
         console.warn("IndexedDB save failed, fallback to localStorage:", err);
-        try {
-          localStorage.setItem(LS_PROJECT_KEY, JSON.stringify(project));
-        } catch {
-          // Quota safe catch
-        }
+        // Propagate quota/permission failures so the editor keeps its unsaved state.
+        localStorage.setItem(LS_PROJECT_KEY, JSON.stringify(project));
       }
+      return null;
     }
-  } catch (e) {
-    console.error("Failed to save project:", e);
-  }
+  });
 }
 
 export async function loadSettingsLocal(): Promise<StoredSettings | null> {
@@ -231,21 +250,23 @@ export async function loadSettingsLocal(): Promise<StoredSettings | null> {
 }
 
 export async function saveSettingsLocal(settings: StoredSettings): Promise<void> {
-  try {
-    if (isDesktop()) {
-      const store = await getTauriStore();
-      const existing = await getStoredSettings();
-      await store.set("settings", { ...(existing ?? {}), ...settings });
-      await store.save();
-    } else {
-      await idbSet(LS_SETTINGS_KEY, settings).catch(() => {});
-      try {
-        localStorage.setItem(LS_SETTINGS_KEY, JSON.stringify(settings));
-      } catch {
-        // Quota safe catch
+  return enqueueWrite(async () => {
+    try {
+      if (isDesktop()) {
+        const store = await getTauriStore();
+        const existing = await getStoredSettings();
+        await store.set("settings", { ...(existing ?? {}), ...settings });
+        await store.save();
+      } else {
+        await idbSet(LS_SETTINGS_KEY, settings).catch(() => {});
+        try {
+          localStorage.setItem(LS_SETTINGS_KEY, JSON.stringify(settings));
+        } catch {
+          // Settings must not interrupt editing when browser storage is unavailable.
+        }
       }
+    } catch (error) {
+      console.error("Failed to save settings:", error);
     }
-  } catch (e) {
-    console.error("Failed to save settings:", e);
-  }
+  });
 }

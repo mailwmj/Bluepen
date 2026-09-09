@@ -5,6 +5,8 @@
   "scripts": {
     "app:dev": "pnpm --filter app desktop:dev",
     "app:build": "pnpm --filter app desktop:build",
-    "build": "pnpm --filter app build"
+    "build": "pnpm --filter app build",
+    "test": "pnpm --filter @bluepen/editor test",
+    "typecheck": "pnpm --filter @bluepen/editor typecheck && pnpm --filter app exec tsc --noEmit"
   }
 }

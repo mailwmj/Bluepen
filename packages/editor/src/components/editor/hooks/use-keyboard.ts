@@ -33,12 +33,28 @@ const ALLOWED_EDITABLE_SHORTCUTS = new Set([
   "f11",
 ]);
 
-export function useKeyboard(shortcuts: ShortcutMap) {
+export function matchesShortcut(pattern: string, event: Pick<KeyboardEvent, "key" | "code" | "ctrlKey" | "metaKey" | "altKey" | "shiftKey">): boolean {
+  const key = /^Digit\d$/.test(event.code) ? event.code.slice(-1) : event.key.toLowerCase();
+  const combination = normalizeKey([
+    ...(event.ctrlKey || event.metaKey ? ["ctrl"] : []),
+    ...(event.altKey ? ["alt"] : []),
+    ...(event.shiftKey ? ["shift"] : []), key,
+  ].join("+"));
+  const expected = normalizeKey(pattern);
+  return expected === combination ||
+    (expected === "ctrl+shift+z" && combination === "ctrl+y") ||
+    (expected === "ctrl+y" && combination === "ctrl+shift+z");
+}
+
+export function useKeyboard(shortcuts: ShortcutMap, enabled = true) {
   const shortcutsRef = useRef(shortcuts);
+  const enabledRef = useRef(enabled);
+  enabledRef.current = enabled;
   shortcutsRef.current = shortcuts;
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
+      if (!enabledRef.current || e.defaultPrevented || e.isComposing) return;
       const isEditable = isEditableTarget(e.target);
       const isCtrlOrCmd = e.ctrlKey || e.metaKey;
 
@@ -66,14 +82,7 @@ export function useKeyboard(shortcuts: ShortcutMap) {
 
       const map = shortcutsRef.current;
       for (const [keyPattern, callback] of Object.entries(map)) {
-        const normalizedPattern = normalizeKey(keyPattern);
-        if (
-          normalizedPattern === normalizedEvent ||
-          normalizedPattern === keyName ||
-          // Support Ctrl+Y as an alias for Redo when Ctrl+Shift+Z is registered
-          (normalizedPattern === "ctrl+shift+z" && normalizedEvent === "ctrl+y") ||
-          (normalizedPattern === "ctrl+y" && normalizedEvent === "ctrl+shift+z")
-        ) {
+        if (matchesShortcut(keyPattern, e)) {
           e.preventDefault();
           callback();
           return;
@@ -85,4 +94,3 @@ export function useKeyboard(shortcuts: ShortcutMap) {
     return () => window.removeEventListener("keydown", handler);
   }, []);
 }
-
