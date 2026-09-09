@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useCallback, useState, useEffect, useMemo, useImperativeHandle, memo, type Ref, type ReactNode } from "react";
+import { getLayoutElements, resolveGroupSelection } from "../utils/layout-elements";
 import { fitBounds, combineBounds, type Bounds } from "../utils/viewport";
 import type { AnchorPort, ComponentType, EditorElement } from "../types";
 import { cn } from "@bluepen/editor/lib/utils";
@@ -471,12 +472,7 @@ const SmartGuidesOverlay = memo(function SmartGuidesOverlay({
     <div className="pointer-events-none absolute top-0 left-0 overflow-visible z-[50]">
       <svg className="overflow-visible" style={{ position: "absolute", left: 0, top: 0, width: 1, height: 1 }}>
         {guides.map((g) => {
-          const color =
-            g.color === "red"
-              ? "var(--accent)"
-              : g.color === "blue"
-              ? "var(--primary)"
-              : "var(--accent)";
+          const color = "var(--foreground)";
 
           if (g.type === "vertical") {
             return (
@@ -549,14 +545,15 @@ const SmartGuidesOverlay = memo(function SmartGuidesOverlay({
 
       {/* Numerical measurement labels */}
       {guides
-        .filter((g) => g.label && g.labelPosition)
+        .filter((g) => g.label !== undefined && g.labelPosition)
         .map((g) => (
           <div
             key={`lbl-${g.id}`}
-            className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-2xs px-1.5 py-0.5 font-mono text-[10px] font-bold text-accent bg-surface shadow-xs border border-accent/40 leading-none select-none"
+            className="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 whitespace-nowrap rounded-2xs px-1.5 py-0.5 font-mono text-[10px] font-bold text-foreground bg-surface border border-border-visible leading-none select-none"
             style={{
               left: g.labelPosition!.x,
               top: g.labelPosition!.y,
+              scale: 1 / zoom,
             }}
           >
             {g.label}
@@ -1510,21 +1507,8 @@ const ElementNode = memo(function ElementNode({
         if (!locked && isTextCapable(el.type, el.props)) {
           onSelect(el.id);
           onStartEditing?.(el.id);
-        } else {
-          let curr = el;
-          let groupAncestor: EditorElement | null = null;
-          const visited = new Set<string>([el.id]);
-          while (curr.parentId) {
-            if (visited.has(curr.parentId)) break;
-            visited.add(curr.parentId);
-            const parent = allElementsFlat.find((p) => p.id === curr.parentId);
-            if (!parent) break;
-            if (parent.type === "group") {
-              groupAncestor = parent;
-            }
-            curr = parent;
-          }
-          onSelect(groupAncestor ? groupAncestor.id : el.id);
+        } else if (!locked) {
+          onSelect(el.id);
         }
       }}
     >
@@ -2326,7 +2310,7 @@ export function Canvas({
           rawGroupY,
           curInter.combinedBounds.width,
           curInter.combinedBounds.height,
-          allElementsFlat.filter((item) => !curInter.initialPositions.some((p) => p.id === item.id)),
+          getLayoutElements(elements, curInter.initialPositions.map((p) => p.id)),
           zoom,
           null,
           disableSnap,
@@ -2378,8 +2362,11 @@ export function Canvas({
             y: disableSnap ? Math.round(rawY) : snapRes.y,
           });
         } else {
-          const rawX = curInter.elStartX + dx;
-          const rawY = curInter.elStartY + dy;
+          const world = targetEl ? getElementWorldBounds(targetEl, allElementsFlat) : null;
+          const offsetX = world && targetEl ? world.x - targetEl.x : 0;
+          const offsetY = world && targetEl ? world.y - targetEl.y : 0;
+          const rawX = curInter.elStartX + dx + offsetX;
+          const rawY = curInter.elStartY + dy + offsetY;
 
           const snapRes = calculateSnapping(
             curInter.id,
@@ -2387,7 +2374,7 @@ export function Canvas({
             rawY,
             curInter.elW,
             curInter.elH,
-            allElementsFlat,
+            getLayoutElements(elements, [curInter.id]),
             zoom,
             null,
             disableSnap,
@@ -2396,8 +2383,8 @@ export function Canvas({
           setActiveGuides(snapRes.guides);
           setSnapIndicator(snapRes.indicator ?? null);
           onUpdateElement(curInter.id, {
-            x: snapRes.x,
-            y: snapRes.y,
+            x: snapRes.x - offsetX,
+            y: snapRes.y - offsetY,
           });
         }
       } else if (curInter.type === "line-endpoint") {
@@ -2660,13 +2647,16 @@ export function Canvas({
           }
         }
 
+        const world = targetEl ? getElementWorldBounds(targetEl, allElementsFlat) : null;
+        const offsetX = world && targetEl ? world.x - targetEl.x : 0;
+        const offsetY = world && targetEl ? world.y - targetEl.y : 0;
         const snapRes = isRotated
-          ? { x, y, width: w, height: hh, guides: [], distances: [] }
+          ? { x: x + offsetX, y: y + offsetY, width: w, height: hh, guides: [], distances: [] }
           : calculateResizeSnapping(
               curInter.id,
               curInter.handle,
-              { x, y, width: w, height: hh },
-              allElementsFlat,
+              { x: x + offsetX, y: y + offsetY, width: w, height: hh },
+              getLayoutElements(elements, [curInter.id]),
               zoom,
               disableSnap,
               (e.shiftKey && isCorner) ? (curInter.aspectRatio || 1) : undefined,
@@ -2674,8 +2664,8 @@ export function Canvas({
 
         setActiveGuides(snapRes.guides);
         onUpdateElement(curInter.id, {
-          x: snapRes.x,
-          y: snapRes.y,
+          x: snapRes.x - offsetX,
+          y: snapRes.y - offsetY,
           width: snapRes.width ?? w,
           height: snapRes.height ?? hh,
         });
@@ -2901,6 +2891,7 @@ export function Canvas({
     panStart,
     screenToCanvas,
     allElementsFlat,
+    elements,
     zoom,
     onBatchUpdateElements,
     onUpdateElement,
@@ -2967,28 +2958,7 @@ export function Canvas({
 
       e.stopPropagation();
 
-      // Check if clicked element is inside a Group
-      let targetSelectId = elId;
-      if (el.parentId && !e.metaKey && !e.ctrlKey) {
-        let curr = el;
-        let groupAncestor: EditorElement | null = null;
-        const visited = new Set<string>([el.id]);
-        while (curr.parentId) {
-          if (visited.has(curr.parentId)) break;
-          visited.add(curr.parentId);
-          const parent = allElementsFlat.find((p) => p.id === curr.parentId);
-          if (!parent) break;
-          if (parent.type === "group") {
-            groupAncestor = parent;
-          }
-          curr = parent;
-        }
-
-        // Always resolve target to the group ancestor on standard click/drag
-        if (groupAncestor) {
-          targetSelectId = groupAncestor.id;
-        }
-      }
+      const targetSelectId = resolveGroupSelection(elId, effectiveSelectedIds, allElementsFlat);
 
       const targetEl = allElementsFlat.find((item) => item.id === targetSelectId) || el;
       const pos = screenToCanvas(e.clientX, e.clientY);

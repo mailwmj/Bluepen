@@ -56,7 +56,53 @@ export interface EndpointSnapResult {
   snappedAngle?: number;
 }
 
-const SNAP_THRESHOLD = 12; // snap threshold in canvas coordinates
+const SNAP_THRESHOLD = 6; // screen pixels; converted by zoom at each interaction
+
+/** Match the gap between adjacent neighbours, or centre a component between them. */
+function equalGapSnap(active: Rect, targets: Rect[], axis: "x" | "y", threshold: number): { position: number; guides: SnapGuideLine[] } | null {
+  const size = axis === "x" ? "width" : "height";
+  const cross = axis === "x" ? "y" : "x";
+  const crossSize = axis === "x" ? "height" : "width";
+  const peers = targets.filter((t) => t.id !== "__frame__" &&
+    Math.min(active[cross] + active[crossSize], t[cross] + t[crossSize]) > Math.max(active[cross], t[cross]) &&
+    !(t.x <= active.x && t.y <= active.y && t.x + t.width >= active.x + active.width && t.y + t.height >= active.y + active.height)
+  ).sort((a, b) => a[axis] - b[axis]);
+  let best: { position: number; guides: SnapGuideLine[] } | null = null;
+  let distance = threshold;
+  for (let i = 0; i < peers.length - 1; i++) {
+    const a = peers[i]!, b = peers[i + 1]!;
+    // Both reference components must belong to the same row / column.
+    if (Math.min(a[cross] + a[crossSize], b[cross] + b[crossSize]) <= Math.max(a[cross], b[cross])) continue;
+    const gap = b[axis] - a[axis] - a[size];
+    if (gap < 0) continue;
+    const candidates = [
+      { position: b[axis] + b[size] + gap, pairs: [[a[axis] + a[size], b[axis]], [b[axis] + b[size], b[axis] + b[size] + gap]] },
+      { position: a[axis] - gap - active[size], pairs: [[a[axis] - gap, a[axis]], [a[axis] + a[size], b[axis]]] },
+    ];
+    if (gap >= active[size]) {
+      const half = (gap - active[size]) / 2;
+      const position = a[axis] + a[size] + half;
+      candidates.push({ position, pairs: [[a[axis] + a[size], position], [position + active[size], b[axis]]] });
+    }
+    for (const candidate of candidates) {
+      const delta = Math.abs(active[axis] - candidate.position);
+      if (delta > distance) continue;
+      // Do not extend a row into another component.
+      if (peers.some((p) => p.id !== a.id && p.id !== b.id && p[axis] < candidate.position + active[size] && p[axis] + p[size] > candidate.position)) continue;
+      distance = delta;
+      const line = active[cross] + active[crossSize] / 2;
+      best = { position: candidate.position, guides: candidate.pairs.map(([start, end], index) => ({
+        id: `equal-gap-${axis}-${a.id}-${b.id}-${index}`,
+        type: axis === "x" ? "horizontal" : "vertical",
+        position: line,
+        start: start!, end: end!, color: "pink",
+        label: Math.round((end! - start!) * 10) / 10,
+        labelPosition: axis === "x" ? { x: (start! + end!) / 2, y: line - threshold * 2 } : { x: line + threshold * 2, y: (start! + end!) / 2 },
+      })) };
+    }
+  }
+  return best;
+}
 
 /**
  * Calculates smart alignment, snapping, guide lines, and distance annotations
@@ -83,8 +129,8 @@ export function calculateSnapping(
   }
 
   // Consistent, comfortable snap thresholds in screen pixels converted to canvas coordinates
-  const threshold = SNAP_THRESHOLD / Math.max(0.2, zoom);
-  const centerThreshold = (SNAP_THRESHOLD + 3) / Math.max(0.2, zoom);
+  const threshold = SNAP_THRESHOLD / Math.max(0.1, zoom);
+  const centerThreshold = threshold;
 
   let snappedX = rawX;
   let snappedY = rawY;
@@ -341,6 +387,16 @@ export function calculateSnapping(
     }
   }
 
+  // Explicit edge / centre alignment wins; equal spacing assists the remaining axis.
+  if (bestSnapX === null) {
+    const match = equalGapSnap({ id: activeId, x: rawX, y: snappedY, width, height }, targets, "x", threshold);
+    if (match) { snappedX = match.position; guides.push(...match.guides); }
+  }
+  if (bestSnapY === null) {
+    const match = equalGapSnap({ id: activeId, x: snappedX, y: rawY, width, height }, targets, "y", threshold);
+    if (match) { snappedY = match.position; guides.push(...match.guides); }
+  }
+
   return {
     x: snappedX,
     y: snappedY,
@@ -373,7 +429,7 @@ export function calculateResizeSnapping(
     };
   }
 
-  const threshold = SNAP_THRESHOLD / Math.max(0.2, zoom);
+  const threshold = SNAP_THRESHOLD / Math.max(0.1, zoom);
   const guides: SnapGuideLine[] = [];
   const distances: DistanceBadge[] = [];
 
@@ -1228,4 +1284,3 @@ export function calculateLineMoveSnapping(
     indicator,
   };
 }
-

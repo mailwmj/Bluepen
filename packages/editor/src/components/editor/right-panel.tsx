@@ -57,6 +57,7 @@ import {
   Ungroup,
 } from "lucide-react";
 import type { EditorElement, Page } from "./types";
+import { getLayoutSelection } from "./utils/layout-elements";
 import { useIsMac } from "./hooks/use-desktop";
 import { showToast } from "./hooks/use-toast";
 import { parseItems, parseMenuCategories } from "./library/web-renderers";
@@ -64,6 +65,7 @@ import { processImageFile } from "./utils/image";
 import {
   calculateAlign,
   calculateDistribute,
+  calculateSpacing,
   getSelectionBounds,
   type AlignType,
   type DistributeType,
@@ -72,6 +74,8 @@ import {
 interface RightPanelProps {
   element: EditorElement | null;
   selectedElements?: EditorElement[];
+  allElements?: EditorElement[];
+  onSelect?: (id: string) => void;
   parent?: EditorElement | null;
   pages?: Page[];
   onUpdate: (id: string, patch: Partial<EditorElement>) => void;
@@ -483,6 +487,7 @@ function NumField({
         <input
           type="text"
           inputMode="decimal"
+          aria-label={typeof label === "string" ? label : undefined}
           value={text}
           onFocus={(e) => {
             setIsFocused(true);
@@ -999,6 +1004,8 @@ function TableInspectorSection({
 export const RightPanel = memo(function RightPanel({
   element: rawElement,
   selectedElements,
+  allElements,
+  onSelect,
   parent,
   pages,
   onUpdate,
@@ -1013,6 +1020,7 @@ export const RightPanel = memo(function RightPanel({
   onUngroup,
 }: RightPanelProps) {
   const [showIndependentRadius, setShowIndependentRadius] = useState(false);
+  const [spacing, setSpacing] = useState(16);
   const [aspectLocked, setAspectLocked] = useState(false);
   const [activeTab, setActiveTab] = useState<"design" | "inspect">("design");
 
@@ -1025,9 +1033,11 @@ export const RightPanel = memo(function RightPanel({
   const isMulti = effectiveSelectedElements.length > 1;
   const element: EditorElement | null = rawElement ?? effectiveSelectedElements[effectiveSelectedElements.length - 1] ?? null;
 
-  const selectionBounds = useMemo(() => {
-    return getSelectionBounds(effectiveSelectedElements);
-  }, [effectiveSelectedElements]);
+  const layoutSelection = useMemo(() => getLayoutSelection(effectiveSelectedElements, allElements ?? effectiveSelectedElements), [effectiveSelectedElements, allElements]);
+  const selectionBounds = useMemo(() => getSelectionBounds(layoutSelection), [layoutSelection]);
+  const canAlign = layoutSelection.some((el) => !el.locked) && (layoutSelection.length > 1 || (!isMulti && Boolean(parent)));
+  const canSpace = layoutSelection.length >= 2 && layoutSelection.every((el) => !el.locked);
+  const canDistribute = canSpace && layoutSelection.length >= 3;
 
   const allVisible = effectiveSelectedElements.length > 0 && effectiveSelectedElements.every((el: EditorElement) => el.visible);
   const allLocked = effectiveSelectedElements.length > 0 && effectiveSelectedElements.every((el: EditorElement) => el.locked);
@@ -1079,7 +1089,7 @@ export const RightPanel = memo(function RightPanel({
 
   // Alignment & Distribution Handlers
   const handleAlign = (type: AlignType) => {
-    const patches = calculateAlign(effectiveSelectedElements, type, parent);
+    const patches = calculateAlign(effectiveSelectedElements, type, parent, undefined, allElements);
     if (patches.length === 0) return;
     if (patches.length === 1 && patches[0]) {
       onUpdate(patches[0].id, patches[0].patch);
@@ -1091,13 +1101,20 @@ export const RightPanel = memo(function RightPanel({
   };
 
   const handleDistribute = (type: DistributeType) => {
-    const patches = calculateDistribute(effectiveSelectedElements, type);
+    const patches = calculateDistribute(effectiveSelectedElements, type, allElements);
     if (patches.length === 0) return;
     if (onBatchUpdate) {
       onBatchUpdate(patches);
     } else {
       patches.forEach((p: { id: string; patch: Partial<EditorElement> }) => onUpdate(p.id, p.patch));
     }
+  };
+
+  const handleSpacing = (type: DistributeType) => {
+    const patches = calculateSpacing(effectiveSelectedElements, type, spacing, allElements);
+    if (patches.length === 0) return;
+    if (onBatchUpdate) onBatchUpdate(patches);
+    else patches.forEach(({ id, patch }) => onUpdate(id, patch));
   };
 
   const handleToggleVisible = () => {
@@ -1122,12 +1139,15 @@ export const RightPanel = memo(function RightPanel({
     }
   };
 
+  const movableLayoutElements = effectiveSelectedElements.filter((el) => layoutSelection.some((world) => world.id === el.id && !world.locked));
+  const worldPosition = (el: EditorElement) => layoutSelection.find((world) => world.id === el.id) ?? el;
+
   // Multi-Selection Geometry Handlers
   const handleMultiMoveX = (newX: number) => {
     if (!selectionBounds) return;
     const dx = newX - selectionBounds.minX;
     if (dx === 0) return;
-    const patches = effectiveSelectedElements.filter((el: EditorElement) => !el.locked).map((el: EditorElement) => ({
+    const patches = movableLayoutElements.map((el: EditorElement) => ({
       id: el.id,
       patch: { x: el.x + dx },
     }));
@@ -1138,7 +1158,7 @@ export const RightPanel = memo(function RightPanel({
     if (!selectionBounds) return;
     const dy = newY - selectionBounds.minY;
     if (dy === 0) return;
-    const patches = effectiveSelectedElements.filter((el: EditorElement) => !el.locked).map((el: EditorElement) => ({
+    const patches = movableLayoutElements.map((el: EditorElement) => ({
       id: el.id,
       patch: { y: el.y + dy },
     }));
@@ -1150,10 +1170,10 @@ export const RightPanel = memo(function RightPanel({
     const targetW = Math.max(1, newW);
     const ratio = targetW / selectionBounds.width;
     const minX = selectionBounds.minX;
-    const patches = effectiveSelectedElements.filter((el: EditorElement) => !el.locked).map((el: EditorElement) => ({
+    const patches = movableLayoutElements.map((el: EditorElement) => ({
       id: el.id,
       patch: {
-        x: Math.round(minX + (el.x - minX) * ratio),
+        x: el.x + Math.round(minX + (worldPosition(el).x - minX) * ratio) - worldPosition(el).x,
         width: Math.max(1, Math.round(el.width * ratio)),
       },
     }));
@@ -1165,10 +1185,10 @@ export const RightPanel = memo(function RightPanel({
     const targetH = Math.max(1, newH);
     const ratio = targetH / selectionBounds.height;
     const minY = selectionBounds.minY;
-    const patches = effectiveSelectedElements.filter((el: EditorElement) => !el.locked).map((el: EditorElement) => ({
+    const patches = movableLayoutElements.map((el: EditorElement) => ({
       id: el.id,
       patch: {
-        y: Math.round(minY + (el.y - minY) * ratio),
+        y: el.y + Math.round(minY + (worldPosition(el).y - minY) * ratio) - worldPosition(el).y,
         height: Math.max(1, Math.round(el.height * ratio)),
       },
     }));
@@ -1176,7 +1196,7 @@ export const RightPanel = memo(function RightPanel({
   };
 
   const handleMultiFlipH = () => {
-    const patches = effectiveSelectedElements.filter((el: EditorElement) => !el.locked).map((el: EditorElement) => ({
+    const patches = movableLayoutElements.map((el: EditorElement) => ({
       id: el.id,
       patch: { props: { ...el.props, flipH: !Boolean(el.props.flipH) } },
     }));
@@ -1184,7 +1204,7 @@ export const RightPanel = memo(function RightPanel({
   };
 
   const handleMultiFlipV = () => {
-    const patches = effectiveSelectedElements.filter((el: EditorElement) => !el.locked).map((el: EditorElement) => ({
+    const patches = movableLayoutElements.map((el: EditorElement) => ({
       id: el.id,
       patch: { props: { ...el.props, flipV: !Boolean(el.props.flipV) } },
     }));
@@ -1578,13 +1598,40 @@ export const RightPanel = memo(function RightPanel({
             </div>
           ) : null}
 
+          {!isMulti && parent && onSelect && (
+            <div className="border-b border-border px-3 py-2">
+              <Button variant="ghost" size="xs" className="w-full justify-start font-mono text-[11px]" onClick={() => onSelect(parent.id)}>
+                <ArrowUp className="size-3" aria-hidden="true" />返回 {parent.name || "父容器"}
+              </Button>
+            </div>
+          )}
+          {!isMulti && element.children.length > 0 && onSelect && (
+            <Section title="编辑内部组件">
+              <p className="text-[11px] text-muted-foreground">选择下方组件修改内容与样式，或在画布双击进入；无需打散模板。</p>
+              <div className="mt-2 flex max-h-48 flex-col gap-1 overflow-y-auto">
+                {element.children.map((child) => (
+                  <Button key={child.id} variant="ghost" size="xs" className="w-full justify-start font-mono text-[11px]" onClick={() => onSelect(child.id)}>
+                    <ChevronRight className="size-3 shrink-0" aria-hidden="true" />
+                    <span className="truncate">{child.name || child.type}</span>
+                    {child.locked && <Lock className="ml-auto size-3 shrink-0" aria-hidden="true" />}
+                  </Button>
+                ))}
+              </div>
+            </Section>
+          )}
+
           {/* Alignment Tools (8 operations: 6 align + 2 distribute) */}
           <Section title="对齐与分布">
+            <p className="mb-2 font-mono text-[11px] text-muted-foreground">
+              {isMulti ? "相对选区 · 分布保持两端位置" : parent ? `相对 ${parent.name || "父容器"}` : "请选择多个组件，或进入容器后对齐"}
+            </p>
             <div className="flex items-center justify-between gap-0.5">
               <Button
                 variant="ghost"
                 size="icon-xs"
                 title={isMulti ? "左对齐 (选区左侧)" : "左对齐 (容器)"}
+                aria-label="左对齐"
+                disabled={!canAlign}
                 onClick={() => handleAlign("left")}
               >
                 <AlignStartVertical className="size-3.5" />
@@ -1593,6 +1640,8 @@ export const RightPanel = memo(function RightPanel({
                 variant="ghost"
                 size="icon-xs"
                 title={isMulti ? "水平居中 (选区中轴)" : "水平居中 (容器)"}
+                aria-label="水平居中"
+                disabled={!canAlign}
                 onClick={() => handleAlign("horizontal-center")}
               >
                 <AlignCenterVertical className="size-3.5" />
@@ -1601,6 +1650,8 @@ export const RightPanel = memo(function RightPanel({
                 variant="ghost"
                 size="icon-xs"
                 title={isMulti ? "右对齐 (选区右侧)" : "右对齐 (容器)"}
+                aria-label="右对齐"
+                disabled={!canAlign}
                 onClick={() => handleAlign("right")}
               >
                 <AlignEndVertical className="size-3.5" />
@@ -1612,6 +1663,8 @@ export const RightPanel = memo(function RightPanel({
                 variant="ghost"
                 size="icon-xs"
                 title={isMulti ? "顶对齐 (选区顶侧)" : "顶对齐 (容器)"}
+                aria-label="顶对齐"
+                disabled={!canAlign}
                 onClick={() => handleAlign("top")}
               >
                 <AlignStartHorizontal className="size-3.5" />
@@ -1620,6 +1673,8 @@ export const RightPanel = memo(function RightPanel({
                 variant="ghost"
                 size="icon-xs"
                 title={isMulti ? "垂直居中 (选区中轴)" : "垂直居中 (容器)"}
+                aria-label="垂直居中"
+                disabled={!canAlign}
                 onClick={() => handleAlign("vertical-center")}
               >
                 <AlignCenterHorizontal className="size-3.5" />
@@ -1628,6 +1683,8 @@ export const RightPanel = memo(function RightPanel({
                 variant="ghost"
                 size="icon-xs"
                 title={isMulti ? "底对齐 (选区底侧)" : "底对齐 (容器)"}
+                aria-label="底对齐"
+                disabled={!canAlign}
                 onClick={() => handleAlign("bottom")}
               >
                 <AlignEndHorizontal className="size-3.5" />
@@ -1638,13 +1695,14 @@ export const RightPanel = memo(function RightPanel({
               <Button
                 variant="ghost"
                 size="icon-xs"
-                disabled={effectiveSelectedElements.length < 3}
+                disabled={!canDistribute}
                 title={
                   effectiveSelectedElements.length >= 3
                     ? "水平等间距分布"
                     : "水平等间距分布 (需选中 3 个及以上组件)"
                 }
-                className={cn(effectiveSelectedElements.length < 3 && "opacity-35 cursor-not-allowed")}
+                className={cn(!canDistribute && "opacity-35 cursor-not-allowed")}
+                aria-label="水平等间距分布"
                 onClick={() => handleDistribute("horizontal")}
               >
                 <AlignHorizontalSpaceBetween className="size-3.5" />
@@ -1652,18 +1710,30 @@ export const RightPanel = memo(function RightPanel({
               <Button
                 variant="ghost"
                 size="icon-xs"
-                disabled={effectiveSelectedElements.length < 3}
+                disabled={!canDistribute}
                 title={
                   effectiveSelectedElements.length >= 3
                     ? "垂直等间距分布"
                     : "垂直等间距分布 (需选中 3 个及以上组件)"
                 }
-                className={cn(effectiveSelectedElements.length < 3 && "opacity-35 cursor-not-allowed")}
+                className={cn(!canDistribute && "opacity-35 cursor-not-allowed")}
+                aria-label="垂直等间距分布"
                 onClick={() => handleDistribute("vertical")}
               >
                 <AlignVerticalSpaceBetween className="size-3.5" />
               </Button>
             </div>
+            {isMulti && (
+              <div className="mt-2 flex flex-col gap-2">
+                <NumField label="间距" value={spacing} min={0} suffix="px" onChange={setSpacing} />
+                <div className="flex gap-2">
+                  <Button variant="outline" size="xs" className="flex-1 font-mono text-[11px]" disabled={!canSpace} onClick={() => handleSpacing("horizontal")}>设置水平间距</Button>
+                  <Button variant="outline" size="xs" className="flex-1 font-mono text-[11px]" disabled={!canSpace} onClick={() => handleSpacing("vertical")}>设置垂直间距</Button>
+                </div>
+                <p className="text-[11px] text-muted-foreground">{canSpace ? "固定最左／最上组件，其余按指定间距排列。" : "间距排列需要至少两个未锁定组件。"}</p>
+              </div>
+            )}
+            <p className="mt-2 text-[11px] text-muted-foreground">拖动自动吸附 · 按住 Alt 临时关闭</p>
           </Section>
 
           {/* Geometry & Transform */}

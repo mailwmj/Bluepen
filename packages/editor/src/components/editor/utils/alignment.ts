@@ -1,4 +1,5 @@
 import type { EditorElement } from "../types";
+import { getLayoutSelection } from "./layout-elements";
 
 export type AlignType =
   | "left"
@@ -67,16 +68,28 @@ export function getSelectionBounds(elements: EditorElement[]): SelectionBounds |
 
 /**
  * Calculates alignment patches for elements.
- * - Single element: Aligns to parent container (or canvas artboard 1440x900).
+ * - Single element: Aligns to parent container (or an explicitly supplied artboard).
  * - Multiple elements (>= 2): Aligns to the selection bounding box.
  */
 export function calculateAlign(
   elements: EditorElement[],
   type: AlignType,
   parent?: EditorElement | null,
-  containerSize = { width: 1440, height: 900 },
+  containerSize?: { width: number; height: number },
+  allElements?: EditorElement[],
 ): ElementPatch[] {
   if (!elements || elements.length === 0) return [];
+
+  if (allElements && elements.length > 1) {
+    const world = getLayoutSelection(elements, allElements);
+    // A selected container and its child are one layout object, never two moves.
+    if (world.length < 2) return [];
+    return toLocalPatches(calculateAlign(world, type), elements, world);
+  }
+  if (allElements && elements.length === 1) {
+    const world = getLayoutSelection(elements, allElements);
+    if (world[0]?.locked) return [];
+  }
 
   // Filter movable (unlocked) elements
   const movableElements = elements.filter((el) => !el.locked);
@@ -84,13 +97,14 @@ export function calculateAlign(
 
   const patches: ElementPatch[] = [];
 
-  // 1. Single selection -> Align to parent container or default canvas bounds
+  // 1. Single selection -> Align to parent container or explicit canvas bounds
   if (elements.length === 1) {
     const el = movableElements[0];
     if (!el) return [];
 
-    const cW = parent?.width ?? containerSize.width;
-    const cH = parent?.height ?? containerSize.height;
+    if (!parent && !containerSize) return [];
+    const cW = parent?.width ?? containerSize!.width;
+    const cH = parent?.height ?? containerSize!.height;
 
     switch (type) {
       case "left":
@@ -171,81 +185,57 @@ export function calculateAlign(
 export function calculateDistribute(
   elements: EditorElement[],
   type: DistributeType,
+  allElements?: EditorElement[],
 ): ElementPatch[] {
-  if (!elements || elements.length < 3) return [];
-
-  const movable = elements.filter((el) => !el.locked);
-  if (movable.length < 3) return [];
-
+  const world = allElements ? getLayoutSelection(elements, allElements) : elements;
+  if (world.length < 3 || world.some((el) => el.locked)) return [];
+  const axis = type === "horizontal" ? "x" : "y";
+  const size = type === "horizontal" ? "width" : "height";
+  const sorted = [...world].sort((a, b) => a[axis] - b[axis]);
+  const first = sorted[0]!;
+  const last = sorted[sorted.length - 1]!;
+  const total = sorted.reduce((sum, el) => sum + el[size], 0);
+  const gap = (last[axis] + last[size] - first[axis] - total) / (sorted.length - 1);
+  let cursor = first[axis] + first[size];
   const patches: ElementPatch[] = [];
-
-  if (type === "horizontal") {
-    // Sort left to right
-    const sorted = [...movable].sort((a, b) => a.x - b.x || a.y - b.y);
-    const first = sorted[0];
-    const last = sorted[sorted.length - 1];
-    if (!first || !last) return [];
-
-    const minX = first.x;
-    const maxX = last.x + last.width;
-    const totalWidth = sorted.reduce((sum, item) => sum + item.width, 0);
-    const totalGap = (maxX - minX) - totalWidth;
-    const gap = totalGap / (sorted.length - 1);
-
-    let currentRight = minX;
-    for (let i = 0; i < sorted.length; i++) {
-      const el = sorted[i];
-      if (!el) continue;
-
-      if (i === 0) {
-        currentRight = el.x + el.width;
-      } else if (i === sorted.length - 1) {
-        const targetX = maxX - el.width;
-        if (el.x !== targetX) {
-          patches.push({ id: el.id, patch: { x: targetX } });
-        }
-      } else {
-        const targetX = Math.round(currentRight + gap);
-        if (el.x !== targetX) {
-          patches.push({ id: el.id, patch: { x: targetX } });
-        }
-        currentRight = targetX + el.width;
-      }
-    }
-  } else if (type === "vertical") {
-    // Sort top to bottom
-    const sorted = [...movable].sort((a, b) => a.y - b.y || a.x - b.x);
-    const first = sorted[0];
-    const last = sorted[sorted.length - 1];
-    if (!first || !last) return [];
-
-    const minY = first.y;
-    const maxY = last.y + last.height;
-    const totalHeight = sorted.reduce((sum, item) => sum + item.height, 0);
-    const totalGap = (maxY - minY) - totalHeight;
-    const gap = totalGap / (sorted.length - 1);
-
-    let currentBottom = minY;
-    for (let i = 0; i < sorted.length; i++) {
-      const el = sorted[i];
-      if (!el) continue;
-
-      if (i === 0) {
-        currentBottom = el.y + el.height;
-      } else if (i === sorted.length - 1) {
-        const targetY = maxY - el.height;
-        if (el.y !== targetY) {
-          patches.push({ id: el.id, patch: { y: targetY } });
-        }
-      } else {
-        const targetY = Math.round(currentBottom + gap);
-        if (el.y !== targetY) {
-          patches.push({ id: el.id, patch: { y: targetY } });
-        }
-        currentBottom = targetY + el.height;
-      }
-    }
+  for (const el of sorted.slice(1, -1)) {
+    cursor += gap;
+    const position = Math.round(cursor * 1000) / 1000;
+    if (el[axis] !== position) patches.push({ id: el.id, patch: { [axis]: position } });
+    cursor += el[size];
   }
+  return allElements ? toLocalPatches(patches, elements, world) : patches;
+}
 
-  return patches;
+/** Set explicit edge-to-edge spacing, keeping the first component anchored. */
+export function calculateSpacing(
+  elements: EditorElement[],
+  type: DistributeType,
+  gap: number,
+  allElements?: EditorElement[],
+): ElementPatch[] {
+  const world = allElements ? getLayoutSelection(elements, allElements) : elements;
+  if (world.length < 2 || world.some((el) => el.locked) || !Number.isFinite(gap) || gap < 0) return [];
+  const axis = type === "horizontal" ? "x" : "y";
+  const size = type === "horizontal" ? "width" : "height";
+  const sorted = [...world].sort((a, b) => a[axis] - b[axis]);
+  let cursor = sorted[0]![axis] + sorted[0]![size] + gap;
+  const patches: ElementPatch[] = [];
+  for (const el of sorted.slice(1)) {
+    if (el[axis] !== cursor) patches.push({ id: el.id, patch: { [axis]: cursor } });
+    cursor += el[size] + gap;
+  }
+  return allElements ? toLocalPatches(patches, elements, world) : patches;
+}
+
+function toLocalPatches(patches: ElementPatch[], local: EditorElement[], world: EditorElement[]): ElementPatch[] {
+  return patches.map(({ id, patch }) => {
+    const original = local.find((el) => el.id === id)!;
+    const absolute = world.find((el) => el.id === id)!;
+    return { id, patch: {
+      ...patch,
+      ...(patch.x !== undefined ? { x: original.x + patch.x - absolute.x } : {}),
+      ...(patch.y !== undefined ? { y: original.y + patch.y - absolute.y } : {}),
+    } };
+  });
 }

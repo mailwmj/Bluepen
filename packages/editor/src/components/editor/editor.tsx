@@ -1887,6 +1887,8 @@ export function Editor() {
         <RightPanel
           element={selected}
           selectedElements={selectedElements}
+          allElements={allElementsFlat}
+          onSelect={setSelectedId}
           parent={selected?.parentId ? allElementsFlat.find((e: EditorElement) => e.id === selected.parentId) ?? null : null}
           pages={pages}
           onUpdate={updateElement}
