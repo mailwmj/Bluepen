@@ -19,6 +19,7 @@ import {
   Copy, CopyPlus, Scissors, Trash2, Lock, Unlock, EyeOff, Square, Maximize2, ClipboardPaste,
   MousePointer2, Hand, Type, ArrowUp, ArrowDown, ArrowUpToLine, ArrowDownToLine,
   Boxes, Ungroup, X,
+  WandSparkles,
 } from "lucide-react";
 import {
   Toolbar as CossToolbar,
@@ -49,6 +50,8 @@ import { createHistory, appendHistory, moveHistory, type EditHistory } from "./u
 import { Button } from "@bluepen/editor/components/ui/button";
 import { libraryModes, type LibraryMode } from "./library/catalog";
 import { cn } from "@bluepen/editor/lib/utils";
+import { AgentPanel } from "./agent/agent-panel";
+import { planToElement, validatePrototypePlan, type PrototypePlan } from "./agent/prototype-plan";
 
 function genId() {
   return `el-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -172,6 +175,8 @@ export function Editor() {
   const [libraryTab, setLibraryTab] = useState<"pages" | "components" | "web" | "agent">("components");
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [leftDrawerCollapsed, setLeftDrawerCollapsed] = useState(false);
+  const [agentOpen, setAgentOpen] = useState(false);
+  const [agentAnchor, setAgentAnchor] = useState<{ x: number; y: number } | null>(null);
 
   const toggleTheme = useCallback(() => {
     setTheme((prev) => {
@@ -665,9 +670,33 @@ export function Editor() {
         addElement(activeTool as ComponentType, px, py, parentId);
         setActiveTool("select");
       }
+      if (activeTool === "ai-generate") {
+        setAgentAnchor({ x: Math.round(canvasX / 20) * 20, y: Math.round(canvasY / 20) * 20 });
+        setAgentOpen(true);
+        setActiveTool("select");
+      }
     },
     [activeTool, addElement, elements],
   );
+
+  const generatePrototype = useCallback((plan: PrototypePlan) => {
+    const errors = validatePrototypePlan(plan);
+    if (errors.length) {
+      showToast({ type: "error", title: "原型计划无效", description: errors[0], id: "agent-plan-invalid" });
+      return;
+    }
+    const anchor = agentAnchor ?? { x: 80, y: 80 };
+    const root = planToElement(plan, anchor.x, anchor.y);
+    // Keep generated pages away from existing content when the requested anchor is occupied.
+    const overlaps = elements.some((el) => el.x < root.x + root.width && el.x + el.width > root.x && el.y < root.y + root.height && el.y + el.height > root.y);
+    if (overlaps && !agentAnchor) root.x += 40;
+    commit([...latestElementsRef.current, root]);
+    setSelectedIds([root.id]);
+    setAgentAnchor(null);
+    setAgentOpen(false);
+    canvasApiRef.current?.fitContent(true);
+    showToast({ title: "原型已生成", description: `${plan.pageName} · ${root.children.length} 个区域`, id: "agent-generated" });
+  }, [agentAnchor, commit, elements]);
 
   const lastCanvasPointerPosRef = useRef<{ x: number; y: number }>({ x: 200, y: 200 });
 
@@ -1948,11 +1977,20 @@ export function Editor() {
               <Type aria-hidden="true" className="size-3" />
               TEXT
             </ToolbarButton>
+            <ToolbarButton className={toolClass("ai-generate")} onClick={() => setActiveTool("ai-generate")} title="AI 生成页面">
+              <WandSparkles aria-hidden="true" className="size-3" />
+              AI
+            </ToolbarButton>
           </ToolbarGroup>
           </CossToolbar>
         </div>
       </div>
       )}
+      <AgentPanel
+        open={agentOpen}
+        onClose={() => { setAgentOpen(false); setAgentAnchor(null); }}
+        onGenerate={generatePrototype}
+      />
     </div>
     );
 
