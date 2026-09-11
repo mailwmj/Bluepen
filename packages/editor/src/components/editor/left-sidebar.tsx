@@ -145,6 +145,7 @@ interface LeftSidebarProps {
   onPageSelect: (id: string) => void;
   onPageAdd: () => void;
   onPageDelete: (id: string) => void;
+  onPageRename: (id: string, name: string) => void;
   elements: EditorElement[];
   selectedId: string | null;
   selectedIds?: string[];
@@ -551,8 +552,8 @@ export function getElementIcon(type: ComponentType) {
 function ComponentMiniPreview({ type }: { type: ComponentType; icon?: string }) {
   const IconComponent = getElementIcon(type);
   return (
-    <div className="flex size-7 items-center justify-center rounded-xs transition-transform duration-150 group-hover:scale-110">
-      <IconComponent className="size-5 text-foreground/85 transition-colors group-hover:text-foreground stroke-[1.75]" />
+    <div className="flex size-7 items-center justify-center rounded-xs">
+      <IconComponent className="size-5 text-foreground/85 transition-colors group-hover:text-foreground stroke-[1.5]" />
     </div>
   );
 }
@@ -623,6 +624,8 @@ const LayerTreeItem = memo(function LayerTreeItem({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    e.stopPropagation();
+    if (e.nativeEvent.isComposing) return;
     if (e.key === "Enter") {
       e.preventDefault();
       handleSaveRename();
@@ -637,19 +640,19 @@ const LayerTreeItem = memo(function LayerTreeItem({
     <div className="relative">
       <div
         className={cn(
-          "group flex h-7.5 cursor-pointer items-center gap-1.5 rounded-md px-2 text-xs transition-colors duration-150 select-none",
+          "group/layer flex h-8 items-center gap-1.5 rounded-md px-2 text-xs transition-colors duration-150 select-none",
           isSelected
-            ? "bg-surface-raised text-foreground font-bold border border-border-visible"
+            ? "bg-surface-raised text-foreground font-medium border border-border-visible"
             : "text-muted-foreground hover:bg-surface-raised/50 hover:text-foreground",
-          !el.visible && "opacity-40"
+          !el.visible && "text-muted-foreground"
         )}
         style={{ paddingLeft: `${6 + depth * 12}px` }}
-        onClick={handleClick}
-        onDoubleClick={handleDoubleClick}
       >
         {hasChildren ? (
           <button
             type="button"
+            aria-label={`${expanded ? '收起' : '展开'}图层：${el.name}`}
+            aria-expanded={expanded}
             className="flex size-4 shrink-0 items-center justify-center rounded-xs hover:bg-surface-raised text-muted-foreground hover:text-foreground"
             onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
           >
@@ -659,19 +662,14 @@ const LayerTreeItem = memo(function LayerTreeItem({
           <span className="size-3.5 shrink-0" />
         )}
 
-        {/* Element Type Icon */}
-        <ElementIcon className={cn("size-3.5 shrink-0 transition-colors", isSelected ? "text-foreground" : "text-muted-foreground/70")} />
-
         {/* Element Name or Inline Edit Input */}
         {isEditing ? (
           <input
-            ref={(input) => {
-              if (input) {
-                input.focus();
-                input.select();
-              }
-            }}
+            autoFocus
+            onFocus={event => event.currentTarget.select()}
             type="text"
+            aria-label="图层名称"
+            maxLength={100}
             value={editName}
             onChange={(e) => setEditName(e.target.value)}
             onBlur={handleSaveRename}
@@ -681,22 +679,30 @@ const LayerTreeItem = memo(function LayerTreeItem({
             className="h-5.5 flex-1 min-w-0 rounded-xs border border-border-visible bg-background px-1 text-xs font-medium text-foreground outline-none focus:border-foreground"
           />
         ) : (
-          <span
-            className="truncate flex-1 text-xs font-medium tracking-normal"
-            title="双击重命名"
+          <button
+            type="button"
+            aria-label={`选择图层：${el.name}`}
+            aria-pressed={isSelected}
+            className="flex h-full min-w-0 flex-1 items-center gap-1.5 text-left text-xs font-medium tracking-normal"
+            title="点击选择 · 双击或 F2 重命名 · Shift 点击多选"
+            onClick={handleClick}
+            onDoubleClick={handleDoubleClick}
+            onKeyDown={event => { if (event.key === 'F2') { event.preventDefault(); event.stopPropagation(); setEditName(el.name); setIsEditing(true); } }}
           >
-            {el.name}
-          </span>
+            <ElementIcon className="size-3.5 shrink-0" aria-hidden="true" />
+            <span className={cn("truncate", !el.visible && "opacity-60")}>{el.name}</span>
+          </button>
         )}
 
         {/* Hover Action Buttons */}
         {!isEditing && (
-          <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+          <div className={cn("flex shrink-0 items-center gap-0.5 transition-opacity group-hover/layer:opacity-100 group-focus-within/layer:opacity-100 pointer-coarse:opacity-100", el.visible && !el.locked && !isSelected && "opacity-0")}>
             <button
               type="button"
               className="flex size-4 items-center justify-center rounded-xs text-muted-foreground hover:text-foreground hover:bg-surface-raised"
               onClick={(e) => { e.stopPropagation(); onUpdateElement(el.id, { visible: !el.visible }); }}
               title={el.visible ? "隐藏图层" : "显示图层"}
+              aria-label={`${el.visible ? '隐藏' : '显示'}图层：${el.name}`}
             >
               {el.visible ? <Eye className="size-3" /> : <EyeOff className="size-3 text-muted-foreground/50" />}
             </button>
@@ -705,14 +711,16 @@ const LayerTreeItem = memo(function LayerTreeItem({
               className="flex size-4 items-center justify-center rounded-xs text-muted-foreground hover:text-foreground hover:bg-surface-raised"
               onClick={(e) => { e.stopPropagation(); onUpdateElement(el.id, { locked: !el.locked }); }}
               title={el.locked ? "解锁图层" : "锁定图层"}
+              aria-label={`${el.locked ? '解锁' : '锁定'}图层：${el.name}`}
             >
-              {el.locked ? <Lock className="size-3 text-accent" /> : <Unlock className="size-3 text-muted-foreground/50" />}
+              {el.locked ? <Lock className="size-3 text-foreground" /> : <Unlock className="size-3 text-muted-foreground/70" />}
             </button>
             <button
               type="button"
               className="flex size-4 items-center justify-center rounded-xs text-muted-foreground hover:text-destructive hover:bg-destructive/10"
               onClick={(e) => { e.stopPropagation(); onDeleteElement(el.id); }}
               title="删除图层"
+              aria-label={`删除图层：${el.name}`}
             >
               <Trash2 className="size-3" />
             </button>
@@ -750,6 +758,7 @@ export const LeftSidebar = memo(function LeftSidebar({
   onPageSelect,
   onPageAdd,
   onPageDelete,
+  onPageRename,
   elements,
   selectedId,
   selectedIds,
@@ -765,6 +774,12 @@ export const LeftSidebar = memo(function LeftSidebar({
   drawerCollapsed: controlledDrawerCollapsed,
   onToggleDrawer,
 }: LeftSidebarProps) {
+  const [renamingPage, setRenamingPage] = useState<string | null>(null);
+  const [pageName, setPageName] = useState("");
+  const savePageName = () => {
+    if (renamingPage && pageName.trim()) onPageRename(renamingPage, pageName.trim());
+    setRenamingPage(null);
+  };
   const [internalCollapsed, setInternalCollapsed] = useState(false);
   const isDrawerCollapsed = controlledDrawerCollapsed !== undefined ? controlledDrawerCollapsed : internalCollapsed;
 
@@ -842,7 +857,7 @@ export const LeftSidebar = memo(function LeftSidebar({
                 onClick={() => handleTabClick(item.id)}
                 title={isActive ? `${item.label} (再次点击收起)` : `${item.label} (点击展开)`}
               >
-                <Icon className={cn("size-4 transition-transform duration-150", isActive ? "scale-105 text-foreground" : "text-muted-foreground group-hover:text-foreground")} />
+                <Icon className={cn("size-4", isActive ? "text-foreground" : "text-muted-foreground group-hover:text-foreground")} />
                 <span
                   className={cn(
                     "mt-0.5 font-mono text-[10px] tracking-wider uppercase leading-none",
@@ -864,7 +879,7 @@ export const LeftSidebar = memo(function LeftSidebar({
         aria-hidden={isDrawerCollapsed}
         inert={isDrawerCollapsed}
         className={cn(
-          "absolute top-0 bottom-0 left-12 z-20 flex w-62 flex-col overflow-hidden border-r border-border bg-surface text-foreground transition-all duration-200 ease-out",
+          "absolute top-0 bottom-0 left-12 z-20 flex w-62 flex-col overflow-hidden border-r border-border bg-surface text-foreground transition-[opacity,transform] duration-200 ease-technical",
           isDrawerCollapsed
             ? "pointer-events-none -translate-x-3 opacity-0"
             : "translate-x-0 opacity-100"
@@ -912,7 +927,7 @@ export const LeftSidebar = memo(function LeftSidebar({
                       {!collapsed && (
                         <div className={cn("grid gap-2", isTemplate ? "grid-cols-2" : "grid-cols-3")}>
                           {items.map((item) => (
-                            <div key={item.type} className="flex min-w-0 flex-col gap-1">
+                            <div key={item.type} className="group/asset relative min-w-0">
                             <Button
                               variant="outline"
                               draggable
@@ -925,13 +940,13 @@ export const LeftSidebar = memo(function LeftSidebar({
                               onClick={() => { onAddAsset(item); onSelectTool?.("select"); }}
                               aria-label={`添加${item.label}`}
                               title={`${item.label} · ${item.defaultWidth} × ${item.defaultHeight} · 点击添加或拖入画布`}
-                              className={cn("h-auto min-h-20 min-w-0 flex-col gap-1 overflow-hidden whitespace-normal px-1 py-2 font-normal", isTemplate && "min-h-24")}
+                              className={cn("h-full w-full min-h-20 min-w-0 flex-col gap-1 overflow-hidden whitespace-normal px-1 py-2 font-normal", isTemplate && "min-h-24")}
                             >
                               <div className="flex h-8 w-full items-center justify-center" aria-hidden="true"><ComponentMiniPreview type={item.type} icon={item.icon} /></div>
                               <span className="line-clamp-2 w-full text-xs leading-4">{item.label}</span>
                               {isTemplate && <span className="font-mono text-[11px] text-muted-foreground">{item.defaultWidth} × {item.defaultHeight}</span>}
                             </Button>
-                            {onReferenceAsset && <Button variant="ghost" size="xs" className="h-6 text-[11px] text-muted-foreground" aria-label={`${item.label}作为 AI 参考`} title="添加到会话作为参考，不会插入画布" onClick={() => onReferenceAsset(item)}>用作 AI 参考</Button>}
+                            {onReferenceAsset && <Button variant="ghost" size="icon-xs" className="absolute right-1 top-1 bg-surface text-muted-foreground opacity-0 transition-opacity group-hover/asset:opacity-100 group-focus-within/asset:opacity-100 pointer-coarse:opacity-100" aria-label={`${item.label}作为 AI 参考`} title="添加到 AI 会话作为参考" onClick={() => onReferenceAsset(item)}><Paperclip className="size-3" aria-hidden="true" /></Button>}
                             </div>
                           ))}
                         </div>
@@ -981,7 +996,6 @@ export const LeftSidebar = memo(function LeftSidebar({
                     return (
                       <div
                         key={page.id}
-                        onClick={() => onPageSelect(page.id)}
                         className={cn(
                           "group flex h-7.5 cursor-pointer items-center justify-between rounded-md px-2.5 text-xs transition-colors duration-150 select-none",
                           isActive
@@ -991,7 +1005,14 @@ export const LeftSidebar = memo(function LeftSidebar({
                       >
                         <div className="flex items-center gap-2 min-w-0 flex-1">
                           <Layout className={cn("size-3.5 shrink-0", isActive ? "text-foreground" : "text-muted-foreground/70")} />
-                          <span className="truncate text-xs font-medium tracking-normal">{page.name}</span>
+                          {renamingPage === page.id ? <input aria-label="页面名称" autoFocus value={pageName} maxLength={100} onFocus={event => event.currentTarget.select()}
+                            onChange={event => setPageName(event.target.value)} onBlur={savePageName}
+                            onKeyDown={event => { event.stopPropagation(); if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); savePageName(); } if (event.key === "Escape") { event.preventDefault(); setRenamingPage(null); } }}
+                            className="h-6 min-w-0 flex-1 rounded border border-border-visible bg-background px-1 text-xs outline-none focus:border-foreground" />
+                            : <button aria-label={`切换到页面：${page.name}`} aria-current={isActive ? "page" : undefined} title="双击或按 F2 重命名页面"
+                              onClick={() => onPageSelect(page.id)} onDoubleClick={() => { setPageName(page.name); setRenamingPage(page.id); }}
+                              onKeyDown={event => { if (event.key === "F2") { event.preventDefault(); event.stopPropagation(); setPageName(page.name); setRenamingPage(page.id); } }}
+                              className="min-w-0 flex-1 truncate py-1 text-left text-xs font-medium tracking-normal focus-visible:outline-1 focus-visible:outline-foreground">{page.name}</button>}
                         </div>
                         {pages.length > 1 && (
                           <button
@@ -1000,8 +1021,9 @@ export const LeftSidebar = memo(function LeftSidebar({
                               e.stopPropagation();
                               onPageDelete(page.id);
                             }}
-                            className="opacity-0 group-hover:opacity-100 flex size-4 items-center justify-center rounded-xs text-muted-foreground hover:text-destructive transition-opacity"
+                            className="opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 pointer-coarse:opacity-100 flex size-5 items-center justify-center rounded-xs text-muted-foreground hover:text-destructive transition-opacity"
                             title="删除页面"
+                            aria-label={`删除页面：${page.name}`}
                           >
                             <X className="size-3" />
                           </button>

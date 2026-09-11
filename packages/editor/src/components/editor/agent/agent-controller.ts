@@ -152,7 +152,7 @@ export class AgentController {
   private modelMessages(session: AgentSession): AgentMessage[] {
     const valid = session.messages.filter(message => message.role === 'user' || ['completed', 'waiting-input', 'waiting-approval', 'declined'].includes(message.status));
     const lastPlan = valid.findLast(message => message.plan);
-    const messages = valid.map(message => ({ role: message.role, content: message.content +
+    const messages = valid.map(message => ({ role: message.role, reasoning: message.role === 'assistant' ? message.reasoning : undefined, content: message.content +
       (message.context.references?.length ? `\n本条消息引用：${JSON.stringify(message.context.references.map(ref => ({ kind: ref.kind, name: ref.name, role: ref.role, ...(ref.kind === 'canvas' ? { nodeId: ref.nodeId } : {}) })))}` : '') +
       (message.questions?.length ? `\n澄清问题：${JSON.stringify(message.questions)}` : '') +
       (message === lastPlan ? `\n方案：${JSON.stringify(message.plan)}` : '') +
@@ -162,8 +162,9 @@ export class AgentController {
     let length = 0;
     const recent: AgentMessage[] = [];
     for (const message of messages.toReversed()) {
-      if (recent.length && length + message.content.length > 60_000) break;
-      recent.unshift(message); length += message.content.length;
+      const size = message.content.length + (message.reasoning?.length ?? 0);
+      if (recent.length && length + size > 60_000) break;
+      recent.unshift(message); length += size;
     }
     if (recent.length < messages.length) recent.unshift({ role: 'user', content: '[较早会话已省略；不要推测缺失内容，以本次引用的当前画布数据为准。]' });
     return recent;

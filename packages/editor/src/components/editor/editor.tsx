@@ -63,6 +63,9 @@ import { planToElement } from './agent/prototype-plan';
 import { combineBounds } from './utils/viewport';
 import { getLayoutElements } from './utils/layout-elements';
 import { projectIdentity } from "./utils/project-identity";
+import { parseProjectFile, nextPageName } from "./utils/project-file";
+import { useProjectConfirmation } from "./hooks/use-project-confirmation";
+import { CanvasExport } from "./canvas-export";
 
 function genId() {
   return `el-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -119,6 +122,9 @@ const defaultPages: Page[] = [
 
 export function Editor() {
   const notice = useEditorNotice();
+  const { confirm: confirmProject, dialog: projectConfirmation } = useProjectConfirmation();
+  const [exportRequest, setExportRequest] = useState<{ elements: EditorElement[]; name: string } | null>(null);
+  const exportingRef = useRef(false);
   const [pages, setPages] = useState<Page[]>(defaultPages);
   const [activePageId, setActivePageId] = useState("page-1");
   const pageHistoriesRef = useRef(new Map<string, EditHistory<EditorElement[]>>());
@@ -1347,18 +1353,20 @@ export function Editor() {
   );
 
   const handlePageAdd = useCallback(() => {
-    const newPage: Page = { id: genId(), name: `Page ${pages.length + 1}`, elements: [] };
+    const newPage: Page = { id: genId(), name: nextPageName(pages), elements: [] };
     setPages((prev) => [...prev, newPage]);
     setZoom(1);
     setActivePageId(newPage.id);
     pageHistoriesRef.current.set(newPage.id, createHistory(newPage.elements));
     setSelectedId(null);
     setDirty(true);
-  }, [pages.length]);
+  }, [pages]);
 
   const handlePageDelete = useCallback(
-    (id: string) => {
+    async (id: string) => {
       if (pages.length <= 1) return;
+      const page = pages.find(item => item.id === id);
+      if (!page || !(await confirmProject({ title: `删除「${page.name}」？`, description: "该页面及其中的全部图层将被删除。此操作无法撤销。", action: "删除页面" }))) return;
       const next = pages.filter((p) => p.id !== id);
       pageHistoriesRef.current.delete(id);
       pagePansRef.current.delete(id);
@@ -1372,7 +1380,7 @@ export function Editor() {
       }
       setDirty(true);
     },
-    [pages, activePageId],
+    [pages, activePageId, confirmProject],
   );
 
   const getProject = useCallback(
@@ -1486,11 +1494,21 @@ export function Editor() {
     else await handleSaveShortcut();
   }, [isTauri, saveDesktopFile, handleSaveShortcut]);
 
+  const confirmReplaceProject = useCallback(async (action: string) => {
+    const browserContent = !isTauri && (pages.some(page => page.elements.length > 0) || pages.length > 1 || projectName !== "Untitled");
+    if (!dirty && !browserContent) return true;
+    return confirmProject({
+      title: `${action}前保留当前项目？`,
+      description: browserContent
+        ? "浏览器只自动恢复最近一个项目。继续后将替换当前本地副本，建议先下载 .bluepen 文件。"
+        : "当前修改尚未保存成功，继续将丢失这些修改。",
+      action: "直接继续",
+      saveCopy: !isTauri ? handleSaveShortcut : undefined,
+    });
+  }, [dirty, isTauri, pages, projectName, confirmProject, handleSaveShortcut]);
+
   const handleNewShortcut = useCallback(async () => {
-    if (dirty) {
-      const ok = await confirmLocal("当前修改尚未保存成功。仍要新建项目吗？");
-      if (!ok) return;
-    }
+    if (!(await confirmReplaceProject("新建项目"))) return;
     loadProject({
       id: genId(),
       pages: [{ id: genId(), name: "Page 1", elements: [] }],
@@ -1498,14 +1516,11 @@ export function Editor() {
       filePath: null,
     });
     showToast({ title: "已新建项目", id: "new-project" });
-  }, [dirty, loadProject]);
+  }, [confirmReplaceProject, loadProject]);
 
   const handleOpenShortcut = useCallback(async () => {
-    if (dirty) {
-      const ok = await confirmLocal("当前修改尚未保存成功。仍要打开其他项目吗？");
-      if (!ok) return;
-    }
     if (isTauri) {
+      if (!(await confirmReplaceProject("打开项目"))) return;
       await fileApi?.openFile();
     } else {
       const input = document.createElement("input");
@@ -1516,12 +1531,9 @@ export function Editor() {
         if (!file) return;
         try {
           const text = await file.text();
-          const data = JSON.parse(text);
-          if (!data || !Array.isArray(data.pages)) {
-            showToast({ type: "error", title: "项目文件格式无效", id: "open-file-invalid" });
-            return;
-          }
           const baseName = file.name.replace(/\.(bluepen|json)$/, "") || "Untitled";
+          const data = parseProjectFile(text, baseName);
+          if (!(await confirmReplaceProject("打开项目"))) return;
           loadProject({
             id: data.id,
             pages: data.pages,
@@ -1531,12 +1543,12 @@ export function Editor() {
           showToast({ type: "success", title: "项目已打开", description: baseName, id: "open-file" });
         } catch (err) {
           console.error("Failed to parse project file:", err);
-          showToast({ type: "error", title: "无法解析项目文件", id: "open-file-error" });
+          showToast({ type: "error", title: err instanceof Error ? err.message : "无法解析项目文件", id: "open-file-error" });
         }
       };
       input.click();
     }
-  }, [dirty, isTauri, fileApi, loadProject]);
+  }, [confirmReplaceProject, isTauri, fileApi, loadProject]);
 
   const handleDropFile = useCallback(
     async (file: File, x?: number, y?: number) => {
@@ -1544,13 +1556,10 @@ export function Editor() {
       if (fileName.endsWith(".bluepen") || (fileName.endsWith(".json") && !file.type.startsWith("image/"))) {
         try {
           const text = await file.text();
-          const data = JSON.parse(text);
-          if (data && Array.isArray(data.pages)) {
-            if (dirty) {
-              const ok = await confirmLocal("Current project has unsaved changes. Open dropped project anyway?");
-              if (!ok) return;
-            }
-            const baseName = file.name.replace(/\.(bluepen|json)$/, "") || "Untitled";
+          const baseName = file.name.replace(/\.(bluepen|json)$/, "") || "Untitled";
+          const data = parseProjectFile(text, baseName);
+          if (data) {
+            if (!(await confirmReplaceProject("打开项目"))) return;
             loadProject({
               id: data.id,
               pages: data.pages,
@@ -1562,124 +1571,43 @@ export function Editor() {
           }
         } catch (err) {
           console.error("Failed to parse dropped project:", err);
-          showToast({ type: "error", title: "无法解析项目文件", id: "open-file-error" });
+          showToast({ type: "error", title: err instanceof Error ? err.message : "无法解析项目文件", id: "open-file-error" });
           return;
         }
       }
       await insertImageFile(file, x, y);
     },
-    [dirty, loadProject, insertImageFile],
+    [confirmReplaceProject, loadProject, insertImageFile],
   );
 
-  const exportPng = useCallback(async () => {
-    const flat: { el: EditorElement; x: number; y: number }[] = [];
-    const walk = (el: EditorElement, ax: number, ay: number) => {
-      flat.push({ el, x: el.x + ax, y: el.y + ay });
-      el.children.forEach((c) => walk(c, el.x + ax, el.y + ay));
-    };
-    elements.filter((e) => !e.parentId).forEach((e) => walk(e, 0, 0));
-    const visible = flat.filter(({ el }) => el.visible);
-    let minX = 0, minY = 0, maxX = 1440, maxY = 900;
-    if (visible.length > 0) {
-      minX = Math.min(...visible.map(({ x }) => x));
-      minY = Math.min(...visible.map(({ y }) => y));
-      maxX = Math.max(...visible.map(({ x, el }) => x + el.width));
-      maxY = Math.max(...visible.map(({ y, el }) => y + el.height));
-    }
-    const scale = 2;
-    const width = Math.max(1, Math.round((maxX - minX) * scale));
-    const height = Math.max(1, Math.round((maxY - minY) * scale));
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.fillStyle = "#ffffff";
-    ctx.fillRect(0, 0, width, height);
-    for (const { el, x, y } of visible) {
-      ctx.save();
-      ctx.globalAlpha = el.opacity;
-      ctx.translate((x - minX) * scale, (y - minY) * scale);
-      ctx.rotate((el.rotation * Math.PI) / 180);
-      const w = el.width * scale;
-      const h = el.height * scale;
-
-      if (el.type === "image" && el.props?.src) {
-        const imgSrc = String(el.props.src);
-        try {
-          const img = new Image();
-          img.crossOrigin = "anonymous";
-          await new Promise<void>((resolve) => {
-            img.onload = () => resolve();
-            img.onerror = () => resolve();
-            img.src = imgSrc;
-          });
-          const rad = Number(el.props.radius || 0) * scale;
-          if (rad > 0) {
-            ctx.save();
-            ctx.beginPath();
-            ctx.roundRect(0, 0, w, h, rad);
-            ctx.clip();
-            ctx.drawImage(img, 0, 0, w, h);
-            ctx.restore();
-          } else {
-            ctx.drawImage(img, 0, 0, w, h);
-          }
-        } catch {
-          // Ignore image load failure
-        }
-      } else if (el.type === "text") {
-        ctx.fillStyle = "#d4d4d8";
-        const barH = Math.max(4, 6 * scale);
-        const bars = [0.72, 0.5, 0.34];
-        bars.forEach((frac, i) => {
-          ctx.fillRect(0, i * 16 * scale, Math.max(20, w * frac), barH);
-        });
-      } else {
-        ctx.fillStyle = "#f5f5f4";
-        ctx.strokeStyle = "#a8a29e";
-        ctx.lineWidth = 1.5;
-        ctx.beginPath();
-        ctx.roundRect(0, 0, w, h, 4 * scale);
-        ctx.fill();
-        ctx.stroke();
-        ctx.fillStyle = "#737373";
-        ctx.font = `${11 * scale}px system-ui, sans-serif`;
-        ctx.textBaseline = "top";
-        ctx.fillText(el.name, 8 * scale, 8 * scale, w - 16 * scale);
-      }
-      ctx.restore();
-    }
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
-    if (!blob) return;
-    const baseName = (projectName || "Untitled").replace(/\.(bluepen|json)$/, "");
-    if (isTauri) {
-      try {
+  const finishExport = useCallback(async (blob: Blob) => {
+    if (!exportRequest) return;
+    const baseName = exportRequest.name.replace(/\.(bluepen|json)$/, "");
+    try {
+      if (isTauri) {
         const { getProjectsDir } = await import("./hooks/local-store");
-        const dir = await getProjectsDir();
         const { save } = await import("@tauri-apps/plugin-dialog");
         const { writeFile } = await import("@tauri-apps/plugin-fs");
-        const path = await save({
-          defaultPath: `${dir}/${baseName}.png`,
-          filters: [{ name: "PNG Image", extensions: ["png"] }],
-        });
-        if (typeof path !== "string") return;
+        const path = await save({ defaultPath: `${await getProjectsDir()}/${baseName}.png`, filters: [{ name: "PNG Image", extensions: ["png"] }] });
+        if (typeof path !== "string") { showToast({ title: "已取消导出", id: "export-png" }); return; }
         await writeFile(path, new Uint8Array(await blob.arrayBuffer()));
-      } catch (e) {
-        console.error("Failed to export:", e);
-        showToast({ type: "error", title: "图片导出失败", id: "export-error" });
-        return;
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a"); a.href = url; a.download = `${baseName}.png`; a.click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
       }
-    } else {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${baseName}.png`;
-      a.click();
-      URL.revokeObjectURL(url);
-    }
-    showToast({ type: "success", title: "图片已导出", description: `${baseName}.png`, id: "export-png" });
-  }, [elements, isTauri, projectName]);
+      showToast({ type: "success", title: "图片已导出", description: `${baseName}.png`, id: "export-png" });
+    } catch (error) {
+      showToast({ type: "error", title: "图片导出失败", description: error instanceof Error ? error.message : "请重试", id: "export-png" });
+    } finally { exportingRef.current = false; setExportRequest(null); }
+  }, [exportRequest, isTauri]);
+
+  const exportPng = useCallback(() => {
+    if (exportingRef.current) return;
+    exportingRef.current = true;
+    setExportRequest({ elements, name: projectName || "Untitled" });
+    showToast({ title: "正在导出 PNG…", id: "export-png", duration: 0 });
+  }, [elements, projectName]);
 
   useKeyboard({
     "Ctrl+S": handleSaveShortcut,
@@ -1714,6 +1642,8 @@ export function Editor() {
     <div className="flex h-full min-h-0 w-full flex-1 flex-col overflow-hidden bg-background text-foreground">
       <TopBar
         projectName={projectName}
+        onRenameProject={(name) => { setProjectName(name); setDirty(true); }}
+        exporting={!!exportRequest}
         dirty={dirty}
         saveState={saveState}
         onRetrySave={() => setSaveRetry((attempt) => attempt + 1)}
@@ -1791,6 +1721,7 @@ export function Editor() {
             onPageSelect={handlePageSelect}
             onPageAdd={handlePageAdd}
             onPageDelete={handlePageDelete}
+            onPageRename={(id, name) => { setPages(previous => previous.map(page => page.id === id ? { ...page, name } : page)); setDirty(true); }}
             elements={elements}
             selectedId={selectedId}
             selectedIds={selectedIds}
@@ -2067,15 +1998,15 @@ export function Editor() {
         <div className="animate-fade-up">
           <CossToolbar className="max-w-full overflow-x-auto rounded-full border border-border-visible bg-surface px-1.5 py-1 [&_[data-slot=toolbar-group]]:shrink-0">
           <ToolbarGroup>
-            <ToolbarButton className={toolClass("select")} onClick={() => setActiveTool("select")} title="选择 (V)">
+            <ToolbarButton aria-label="选择工具" aria-pressed={activeTool === "select"} className={toolClass("select")} onClick={() => setActiveTool("select")} title="选择 (V)">
               <MousePointer2 aria-hidden="true" className="size-3" />
               SELECT
             </ToolbarButton>
-            <ToolbarButton className={toolClass("hand")} onClick={() => setActiveTool("hand")} title="抓手 (H / 空格)">
+            <ToolbarButton aria-label="抓手工具" aria-pressed={activeTool === "hand"} className={toolClass("hand")} onClick={() => setActiveTool("hand")} title="抓手 (H / 空格)">
               <Hand aria-hidden="true" className="size-3" />
               HAND
             </ToolbarButton>
-            <ToolbarButton className={toolClass("connector")} onClick={() => setActiveTool("connector")} title="连接线 (E)">
+            <ToolbarButton aria-label="连接线工具" aria-pressed={activeTool === "connector"} className={toolClass("connector")} onClick={() => setActiveTool("connector")} title="连接线 (E)">
               <svg className="size-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <circle cx="4" cy="5" r="2.5" fill="currentColor" />
                 <path d="M 4 5 H 12 Q 16 5 16 9 V 15 Q 16 19 12 19 H 20" strokeLinecap="round" strokeLinejoin="round" />
@@ -2086,11 +2017,11 @@ export function Editor() {
           </ToolbarGroup>
           <ToolbarSeparator className="mx-1 h-3.5 bg-border" />
           <ToolbarGroup>
-            <ToolbarButton className={toolClass("rectangle")} onClick={() => setActiveTool("rectangle")} title="矩形 (R)">
+            <ToolbarButton aria-label="矩形工具" aria-pressed={activeTool === "rectangle"} className={toolClass("rectangle")} onClick={() => setActiveTool("rectangle")} title="矩形 (R)">
               <Square aria-hidden="true" className="size-3" />
               RECT
             </ToolbarButton>
-            <ToolbarButton className={toolClass("text")} onClick={() => setActiveTool("text")} title="文字 (T)">
+            <ToolbarButton aria-label="文字工具" aria-pressed={activeTool === "text"} className={toolClass("text")} onClick={() => setActiveTool("text")} title="文字 (T)">
               <Type aria-hidden="true" className="size-3" />
               TEXT
             </ToolbarButton>
@@ -2103,6 +2034,11 @@ export function Editor() {
         </div>
       </div>
       )}
+      {projectConfirmation}
+      {exportRequest && <CanvasExport elements={exportRequest.elements} onComplete={blob => void finishExport(blob)} onError={error => {
+        exportingRef.current = false; setExportRequest(null);
+        showToast({ type: "error", title: "图片导出失败", description: error instanceof Error ? error.message : "请重试", id: "export-png" });
+      }} />}
       <AgentSettingsPage open={settingsOpen} onClose={() => setSettingsOpen(false)} controller={agent} />
     </div>
     );

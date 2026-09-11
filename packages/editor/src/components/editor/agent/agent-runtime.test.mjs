@@ -10,7 +10,7 @@ const library = loadTypeScript(fileURLToPath(new URL('../library/index.ts', impo
 function runtime(fetch, browser = true) {
   return loadTypeScript(filename, {
     mocks: { ai, '@ai-sdk/openai': openai, '../library': library, '../library/index': library },
-    globals: { fetch, URL, Headers, Request, Response, AbortSignal, AbortController,
+    globals: { fetch, URL, Headers, Request, Response, AbortSignal, AbortController, TransformStream, TextDecoder,
       process: { env: { NEXT_PUBLIC_TOKENBOX_PROXY: '/api/ai/tokenbox' } },
       ...(browser ? { window: { location: { origin: 'http://localhost:3000' } } } : {}),
     },
@@ -18,6 +18,75 @@ function runtime(fetch, browser = true) {
 }
 const settings = { baseUrl: 'https://tokbox-api.netease.im/', apiKey: 'test-only-key', model: 'gpt-5.6-terra' };
 const messages = [{ role: 'user', content: '灵感模板页面' }, { role: 'assistant', content: '需要分类吗？' }, { role: 'user', content: '需要，先讨论' }];
+
+function chatEvents(deltas, finish = 'stop') {
+  return deltas.map(delta => `data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason: null }] })}\n\n`).join('') +
+    `data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: finish }] })}\n\ndata: [DONE]\n\n`;
+}
+
+test('Chat Completions preserves DeepSeek thinking across tool calls and conversation turns', async () => {
+  const requests = [], events = [];
+  const provider = runtime(async (url, init) => {
+    requests.push({ url: String(url), body: JSON.parse(init.body) });
+    const body = requests.length === 1 ? chatEvents([
+      { reasoning_content: '先查询组件。' },
+      { tool_calls: [{ index: 0, id: 'call_chat', type: 'function', function: { name: 'searchComponents', arguments: '{"query":"button"}' } }] },
+    ], 'tool_calls') : chatEvents([{ content: JSON.stringify({ reply: '连接成功', questions: [], plan: null, changes: null }) }]);
+    return new Response(body, { headers: { 'content-type': 'text/event-stream' } });
+  });
+  const result = await provider.responsesAgentProvider({
+    messages: [{ role: 'assistant', content: '你好', reasoning: '已有思考。' }, { role: 'user', content: '连接测试' }],
+    settings: { ...settings, baseUrl: 'https://api.deepseek.com/chat/completions', model: 'deepseek-flash', protocol: 'chat-completions', thinking: 'high' },
+    onEvent: event => events.push(event),
+  });
+  assert.equal(result.reply, '连接成功');
+  assert.equal(requests.length, 2);
+  assert.equal(requests[0].url, 'https://api.deepseek.com/chat/completions');
+  assert.equal(requests[0].body.thinking.type, 'enabled');
+  assert.equal(requests[0].body.reasoning_effort, 'high');
+  assert.equal(requests[0].body.response_format.type, 'json_object');
+  assert.equal(requests[0].body.messages.find(m => m.role === 'assistant').reasoning_content, '已有思考。');
+  assert.equal(requests[1].body.messages.find(m => m.tool_calls)?.reasoning_content, '先查询组件。');
+  assert.ok(requests[1].body.messages.some(m => m.role === 'tool' && m.tool_call_id === 'call_chat'));
+  assert.ok(events.some(event => event.type === 'reasoning' && event.text === '先查询组件。'));
+  assert.ok(events.some(event => event.type === 'tool' && event.status === 'completed'));
+});
+
+test('only explicit unsupported schema errors retry with JSON mode and retain local validation', async () => {
+  const requests = [];
+  const provider = runtime(async (_url, init) => {
+    const body = JSON.parse(init.body); requests.push(body);
+    if (requests.length === 1) return new Response(JSON.stringify({ error: { message: 'This response_format type is unavailable now' } }), { status: 400 });
+    return new Response(responseEvents({ reply: '连接成功', questions: [], plan: null, changes: null }), { headers: { 'content-type': 'text/event-stream' } });
+  });
+  assert.equal((await provider.responsesAgentProvider({ messages, settings })).reply, '连接成功');
+  assert.equal(requests.length, 2);
+  assert.equal(requests[1].text.format.type, 'json_object');
+  assert.ok(JSON.stringify(requests[1].input).includes('additionalProperties'));
+});
+
+test('JSON compatibility cannot turn malformed nodes into an applicable plan', async () => {
+  const output = pageOutput(); output.plan.root.children[0].width = -20;
+  const provider = runtime(async () => new Response(chatEvents([{ content: JSON.stringify({ ...output, changes: null }) }]), { headers: { 'content-type': 'text/event-stream' } }));
+  await assert.rejects(provider.responsesAgentProvider({ messages, settings: { ...settings, protocol: 'chat-completions' } }), /原型计划无效/);
+});
+
+test('compatible JSON object props support structural inserts but still reject unknown attributes', async () => {
+  const node = { type: 'button', name: '稍后按钮', x: 184, y: 152, width: 80, height: 40, props: { text: '稍后' }, children: [] };
+  const output = { reply: '请确认新增', questions: [], plan: null, changes: { summary: '新增稍后按钮', operations: [{ kind: 'insert', parentId: 'group-a', index: 4, node }] } };
+  const provider = runtime(async () => new Response(chatEvents([{ content: JSON.stringify(output) }]), { headers: { 'content-type': 'text/event-stream' } }));
+  const input = { messages, settings: { ...settings, protocol: 'chat-completions' } };
+  assert.equal((await provider.responsesAgentProvider(input)).changes.operations[0].node.props.text, '稍后');
+  node.props.onClick = 'alert(1)';
+  await assert.rejects(provider.responsesAgentProvider(input), /属性 onClick 无效/);
+});
+
+test('ordinary 400 errors and credentials are not retried or exposed by compatibility mode', async () => {
+  let calls = 0;
+  const provider = runtime(async () => { calls++; return new Response(JSON.stringify({ error: { message: `Invalid model test-only-key` } }), { status: 400 }); });
+  await assert.rejects(provider.responsesAgentProvider({ messages, settings }), error => error.message.includes('[已隐藏]') && !error.message.includes(settings.apiKey));
+  assert.equal(calls, 1);
+});
 
 test('missing BYOK key fails instead of pretending a fixture is generated', async () => {
   const provider = runtime(() => { throw Error('must not send'); });

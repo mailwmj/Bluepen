@@ -39,5 +39,5 @@ export function showToast({
   clearTimeout(timer);
   notice = { type, title, description };
   listeners.forEach((listener) => listener());
-  if (type !== "error" && type !== "warning") timer = setTimeout(dismissEditorNotice, duration);
+  if (type !== "error" && type !== "warning" && duration > 0) timer = setTimeout(dismissEditorNotice, duration);
 }

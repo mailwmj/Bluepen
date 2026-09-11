@@ -234,3 +234,26 @@
   font-feature-settings: "tnum";
   font-variant-numeric: tabular-nums;
 }
+
+/* Consistent, quiet state feedback; never animate canvas geometry. */
+[data-slot="menu-popup"],
+[data-slot="popover-popup"],
+[data-slot="select-popup"],
+.nd-overlay {
+  transition: opacity 180ms cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+:is([data-slot="menu-popup"], [data-slot="popover-popup"], [data-slot="select-popup"], .nd-overlay):is([data-starting-style], [data-ending-style]) {
+  opacity: 0;
+}
+button:focus-visible, summary:focus-visible {
+  outline: 1px solid var(--foreground);
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

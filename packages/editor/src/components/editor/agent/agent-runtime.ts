@@ -4,12 +4,13 @@ import { createOpenAI } from '@ai-sdk/openai';
 import { APICallError, NoObjectGeneratedError, NoOutputGeneratedError, Output, streamText, stepCountIs, tool, type ModelMessage } from 'ai';
 import { z } from 'zod';
 import { library } from '../library/index';
-import { agentOutputSchema, decodeChanges, decodePlan } from './prototype-output';
+import { agentOutputSchema, decodeChanges, decodePlan, parseCompatibleAgentOutput } from './prototype-output';
+import { createAgentFetch } from './agent-transport';
 
 // Replaced by Next at build time; an exported desktop build has no web proxy.
 declare const process: { env: { NEXT_PUBLIC_TOKENBOX_PROXY?: string } };
 
-export interface AgentMessage { role: 'user' | 'assistant'; content: string; }
+export interface AgentMessage { role: 'user' | 'assistant'; content: string; reasoning?: string; }
 export type AgentProvider = (input: {
   messages: AgentMessage[];
   settings: AgentSettings;
@@ -29,19 +30,21 @@ export const responsesAgentProvider: AgentProvider = async ({ messages, settings
   if (!['https:', 'http:'].includes(parsed.protocol) || parsed.username || parsed.password || parsed.search || parsed.hash) {
     throw new Error('API Base URL 必须使用 HTTP(S)，且不能包含认证信息、查询参数或片段');
   }
-  const baseUrl = parsed.href.replace(/\/+$/, '');
+  const chat = settings.protocol === 'chat-completions';
+  const protocolName = chat ? 'Chat Completions' : 'Responses';
+  const baseUrl = parsed.href.replace(/\/+$/, '').replace(chat ? /\/chat\/completions$/ : /\/responses$/, '');
   const desktop = typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
   const proxy = process.env.NEXT_PUBLIC_TOKENBOX_PROXY;
-  const useProxy = !desktop && typeof window !== 'undefined' && proxy && baseUrl === 'https://tokbox-api.netease.im';
+  const useProxy = !chat && !desktop && typeof window !== 'undefined' && proxy && baseUrl === 'https://tokbox-api.netease.im';
   const requestFetch = desktop ? (await import('@tauri-apps/plugin-http')).fetch : globalThis.fetch;
   const openai = createOpenAI({
     apiKey: settings.apiKey.trim(),
     baseURL: useProxy ? `${window.location.origin}${proxy}` : baseUrl,
-    fetch: requestFetch,
+    fetch: createAgentFetch(requestFetch, settings, messages, onEvent),
   });
   onEvent?.({ type: 'phase', label: '正在连接模型' });
   const agentSettings = {
-    model: openai.responses(settings.model.trim()),
+    model: chat ? openai.chat(settings.model.trim()) : openai.responses(settings.model.trim()),
     maxRetries: 0,
     stopWhen: stepCountIs(5),
     providerOptions: { openai: { store: false } },
@@ -72,7 +75,7 @@ page 的根组合代表完整页面，客户端会确保它有与根边界一致
   };
   let streamError: unknown;
   try {
-    const input: ModelMessage[] = messages.map(message => ({ ...message }));
+    const input: ModelMessage[] = messages.map(({ role, content }) => ({ role, content }));
     const lastUser = input.findLastIndex(message => message.role === 'user');
     if (context && lastUser >= 0) {
       const references = (context.references ?? []).map(ref => ref.kind === 'image' ? { kind: ref.kind, name: ref.name, role: ref.role } : ref.kind === 'catalog' ? { ...ref, component: library.find(item => item.type === ref.componentType) } : ref);
@@ -96,9 +99,15 @@ page 的根组合代表完整页面，客户端会确保它有与根边界一致
     }
     // Do not create SDK result promises on a failed stream: preserve the actual
     // transport error instead of the derived NoOutputGeneratedError.
-    if (streamError) throw streamError;
     if (signal?.aborted) throw new Error('请求已取消');
-    const output = await stream.output;
+    const recoverFormat = (error: unknown) => {
+      if (NoObjectGeneratedError.isInstance(error) && error.text) {
+        try { return parseCompatibleAgentOutput(error.text); } catch { /* Preserve the original parse failure. */ }
+      }
+      throw error;
+    };
+    const output = streamError ? recoverFormat(streamError) : await Promise.resolve(stream.output).catch(recoverFormat);
+    streamError = undefined;
     if (output.questions.length > 3 || new Set(output.questions.map(q => q.id)).size !== output.questions.length || output.questions.some(q => !q.id.trim() || !q.title.trim())) throw new Error('澄清问题格式无效，请重试');
     if ([output.questions.length > 0, !!output.plan, !!output.changes].filter(Boolean).length > 1) throw new Error('接口同时返回问题和方案，请重试');
     if (output.plan) onEvent?.({ type: 'phase', label: '正在验证原型结构' });
@@ -109,7 +118,7 @@ page 的根组合代表完整页面，客户端会确保它有与根边界一致
     if (APICallError.isInstance(error)) {
       if (error.statusCode === 401) throw new Error('API Key 无效或已过期（401），请前往设置 → AI 服务');
       if (error.statusCode === 403) throw new Error('接口拒绝访问（403），请检查模型分组权限和网络');
-      if (error.statusCode === 404) throw new Error('找不到 Responses 接口或模型（404），请检查 Base URL 和模型名称');
+      if (error.statusCode === 404) throw new Error(`找不到 ${protocolName} 接口或模型（404），请检查 Base URL、接口协议和模型名称`);
       if (error.statusCode === 429) throw new Error('接口限流或额度不足（429），请稍后重试');
       if (!error.statusCode) throw new Error('无法连接 API，请检查网络、Base URL 和服务的 CORS 支持');
       let detail = '';
@@ -118,7 +127,7 @@ page 的根组合代表完整页面，客户端会确保它有与根边界一致
         const message = body.error?.message ?? body.message;
         if (typeof message === 'string') detail = message.replaceAll(settings.apiKey.trim(), '[已隐藏]').slice(0, 300);
       } catch { /* Do not display proxy HTML or arbitrary response bodies. */ }
-      throw new Error(`Responses 请求失败（${error.statusCode}）${detail ? `：${detail}` : '，请检查接口配置后重试'}`);
+      throw new Error(`${protocolName} 请求失败（${error.statusCode}）${detail ? `：${detail}` : '，请检查接口配置后重试'}`);
     }
     if (NoObjectGeneratedError.isInstance(error) || NoOutputGeneratedError.isInstance(error)) {
       throw new Error('接口未返回完整、有效的原型方案，可能已超时或输出被截断，请重试');

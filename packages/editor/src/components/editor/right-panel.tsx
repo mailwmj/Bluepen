@@ -1045,39 +1045,39 @@ export const RightPanel = memo(function RightPanel({
     return (
       <aside className="flex w-64 shrink-0 flex-col overflow-hidden border-l border-border bg-surface text-foreground">
         <div className="flex h-10 items-center border-b border-border px-3">
-          <span className="font-mono text-xs font-bold tracking-wider uppercase text-foreground">[ CANVAS & INFO ]</span>
+          <span className="font-mono text-xs tracking-wider uppercase text-foreground">画布 / Canvas</span>
         </div>
         <div className="flex flex-1 flex-col gap-3 p-3 text-xs overflow-y-auto">
-          <div className="flex flex-col gap-2 rounded-md border border-border bg-surface-raised p-2.5">
-            <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-muted-foreground">[ SHORTCUTS ]</span>
+          <div className="flex flex-col gap-3 border-b border-border pb-4">
+            <span className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">快捷操作 / Shortcuts</span>
             <div className="flex flex-col gap-1.5 font-mono text-[11px] text-muted-foreground">
               <div className="flex items-center justify-between">
-                <span>PAN CANVAS</span>
+                <span>平移画布</span>
                 <kbd className="rounded-xs border border-border-visible bg-background px-1.5 py-0.5 text-[10px]">SPACE + DRAG</kbd>
               </div>
               <div className="flex items-center justify-between">
-                <span>ZOOM</span>
+                <span>缩放</span>
                 <kbd className="rounded-xs border border-border-visible bg-background px-1.5 py-0.5 text-[10px]">{isMac ? "⌘ + SCROLL" : "CTRL + SCROLL"}</kbd>
               </div>
               <div className="flex items-center justify-between">
-                <span>COPY / PASTE</span>
+                <span>复制 / 粘贴</span>
                 <kbd className="rounded-xs border border-border-visible bg-background px-1.5 py-0.5 text-[10px]">{isMac ? "⌘C / ⌘V" : "CTRL+C / V"}</kbd>
               </div>
               <div className="flex items-center justify-between">
-                <span>DUPLICATE</span>
+                <span>创建副本</span>
                 <kbd className="rounded-xs border border-border-visible bg-background px-1.5 py-0.5 text-[10px]">{isMac ? "⌘D" : "CTRL+D"}</kbd>
               </div>
               <div className="flex items-center justify-between">
-                <span>UNDO / REDO</span>
+                <span>撤销 / 重做</span>
                 <kbd className="rounded-xs border border-border-visible bg-background px-1.5 py-0.5 text-[10px]">{isMac ? "⌘Z / ⌘⇧Z" : "CTRL+Z / Y"}</kbd>
               </div>
             </div>
           </div>
 
-          <div className="flex flex-1 flex-col items-center justify-center rounded-md border border-dashed border-border py-8 text-center">
-            <Square className="size-6 text-muted-foreground/40 mb-2" />
-            <p className="font-mono text-xs font-bold uppercase tracking-wider text-muted-foreground">NO SELECTION</p>
-            <p className="mt-1 font-mono text-[10px] text-muted-foreground/70 px-2 uppercase">SELECT AN ELEMENT TO INSPECT</p>
+          <div className="flex flex-1 flex-col items-center justify-center py-8 text-center">
+            <Square className="mb-4 size-6 text-muted-foreground" aria-hidden="true" />
+            <p className="text-sm font-medium">选择一个组件</p>
+            <p className="mt-2 px-4 text-xs leading-5 text-muted-foreground">点击画布或左侧图层，<br />在这里调整内容、尺寸与样式。</p>
           </div>
         </div>
       </aside>
@@ -1396,14 +1396,16 @@ export const RightPanel = memo(function RightPanel({
     return lines.join("\n");
   };
 
-  const copyCSS = () => {
-    void navigator.clipboard.writeText(generateCSS());
+  const copyCSS = async () => {
+    try {
+    await navigator.clipboard.writeText(generateCSS());
     showToast({
       type: "success",
       title: "CSS 已复制",
       description: "样式代码已复制到剪贴板",
       id: "copy-css",
     });
+    } catch { showToast({ type: "error", title: "CSS 复制失败", description: "请检查剪贴板权限后重试", id: "copy-css" }); }
   };
 
   return (
@@ -1411,18 +1413,18 @@ export const RightPanel = memo(function RightPanel({
       {/* Header & Tabs */}
       <div className="border-b border-border px-3 py-2">
         <div className="flex items-center justify-between">
-          <div className="flex gap-1 rounded-xs bg-muted p-0.5 font-mono text-xs">
+          <div role="tablist" aria-label="属性面板" className="flex gap-1 rounded-xs bg-muted p-0.5 font-mono text-xs" onKeyDown={event => { if (["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) { event.preventDefault(); event.stopPropagation(); const next = event.key === "Home" ? "design" : event.key === "End" ? "inspect" : activeTab === "design" ? "inspect" : "design"; setActiveTab(next); event.currentTarget.querySelector<HTMLButtonElement>(`[data-tab="${next}"]`)?.focus(); } }}>
             <button
               type="button"
               className={cn("rounded-xs px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider transition-colors", activeTab === "design" ? "bg-surface text-foreground" : "text-muted-foreground hover:text-foreground")}
-              onClick={() => setActiveTab("design")}
+              role="tab" id="inspector-tab-design" data-tab="design" aria-selected={activeTab === "design"} aria-controls="inspector-panel" tabIndex={activeTab === "design" ? 0 : -1} onClick={() => setActiveTab("design")}
             >
               DESIGN
             </button>
             <button
               type="button"
               className={cn("rounded-xs px-2 py-0.5 font-mono text-[10px] font-bold uppercase tracking-wider transition-colors", activeTab === "inspect" ? "bg-surface text-foreground" : "text-muted-foreground hover:text-foreground")}
-              onClick={() => setActiveTab("inspect")}
+              role="tab" id="inspector-tab-inspect" data-tab="inspect" aria-selected={activeTab === "inspect"} aria-controls="inspector-panel" tabIndex={activeTab === "inspect" ? 0 : -1} onClick={() => setActiveTab("inspect")}
             >
               INSPECT
             </button>
@@ -1536,7 +1538,7 @@ export const RightPanel = memo(function RightPanel({
       </div>
 
       {activeTab === "inspect" ? (
-        <div className="flex-1 overflow-y-auto p-3">
+        <div role="tabpanel" id="inspector-panel" aria-labelledby="inspector-tab-inspect" tabIndex={0} className="flex-1 overflow-y-auto p-3 animate-fade-in">
           <div className="flex items-center justify-between mb-2">
             <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">CSS 样式</span>
             <Button size="xs" variant="outline" className="gap-1 text-xs" onClick={copyCSS}>
@@ -1549,7 +1551,7 @@ export const RightPanel = memo(function RightPanel({
           </pre>
         </div>
       ) : (
-        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+        <div role="tabpanel" id="inspector-panel" aria-labelledby="inspector-tab-design" tabIndex={0} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden animate-fade-in">
           {/* Multi-Selection or Group Header Banner */}
           {isMulti ? (
             <div className="border-b border-border bg-surface-raised/40 px-3 py-2">
@@ -5535,10 +5537,10 @@ export const RightPanel = memo(function RightPanel({
                 {/* Text Content */}
                 <textarea
                   data-slot="element-text-input"
+                  aria-label="文本内容"
                   value={textContent}
                   onChange={(e) => {
-                    setProp("text", e.target.value);
-                    if (e.target.value) setProp("hasText", true);
+                    setProps({ text: e.target.value, ...(e.target.value ? { hasText: true } : {}) });
                   }}
                   rows={2}
                   placeholder={isTextLike ? "输入文本内容…" : "在形状中输入文本…"}

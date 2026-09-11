@@ -54,3 +54,13 @@ test('inaccessible desktop keychain does not remove the legacy key', async () =>
   const state = setup({ desktop: true, failKey: true }); await assert.rejects(state.store.loadAgentSettings());
   assert.ok(state.localStorage.getItem('bluepen:ai-settings')); assert.equal(state.values.size, 0);
 });
+
+test('protocol and thinking choices survive reload without persisting credentials', async () => {
+  const state = setup({ legacy: false });
+  await state.store.saveAgentSettings({ ...settings, protocol: 'chat-completions', thinking: 'high' });
+  const loaded = await state.store.loadAgentSettings();
+  assert.equal(loaded.protocol, 'chat-completions');
+  assert.equal(loaded.thinking, 'high');
+  assert.equal(loaded.apiKey, settings.apiKey);
+  assert.ok(!JSON.stringify([...state.values]).includes(settings.apiKey));
+});

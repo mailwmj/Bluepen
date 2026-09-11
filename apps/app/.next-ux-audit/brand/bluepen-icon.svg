@@ -1,0 +1,31 @@
+
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" rx="112" fill="#0A0A0A"/>
+  
+  <!-- Coordinate Corner Ticks -->
+  <path d="M 50 65 L 65 65 M 65 50 L 65 65" stroke="white" stroke-opacity="0.25" stroke-width="1.5"/>
+  <path d="M 462 65 L 447 65 M 447 50 L 447 65" stroke="white" stroke-opacity="0.25" stroke-width="1.5"/>
+  <path d="M 50 447 L 65 447 M 65 462 L 65 447" stroke="white" stroke-opacity="0.25" stroke-width="1.5"/>
+  <path d="M 462 447 L 447 447 M 447 462 L 447 447" stroke="white" stroke-opacity="0.25" stroke-width="1.5"/>
+
+  <!-- Main Square Bounding Frame (128, 128 to 384, 384) -->
+  <rect x="128" y="128" width="256" height="256" rx="8" stroke="white" stroke-width="12"/>
+
+  <!-- Secondary Dashed Diagonal (Top-Left to Bottom-Right) -->
+  <line x1="128" y1="128" x2="384" y2="384" stroke="white" stroke-width="6" stroke-opacity="0.45" stroke-dasharray="8 6"/>
+
+  <!-- Bold Primary Diagonal Vector Ray (Bottom-Left to Top-Right) -->
+  <line x1="128" y1="384" x2="384" y2="128" stroke="white" stroke-width="12" stroke-linecap="round"/>
+
+  <!-- Center Intersecting Precision Node -->
+  <circle cx="256" cy="256" r="5" fill="white"/>
+
+  <!-- 3 Standard Corner Handles -->
+  <rect x="116" y="116" width="24" height="24" rx="3" fill="#0A0A0A" stroke="white" stroke-width="4"/>
+  <rect x="116" y="372" width="24" height="24" rx="3" fill="#0A0A0A" stroke="white" stroke-width="4"/>
+  <rect x="372" y="372" width="24" height="24" rx="3" fill="#0A0A0A" stroke="white" stroke-width="4"/>
+
+  <!-- Top-Right Active Handle: Nothing Signature Red (#D71921) -->
+  <rect x="372" y="116" width="24" height="24" rx="3" fill="#D71921" stroke="white" stroke-width="4"/>
+  <circle cx="384" cy="128" r="4" fill="white"/>
+</svg>

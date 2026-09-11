@@ -20,7 +20,11 @@ export interface AgentReceipt {
 }
 export type AgentResultState = 'applied' | 'reverted' | 'changed' | 'missing' | 'unavailable';
 
-export interface AgentSettings { baseUrl: string; apiKey: string; model: string }
+export interface AgentSettings {
+  baseUrl: string; apiKey: string; model: string;
+  protocol?: 'responses' | 'chat-completions';
+  thinking?: 'default' | 'high' | 'off';
+}
 export const defaultAgentSettings: AgentSettings = { baseUrl: 'https://api.openai.com/v1', apiKey: '', model: 'gpt-4.1-mini' };
 export interface AgentQuestion { id: string; title: string; options: string[]; multiple: boolean; required: boolean }
 export interface AgentContext {

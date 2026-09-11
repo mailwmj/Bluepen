@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Page } from "../types";
+import { parseProjectFile } from "../utils/project-file";
 import { showToast } from "./use-toast";
 import { getProjectsDir, projectFileName, saveProjectLocal } from "./local-store";
 
@@ -164,7 +165,7 @@ export function useDesktop(
           });
           if (typeof path !== "string") return;
           const content = await readTextFile(path);
-          const data = JSON.parse(content);
+          const data = parseProjectFile(content);
           const baseName = path.split(/[\\/]/).pop()?.replace(/\.(bluepen|json)$/, "") || "Untitled";
           onLoadProjectRef.current({
             id: data.id,

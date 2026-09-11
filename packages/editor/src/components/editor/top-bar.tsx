@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { Button } from "@bluepen/editor/components/ui/button";
 import { Separator } from "@bluepen/editor/components/ui/separator";
 import { Menu, MenuTrigger, MenuPopup, MenuItem } from "@bluepen/editor/components/ui/menu";
@@ -30,6 +31,8 @@ const ZOOM_PRESETS = [50, 75, 100, 125, 150, 200];
 
 interface TopBarProps {
   projectName: string;
+  onRenameProject: (name: string) => void;
+  exporting?: boolean;
   dirty?: boolean;
   saveState?: "loading" | "saved" | "pending" | "saving" | "error";
   onRetrySave?: () => void;
@@ -73,6 +76,8 @@ interface TopBarProps {
 
 export function TopBar({
   projectName,
+  onRenameProject,
+  exporting = false,
   dirty = false,
   saveState = "saved",
   onRetrySave,
@@ -109,6 +114,9 @@ export function TopBar({
   onMaximize,
   onClose,
 }: TopBarProps) {
+  const [renaming, setRenaming] = useState(false);
+  const [name, setName] = useState(projectName);
+  const saveName = () => { if (name.trim()) onRenameProject(name.trim()); setRenaming(false); };
   const showMacTrafficLightSpacer = isTauri && isMac && !fullscreen;
   const showWindowsControls = isTauri && !isMac && onMinimize && onMaximize && onClose;
   const status = dirty && saveState === "saved" ? "pending" : saveState;
@@ -137,9 +145,12 @@ export function TopBar({
 
         {/* Project Name & Save Status */}
         <div className="flex items-center gap-2 pr-1.5 min-w-0">
-          <span className="font-mono text-xs font-bold tracking-tight text-foreground uppercase truncate max-w-[160px]">
-            {projectName}
-          </span>
+          {renaming ? <input aria-label="项目名称" autoFocus value={name} maxLength={100} onFocus={event => event.currentTarget.select()}
+            onChange={event => setName(event.target.value)} onBlur={saveName}
+            onKeyDown={event => { event.stopPropagation(); if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); saveName(); } if (event.key === "Escape") { event.preventDefault(); setRenaming(false); } }}
+            className="h-7 w-36 min-w-0 rounded border border-border-visible bg-background px-2 text-xs outline-none focus:border-foreground" />
+            : <button aria-label={`重命名项目：${projectName}`} title="点击重命名项目" onClick={() => { setName(projectName); setRenaming(true); }}
+              className="max-w-[160px] truncate rounded px-1 py-1 font-mono text-xs text-foreground hover:bg-muted focus-visible:outline-1 focus-visible:outline-foreground">{projectName}</button>}
           <div className="flex shrink-0 items-center gap-1 font-mono text-[11px] uppercase" role="status" aria-live="polite">
             <span className={cn("text-muted-foreground", status === "error" && "text-destructive")}>
               [{statusLabel}]
@@ -236,9 +247,10 @@ export function TopBar({
           variant="ghost"
           size="icon-xs"
           onClick={onExport}
-          disabled={!hasContent}
-          aria-label="导出为 PNG"
-          title="导出为 PNG"
+          disabled={!hasContent || exporting}
+          aria-label={exporting ? "正在导出 PNG" : "导出为 PNG"}
+          aria-busy={exporting}
+          title={exporting ? "正在导出 PNG…" : "导出为 PNG"}
         >
           <Download aria-hidden="true" className="size-3.5" />
         </Button>

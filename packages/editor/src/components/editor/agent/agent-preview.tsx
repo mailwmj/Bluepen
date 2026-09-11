@@ -39,11 +39,11 @@ export function AgentCanvasPreview({ elements, height = 180, label = '原型预�
 export function AgentPreviewDialog({ preview, title, onClose }: { preview: { before: EditorElement[]; after: EditorElement[] } | null; title: string; onClose: () => void }) {
   return <Dialog open={!!preview} onOpenChange={open => { if (!open) onClose(); }}>
     <DialogPortal>
-      <DialogPrimitive.Backdrop className="fixed inset-0 z-50 bg-black/80" />
+      <DialogPrimitive.Backdrop className="nd-overlay fixed inset-0 z-50 bg-black/80" />
       <DialogPrimitive.Viewport className="fixed inset-0 z-50 grid place-items-center p-4">
-        <DialogPrimitive.Popup className="relative max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-border-visible bg-surface p-6 outline-none" onKeyDown={event => event.stopPropagation()}>
+        <DialogPrimitive.Popup className="nd-overlay relative max-h-[90vh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-border-visible bg-surface p-6 outline-none" onKeyDown={event => event.stopPropagation()}>
           <div className="mb-6 flex items-start justify-between gap-4"><div className="space-y-2"><DialogTitle className="text-base font-medium">{title}</DialogTitle><DialogDescription>使用当前组件渲染的静态预览，关闭后可确认或继续调整。</DialogDescription></div><DialogPrimitive.Close render={<Button variant="ghost" size="icon-sm" />} aria-label="关闭修改预览"><X /></DialogPrimitive.Close></div>
-          {preview && <div className="grid gap-6 md:grid-cols-2">{(['before', 'after'] as const).map(side => <div key={side} className="space-y-3"><p className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">{side === 'before' ? '修改前' : '修改后'}</p><AgentCanvasPreview elements={preview[side]} height={420} label={side === 'before' ? '修改前画布' : '修改后画布'} /></div>)}</div>}
+          {preview && (preview.before.length ? <div className="grid gap-6 md:grid-cols-2">{(['before', 'after'] as const).map(side => <div key={side} className="space-y-3"><p className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">{side === 'before' ? '修改前' : '修改后'}</p><AgentCanvasPreview elements={preview[side]} height={420} label={side === 'before' ? '修改前画布' : '修改后画布'} /></div>)}</div> : <AgentCanvasPreview elements={preview.after} height={420} label="新增原型预览" />)}
         </DialogPrimitive.Popup>
       </DialogPrimitive.Viewport>
     </DialogPortal>

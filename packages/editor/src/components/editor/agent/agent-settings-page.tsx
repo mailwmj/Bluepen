@@ -5,9 +5,12 @@ import { ArrowLeft, Check, KeyRound, SlidersHorizontal } from 'lucide-react';
 import { Dialog, DialogPortal, DialogPrimitive, DialogTitle, DialogDescription } from '@bluepen/editor/components/ui/dialog';
 import { Button } from '@bluepen/editor/components/ui/button';
 import { Input } from '@bluepen/editor/components/ui/input';
+import { Select, SelectTrigger, SelectValue, SelectPopup, SelectItem } from '@bluepen/editor/components/ui/select';
 import { isDesktop } from '../hooks/use-desktop';
 import { runAgent } from './agent-runtime';
 import type { AgentController } from './agent-controller';
+const protocols = [{ value: 'responses', label: 'Responses' }, { value: 'chat-completions', label: 'Chat Completions' }];
+const thinkingOptions = [{ value: 'default', label: '服务默认' }, { value: 'high', label: '开启 · High' }, { value: 'off', label: '关闭' }];
 
 export function AgentSettingsPage({ open, onClose, controller }: { open: boolean; onClose: () => void; controller: AgentController }) {
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
@@ -16,6 +19,7 @@ export function AgentSettingsPage({ open, onClose, controller }: { open: boolean
   const [status, setStatus] = useState('');
   const [leaving, setLeaving] = useState(false);
   const [error, setError] = useState('');
+  const [portalContainer, setPortalContainer] = useState<HTMLDivElement | null>(null);
   const test = useRef<AbortController | null>(null);
   useEffect(() => {
     if (open) { setForm(controller.getSnapshot().settings); setStatus(''); setError(''); setLeaving(false); }
@@ -46,7 +50,7 @@ export function AgentSettingsPage({ open, onClose, controller }: { open: boolean
   const close = () => { if (busy === 'save') return; test.current?.abort(); test.current = null; setBusy(null); if (JSON.stringify(form) !== JSON.stringify(controller.getSnapshot().settings)) { setLeaving(true); return; } onClose(); };
   return <Dialog open={open} onOpenChange={next => { if (!next) close(); }}>
     <DialogPortal>
-      <DialogPrimitive.Popup className="fixed inset-0 z-[100] flex flex-col bg-background text-foreground outline-none [&_svg]:stroke-[1.5]" onKeyDown={event => event.stopPropagation()}>
+      <DialogPrimitive.Popup ref={setPortalContainer} className="nd-overlay fixed inset-0 z-[100] flex flex-col bg-background text-foreground outline-none [&_svg]:stroke-[1.5]" onKeyDown={event => event.stopPropagation()}>
         <header className="flex h-14 shrink-0 items-center gap-4 border-b border-border px-6">
           <Button variant="ghost" size="icon" aria-label="返回编辑器" onClick={close}><ArrowLeft /></Button>
           <DialogTitle className="font-mono text-xs font-normal uppercase tracking-wider">设置 / Settings</DialogTitle>
@@ -62,9 +66,11 @@ export function AgentSettingsPage({ open, onClose, controller }: { open: boolean
               {state.settingsError && <p role="alert" className="text-sm text-destructive">{state.settingsError}</p>}
               <form className="space-y-6" onSubmit={event => { event.preventDefault(); void save(); }}>
                 <fieldset disabled={!!busy} className="space-y-6 disabled:opacity-60">
-                  <label className="block space-y-2"><span className="font-mono text-xs uppercase tracking-wider text-muted-foreground">API Base URL</span><Input aria-label="API Base URL" value={form.baseUrl} onChange={event => { setForm({ ...form, baseUrl: event.target.value }); setStatus(''); }} placeholder="https://api.openai.com/v1" className="font-mono" required /><span className="block text-xs text-muted-foreground">使用支持 Responses、工具调用和结构化输出的服务地址。</span></label>
+                  <div className="space-y-2"><label htmlFor="agent-protocol" className="font-mono text-xs uppercase tracking-wider text-muted-foreground">接口协议 / Protocol</label><Select items={protocols} value={form.protocol ?? 'responses'} onValueChange={value => { if (value === 'responses' || value === 'chat-completions') setForm({ ...form, protocol: value }); setStatus(''); }}><SelectTrigger id="agent-protocol" aria-label="接口协议"><SelectValue /></SelectTrigger><SelectPopup portalProps={{ container: portalContainer }}>{protocols.map(item => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectPopup></Select></div>
+                  <label className="block space-y-2"><span className="font-mono text-xs uppercase tracking-wider text-muted-foreground">API Base URL</span><Input aria-label="API Base URL" value={form.baseUrl} onChange={event => { setForm({ ...form, baseUrl: event.target.value }); setStatus(''); }} placeholder={form.protocol === 'chat-completions' ? 'https://api.deepseek.com' : 'https://api.openai.com/v1'} className="font-mono" required /><span className="block text-xs leading-5 text-muted-foreground">{form.protocol === 'chat-completions' ? '填写服务根地址，也可粘贴完整 /chat/completions 地址。模型需要支持工具调用与 JSON 输出。' : '填写支持 Responses 和工具调用的服务地址；不支持严格输出格式时会自动尝试 JSON 兼容模式。'}</span></label>
                   <label className="block space-y-2"><span className="font-mono text-xs uppercase tracking-wider text-muted-foreground">API Key</span><Input aria-label="API Key" type="password" autoComplete="off" value={form.apiKey} onChange={event => { setForm({ ...form, apiKey: event.target.value }); setStatus(''); }} placeholder="输入 API Key" className="font-mono" /><span className="flex items-start gap-2 text-xs leading-5 text-muted-foreground"><KeyRound className="mt-0.5 size-3.5 shrink-0" />{isDesktop() ? '保存在系统凭据库，不写入项目文件或会话历史。' : '仅保存在本次浏览器会话中；关闭标签页后需要重新填写。'}</span></label>
                   <label className="block space-y-2"><span className="font-mono text-xs uppercase tracking-wider text-muted-foreground">默认模型 / Model</span><Input aria-label="默认模型" value={form.model} onChange={event => { setForm({ ...form, model: event.target.value }); setStatus(''); }} placeholder="输入服务支持的模型名称" className="font-mono" required /></label>
+                  {form.protocol === 'chat-completions' && /^deepseek[-/]/i.test(form.model) && <div className="space-y-2"><label htmlFor="agent-thinking" className="font-mono text-xs uppercase tracking-wider text-muted-foreground">DeepSeek 思考模式</label><Select items={thinkingOptions} value={form.thinking ?? 'default'} onValueChange={value => { if (value === 'default' || value === 'high' || value === 'off') setForm({ ...form, thinking: value }); setStatus(''); }}><SelectTrigger id="agent-thinking" aria-label="DeepSeek 思考模式"><SelectValue /></SelectTrigger><SelectPopup portalProps={{ container: portalContainer }}>{thinkingOptions.map(item => <SelectItem key={item.value} value={item.value}>{item.label}</SelectItem>)}</SelectPopup></Select></div>}
                 </fieldset>
                 <div className="flex flex-wrap items-center gap-3">
                   <Button type="submit" size="pill" disabled={!!busy}>{busy === 'save' ? '保存中…' : '保存设置'}</Button>
@@ -73,7 +79,7 @@ export function AgentSettingsPage({ open, onClose, controller }: { open: boolean
                   {!busy && form.apiKey && <Button variant="ghost" onClick={() => { setForm({ ...form, apiKey: '' }); setStatus('点击保存设置以移除凭据'); }}>移除 Key</Button>}
                 </div>
                 <p className="text-xs leading-5 text-muted-foreground">测试会发起少量模型请求，可能产生费用。未保存的修改不会影响正在运行的会话。</p>
-                {status && <p role="status" className="flex items-center gap-2 font-mono text-xs"><Check className="size-3.5" />[{status}]</p>}
+                {status && <p role="status" className="flex items-center gap-2 font-mono text-xs">{(status === '已保存' || status.startsWith('连接成功')) && <Check className="size-3.5" />}[{status}]</p>}
                 {error && <p role="alert" className="text-sm leading-6 text-destructive">{error}</p>}
               </form>
             </div>

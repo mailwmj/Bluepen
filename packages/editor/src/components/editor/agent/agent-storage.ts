@@ -65,7 +65,7 @@ export async function saveAgentSettings(settings: AgentSettings) {
   await writeKey(settings.apiKey.trim());
   try {
     // Whitelist public fields: the credential never reaches agent.json / IndexedDB.
-    await write('settings', { baseUrl: settings.baseUrl.trim(), model: settings.model.trim() });
+    await write('settings', { baseUrl: settings.baseUrl.trim(), model: settings.model.trim(), protocol: settings.protocol ?? 'responses', thinking: settings.thinking ?? 'default' });
   } catch (error) {
     await writeKey(previousKey);
     throw error;
@@ -94,6 +94,8 @@ export async function loadAgentSettings(): Promise<AgentSettings> {
     baseUrl: typeof saved?.baseUrl === 'string' ? saved.baseUrl : defaultAgentSettings.baseUrl,
     model: typeof saved?.model === 'string' ? saved.model : defaultAgentSettings.model,
     apiKey,
+    protocol: saved?.protocol === 'chat-completions' ? 'chat-completions' : 'responses',
+    thinking: saved?.thinking === 'high' || saved?.thinking === 'off' ? saved.thinking : 'default',
   };
 }
 

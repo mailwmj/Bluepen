@@ -1413,7 +1413,6 @@ const ElementNode = memo(function ElementNode({
   const isSelected = effectiveSelectedIds.includes(el.id);
   const isSingleSelected = effectiveSelectedIds.length === 1 && isSelected;
   const isEditing = editingElementId === el.id;
-  if (!el.visible) return null;
   const locked = el.locked || ancestorLocked;
   const isLineLike = el.type === "line" || el.type === "arrow";
   const isConnecting = interaction?.type === "create-connector" || interaction?.type === "connector-endpoint";
@@ -1428,6 +1427,8 @@ const ElementNode = memo(function ElementNode({
         (item.props.startElementId === el.id || item.props.endElementId === el.id)
     );
   }, [el.id, effectiveSelectedIds, allElementsFlat]);
+
+  if (!el.visible) return null;
 
   const showAnchors =
     !previewing &&

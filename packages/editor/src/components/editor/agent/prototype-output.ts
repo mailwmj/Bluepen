@@ -37,6 +37,28 @@ export const agentOutputSchema = z.object({
     z.object({ kind: z.literal('move'), nodeId: z.string(), parentId: z.string(), index: z.number(), x: z.number(), y: z.number() }),
   ])) }).nullable(),
 });
+
+/** JSON-mode providers may spell node props as a map. Normalize only that
+ * equivalent representation; every value still passes the full wire schema
+ * and catalog/permission validation before it can reach the canvas. */
+export function parseCompatibleAgentOutput(text: string): z.infer<typeof agentOutputSchema> {
+  const value = JSON.parse(text);
+  let count = 0;
+  const visit = (node: unknown, depth = 0) => {
+    if (!node || typeof node !== 'object' || Array.isArray(node)) return;
+    if (++count > 600 || depth > 20) throw new Error('原型结构过大，请分区域生成');
+    const record = node as Record<string, unknown>;
+    if (record.props && typeof record.props === 'object' && !Array.isArray(record.props)) {
+      record.props = Object.entries(record.props).map(([key, value]) => ({ key, value }));
+    }
+    if (Array.isArray(record.children)) record.children.forEach(child => visit(child, depth + 1));
+  };
+  visit(value?.plan?.root);
+  if (Array.isArray(value?.changes?.operations)) {
+    for (const operation of value.changes.operations) if (operation?.kind === 'insert') visit(operation.node);
+  }
+  return agentOutputSchema.parse(value);
+}
 export function decodeNode(output: OutputNode): PrototypePlanNode {
   let count = 0;
   const convert = (node: OutputNode, depth = 0): PrototypePlanNode => {
