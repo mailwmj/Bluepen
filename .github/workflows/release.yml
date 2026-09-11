@@ -47,29 +47,60 @@ jobs:
           echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
           echo "version=${RELEASE_TAG#v}" >> "$GITHUB_OUTPUT"
 
+  select-targets:
+    name: Select release targets
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.targets.outputs.matrix }}
+    steps:
+      - id: targets
+        name: Build target matrix
+        shell: bash
+        env:
+          RELEASE_TARGETS: ${{ inputs.targets }}
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+
+          available = {
+              "linux": {
+                  "artifact": "linux",
+                  "os": "ubuntu-latest",
+                  "bundles": "deb,rpm",
+                  "path": "apps/app/src-tauri/target/release/bundle/deb/*.deb\napps/app/src-tauri/target/release/bundle/rpm/*.rpm",
+              },
+              "macos": {
+                  "artifact": "macos",
+                  "os": "macos-14",
+                  "bundles": "dmg",
+                  "path": "apps/app/src-tauri/target/release/bundle/dmg/*.dmg",
+              },
+              "windows": {
+                  "artifact": "windows",
+                  "os": "windows-latest",
+                  "bundles": "nsis",
+                  "path": "apps/app/src-tauri/target/release/bundle/nsis/*-setup.exe",
+              },
+          }
+          requested = [item.strip() for item in os.environ["RELEASE_TARGETS"].split(",") if item.strip()]
+          unknown = sorted(set(requested) - set(available))
+          if not requested or unknown:
+              raise SystemExit(f"Unsupported release targets: {', '.join(unknown) or '(none)'}")
+          matrix = {"include": [available[target] for target in requested]}
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+              output.write("matrix=")
+              json.dump(matrix, output, ensure_ascii=False, separators=(",", ":"))
+              output.write("\n")
+          PY
+
   build:
     name: Build ${{ matrix.os }} bundles
-    if: ${{ contains(format(',{0},', inputs.targets), format(',{0},', matrix.artifact)) }}
     runs-on: ${{ matrix.os }}
-    needs: version
+    needs: [version, select-targets]
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            bundles: deb,rpm
-            artifact: linux
-            path: |
-              apps/app/src-tauri/target/release/bundle/deb/*.deb
-              apps/app/src-tauri/target/release/bundle/rpm/*.rpm
-          - os: macos-14
-            bundles: dmg
-            artifact: macos
-            path: apps/app/src-tauri/target/release/bundle/dmg/*.dmg
-          - os: windows-latest
-            bundles: nsis
-            artifact: windows
-            path: apps/app/src-tauri/target/release/bundle/nsis/*-setup.exe
+      matrix: ${{ fromJSON(needs.select-targets.outputs.matrix) }}
 
     steps:
       - name: Checkout
@@ -125,7 +156,7 @@ jobs:
   release:
     name: Publish GitHub Release
     runs-on: ubuntu-latest
-    needs: [version, build]
+    needs: [version, select-targets, build]
     steps:
       - name: Checkout release ref
         uses: actions/checkout@v4
