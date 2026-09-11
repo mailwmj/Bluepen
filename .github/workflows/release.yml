@@ -16,6 +16,11 @@ on:
         description: 面向用户的中文更新说明（必填；可使用多行内容）
         required: true
         type: string
+      targets:
+        description: 要构建的平台，逗号分隔，可选 linux、macos、windows
+        required: false
+        default: macos,windows
+        type: string
 
 permissions:
   contents: write
@@ -44,6 +49,7 @@ jobs:
 
   build:
     name: Build ${{ matrix.os }} bundles
+    if: ${{ contains(format(',{0},', inputs.targets), format(',{0},', matrix.artifact)) }}
     runs-on: ${{ matrix.os }}
     needs: version
     strategy:
@@ -139,6 +145,7 @@ jobs:
           RELEASE_TAG: ${{ needs.version.outputs.tag }}
           RELEASE_REF: ${{ inputs.ref }}
           RELEASE_SUMMARY: ${{ inputs.release_notes }}
+          RELEASE_TARGETS: ${{ inputs.targets }}
           REPOSITORY: ${{ github.repository }}
           SERVER_URL: ${{ github.server_url }}
         run: |
@@ -162,7 +169,16 @@ jobs:
             printf '## 更新说明\n\n%s\n\n' "$RELEASE_SUMMARY"
             printf '## 构建信息\n\n'
             printf '基于 [%s](%s/%s/commit/%s) 构建。\n\n' "$RELEASE_REF" "$SERVER_URL" "$REPOSITORY" "$(git rev-parse HEAD)"
-            printf '## 安装包\n\n- macOS：`.dmg`\n- Windows：`.exe`\n- Linux：`.deb`、`.rpm`\n'
+            printf '## 安装包\n\n'
+            case ",$RELEASE_TARGETS," in
+              *,macos,*) printf '%s\n' '- macOS：`.dmg`' ;;
+            esac
+            case ",$RELEASE_TARGETS," in
+              *,windows,*) printf '%s\n' '- Windows：`.exe`' ;;
+            esac
+            case ",$RELEASE_TARGETS," in
+              *,linux,*) printf '%s\n' '- Linux：`.deb`、`.rpm`' ;;
+            esac
 
             if [[ -n "$previous_tag" ]]; then
               printf '\n## 完整变更\n\n[查看 %s 到 %s 的完整变更](%s/%s/compare/%s...%s)\n' "$previous_tag" "$RELEASE_TAG" "$SERVER_URL" "$REPOSITORY" "$previous_tag" "$RELEASE_TAG"
