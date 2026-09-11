@@ -4,6 +4,7 @@ import type { Page } from "../types";
 import { isDesktop } from "./use-desktop";
 
 export interface StoredProject {
+  id?: string;
   version: number;
   name: string;
   pages: Page[];

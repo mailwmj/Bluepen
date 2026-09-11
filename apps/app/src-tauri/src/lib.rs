@@ -1,9 +1,13 @@
+mod agent_credentials;
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-  tauri::Builder::default()
+    tauri::Builder::default()
+    .invoke_handler(tauri::generate_handler![agent_credentials::read_agent_key, agent_credentials::write_agent_key])
     .plugin(tauri_plugin_dialog::init())
     .plugin(tauri_plugin_fs::init())
     .plugin(tauri_plugin_store::Builder::default().build())
+    .plugin(tauri_plugin_http::init())
     .setup(|app| {
       #[cfg(debug_assertions)]
       {

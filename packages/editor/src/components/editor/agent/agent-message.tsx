@@ -1,0 +1,88 @@
+"use client";
+
+import { useEffect, useState } from 'react';
+import { ArrowUpRight, Check, ChevronDown, CircleHelp, Copy, Search, Square, X } from 'lucide-react';
+import Markdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import { Button } from '@bluepen/editor/components/ui/button';
+import { Textarea } from '@bluepen/editor/components/ui/textarea';
+import { cn } from '@bluepen/editor/lib/utils';
+import type { AgentController } from './agent-controller';
+import type { AgentContext, AppliedArtifact, ConversationMessage } from './agent-types';
+import type { PrototypePlan } from './prototype-plan';
+
+const labelClass = 'font-mono text-[11px] uppercase tracking-wider text-muted-foreground';
+const statusLabels = { running: '执行中', 'waiting-input': '等待回答', 'waiting-approval': '等待确认', completed: '已完成', failed: '请求失败', cancelled: '已停止', interrupted: '已中断', declined: '未采用' };
+
+function Elapsed({ message }: { message: ConversationMessage }) {
+  const [now, setNow] = useState(Date.now());
+  useEffect(() => { if (message.status !== 'running') return; const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id); }, [message.status]);
+  return <span className="font-mono text-[11px] text-muted-foreground">{Math.max(0, Math.round(((message.finishedAt ?? now) - message.createdAt) / 1000))}s</span>;
+}
+
+function QuestionCard({ message, disabled, onAnswer, onCancel, onDraft }: { message: ConversationMessage; disabled: boolean; onAnswer: (answers: Record<string, string>) => Promise<void>; onCancel: () => void; onDraft: (draft: NonNullable<ConversationMessage['questionDraft']>) => void }) {
+  const choices = Object.fromEntries(Object.entries(message.questionDraft ?? {}).map(([id, draft]) => [id, draft.choices]));
+  const custom = Object.fromEntries(Object.entries(message.questionDraft ?? {}).map(([id, draft]) => [id, draft.custom]));
+  const update = (id: string, patch: { choices?: string[]; custom?: string }) => onDraft({ ...message.questionDraft, [id]: { choices: choices[id] ?? [], custom: custom[id] ?? '', ...patch } });
+  const [error, setError] = useState('');
+  const waiting = message.status === 'waiting-input';
+  return <form className="space-y-5 rounded-xl border border-border-visible p-4" aria-label="回答澄清问题" onSubmit={event => {
+    event.preventDefault(); setError('');
+    const answers = Object.fromEntries((message.questions ?? []).map(question => [question.id, [...(choices[question.id] ?? []), custom[question.id]?.trim()].filter(Boolean).join('；')]));
+    void onAnswer(answers).catch(error => setError(error instanceof Error ? error.message : '回答失败'));
+  }}>
+    <div className="flex items-center gap-2"><CircleHelp className="size-4" /><span className={labelClass}>{waiting ? '需要你补充' : message.answers ? '已回答' : '问题已取消'}</span></div>
+    {message.questions?.map((question, index) => <fieldset key={question.id} disabled={disabled || !waiting} className="space-y-3">
+      <legend className="mb-3 text-sm leading-6">{index + 1}. {question.title}<span className="ml-2 text-[11px] text-muted-foreground">{question.required ? '必答' : '选答'}{question.multiple ? ' · 可多选' : ''}</span></legend>
+      {waiting ? <>
+        {question.options.length > 0 && <div className="flex flex-wrap gap-2">{question.options.map((option, optionIndex) => <label key={`${option}-${optionIndex}`} className={cn('flex cursor-pointer items-center gap-2 rounded-lg border px-3 py-2 text-sm transition-colors duration-150 has-focus-visible:outline-1 has-focus-visible:outline-foreground', choices[question.id]?.includes(option) ? 'border-foreground bg-foreground text-background' : 'border-border-visible hover:border-foreground/50')}>
+          <input type={question.multiple ? 'checkbox' : 'radio'} name={`${message.id}-${question.id}`} value={option} aria-label={option} className="size-3 accent-current" checked={choices[question.id]?.includes(option) ?? false} onChange={event => update(question.id, { choices: question.multiple ? event.target.checked ? [...(choices[question.id] ?? []), option] : (choices[question.id] ?? []).filter(value => value !== option) : [option] })} />{option}
+        </label>)}</div>}
+        <Textarea aria-label={`${question.title}：自定义回答`} placeholder={question.options.length ? '或补充你的想法…' : '输入你的回答…'} value={custom[question.id] ?? ''} onChange={event => update(question.id, { custom: event.target.value })} className="min-h-16 text-sm" />
+      </> : <p className="whitespace-pre-wrap text-sm text-muted-foreground">{message.answers?.[question.id] || (message.answers ? '已跳过' : '未回答')}</p>}
+    </fieldset>)}
+    {waiting && <div className="flex items-center gap-2"><Button type="submit" size="pill" disabled={disabled}>提交并继续</Button><Button variant="ghost" onClick={onCancel} disabled={disabled}>取消任务</Button></div>}
+    {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+  </form>;
+}
+
+export function AgentMessageView({ message, sessionId, controller, busy, last, context, onGenerate, onLocate, onError, archived }: {
+  message: ConversationMessage; sessionId: string; controller: AgentController; busy: boolean; last: boolean; context: AgentContext; archived: boolean;
+  onGenerate: (plan: PrototypePlan, context: AgentContext, id: string) => AppliedArtifact;
+  onLocate: (target: { pageId: string; elementId?: string }) => void; onError: (error: string) => void;
+}) {
+  const [copied, setCopied] = useState(false);
+  const [reasoningOpen, setReasoningOpen] = useState(message.status === 'running');
+  useEffect(() => { if (message.status !== 'running') setReasoningOpen(false); }, [message.status]);
+  const locate = (target: { pageId: string; elementId?: string }) => { try { onLocate(target); } catch (error) { onError(error instanceof Error ? error.message : '无法定位目标'); } };
+  if (message.role === 'user') return <article className="space-y-2 border-l-2 border-border-visible pl-4" aria-label="你的消息"><div className={labelClass}>你</div><p className="whitespace-pre-wrap break-words text-sm leading-6">{message.content}</p></article>;
+  return <article className="space-y-4" aria-label="助手消息">
+    <div className="flex items-center justify-between gap-3"><span className={labelClass}>Bluepen <span className="ml-2">/ {statusLabels[message.status]}</span></span><Elapsed message={message} /></div>
+    {message.status === 'running' && <div role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><span className="size-2 bg-foreground" />{message.phase || '正在分析需求'}</div>}
+    {!!message.steps.length && <details className="group"><summary className="flex cursor-pointer list-none items-center gap-2 text-xs text-muted-foreground"><ChevronDown className="size-3.5 transition-transform duration-150 group-open:rotate-180" />{message.steps.length} 次组件查询 · {message.steps.filter(step => step.status === 'completed').length} 次完成</summary><ol className="mt-3 space-y-3 border-l border-border pl-4">{message.steps.map(step => <li key={step.id} className="space-y-1"><div className="flex items-center gap-2 text-xs">{step.status === 'completed' ? <Check className="size-3.5" /> : step.status === 'failed' || step.status === 'cancelled' ? <X className="size-3.5" /> : <Search className="size-3.5" />}{step.label}<span className={labelClass}>{({ running: '执行中', completed: '完成', failed: '失败', cancelled: '停止' })[step.status]}</span></div><p className="break-words pl-5 text-xs text-muted-foreground">{step.detail}</p></li>)}</ol></details>}
+    {message.reasoning && <details open={reasoningOpen} onToggle={event => setReasoningOpen(event.currentTarget.open)}><summary className="cursor-pointer text-xs text-muted-foreground">思考摘要</summary><p className="mt-3 whitespace-pre-wrap text-xs leading-6 text-muted-foreground">{message.reasoning}</p></details>}
+    {message.content && <div className="min-w-0 break-words text-sm leading-6 [&_p]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_h1]:my-3 [&_h2]:my-3 [&_h3]:my-3 [&_h1]:font-medium [&_h2]:font-medium [&_h3]:font-medium [&_pre]:overflow-auto [&_pre]:rounded-lg [&_pre]:border [&_pre]:border-border [&_pre]:p-3 [&_code]:font-mono [&_code]:text-xs [&_a]:text-interactive [&_a]:underline [&_table]:block [&_table]:overflow-auto [&_td]:border-b [&_td]:border-border [&_td]:p-2 [&_th]:p-2 [&_blockquote]:border-l [&_blockquote]:border-border-visible [&_blockquote]:pl-3">
+      <Markdown remarkPlugins={[remarkGfm]} components={{ a: ({ children, ...props }) => <a {...props} target="_blank" rel="noreferrer noopener">{children}</a>, img: ({ alt }) => <span className="text-muted-foreground">[图片：{alt || '参考图片'}]</span> }}>{message.content}</Markdown>
+    </div>}
+    {!!message.questions?.length && <QuestionCard message={message} disabled={busy || archived} onAnswer={answers => controller.answer(sessionId, message.id, answers)} onCancel={() => controller.dismiss(sessionId, message.id)} onDraft={draft => controller.updateQuestionDraft(sessionId, message.id, draft)} />}
+    {message.plan && <section className="space-y-3 rounded-xl border border-border-visible p-4" aria-label="原型方案">
+      <div className="flex items-center justify-between"><span className={labelClass}>{message.applied ? '已生成' : message.status === 'declined' ? '未采用的方案' : '待确认方案'}</span><span className={labelClass}>V{message.planVersion ?? 1} · {({ page: '页面', section: '区域', component: '组件' })[message.plan.artifactKind]}</span></div>
+      <h3 className="text-base font-medium">{message.plan.pageName}</h3><p className="text-sm leading-6 text-muted-foreground">{message.plan.purpose}</p>
+      <p className="text-xs text-muted-foreground">新增到 {message.context.pageName} · <span className="font-mono">{message.plan.root.width} × {message.plan.root.height}</span></p>
+      <ul className="space-y-1 text-xs text-muted-foreground">{message.plan.root.children?.slice(0, 6).map((node, index) => <li key={index}>— {node.name}</li>)}</ul>
+      {message.plan.notes.length > 0 && <details><summary className="cursor-pointer text-xs text-muted-foreground">方案说明</summary><ul className="mt-2 space-y-1 text-xs leading-5">{message.plan.notes.map((note, index) => <li key={index}>{note}</li>)}</ul></details>}
+      {message.applied ? <Button variant="outline" size="pill-sm" onClick={() => locate(message.applied!)}><ArrowUpRight className="size-3.5" />定位到画布</Button> : message.status === 'waiting-approval' && <div className="flex flex-wrap items-center gap-2">
+        {context.pageId !== message.context.pageId ? <Button variant="outline" size="pill-sm" onClick={() => locate({ pageId: message.context.pageId })}>前往目标页面</Button> : <Button size="pill-sm" disabled={busy || archived} onClick={() => controller.apply(sessionId, message.id, onGenerate)}>确认生成</Button>}
+        <Button variant="ghost" size="sm" disabled={busy || archived} onClick={() => { controller.dismiss(sessionId, message.id); controller.updateSession(sessionId, { draft: '调整方案：' }); }}>继续调整</Button>
+        <Button variant="ghost" size="sm" disabled={busy || archived} onClick={() => controller.dismiss(sessionId, message.id)}>不采用</Button>
+      </div>}
+      {message.applied && <p className="text-xs text-muted-foreground">可在画布中编辑，或使用编辑器撤销。</p>}
+    </section>}
+    {message.error && <p role="alert" className="text-sm leading-6 text-destructive">{message.error}</p>}
+    <div className="flex items-center gap-2">
+      {message.content && <Button variant="ghost" size="icon-xs" aria-label={copied ? '已复制回复' : '复制回复'} onClick={() => { void navigator.clipboard.writeText(message.content).then(() => setCopied(true)).catch(() => onError('无法复制，请检查剪贴板权限')); }}>{copied ? <Check /> : <Copy />}</Button>}
+      {last && ['failed', 'cancelled', 'interrupted'].includes(message.status) && <Button size="pill-sm" variant="outline" disabled={busy || archived} onClick={() => { void controller.retry(sessionId, message.id).catch(error => onError(error instanceof Error ? error.message : '重试失败')); }}>重新尝试</Button>}
+      {message.status === 'running' && <Button variant="ghost" size="sm" onClick={() => controller.stop()}><Square className="size-3" />停止</Button>}
+    </div>
+  </article>;
+}

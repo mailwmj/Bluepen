@@ -8,3 +8,6 @@ allowBuilds:
 ignoredBuiltDependencies:
   - sharp
   - unrs-resolver
+
+patchedDependencies:
+  ai@7.0.94: patches/ai@7.0.94.patch

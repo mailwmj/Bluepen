@@ -58,7 +58,7 @@ export function confirmLocal(message: string): Promise<boolean> {
 interface DesktopSaveResult {
   ok: boolean;
   path?: string;
-  project?: { pages: Page[]; name: string };
+  project?: { id?: string; pages: Page[]; name: string };
 }
 
 export interface DesktopFileApi {
@@ -68,8 +68,8 @@ export interface DesktopFileApi {
 }
 
 export function useDesktop(
-  getProject: () => { pages: Page[]; name: string },
-  onLoadProject: (data: { pages: Page[]; name: string; filePath?: string }) => void,
+  getProject: () => { id?: string; pages: Page[]; name: string },
+  onLoadProject: (data: { id?: string; pages: Page[]; name: string; filePath?: string }) => void,
   beforeClose: () => Promise<boolean>,
 ) {
   const [isTauri, setIsTauri] = useState(false);
@@ -167,6 +167,7 @@ export function useDesktop(
           const data = JSON.parse(content);
           const baseName = path.split(/[\\/]/).pop()?.replace(/\.(bluepen|json)$/, "") || "Untitled";
           onLoadProjectRef.current({
+            id: data.id,
             pages: data.pages ?? [],
             name: data.name ?? baseName,
             filePath: path,

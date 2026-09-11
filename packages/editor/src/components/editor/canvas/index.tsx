@@ -1966,6 +1966,15 @@ export function Canvas({
         return;
       }
 
+      // AI generation is a click-to-place anchor, not a drawable component.
+      if (activeTool === "ai-generate" && e.button === 0) {
+        if (!target.closest("[data-handle]")) {
+          const pos = screenToCanvas(e.clientX, e.clientY);
+          onCanvasClick(e, pos.x, pos.y);
+        }
+        return;
+      }
+
       // Click on canvas with a component creation tool selected -> initiate drag-to-create
       if (activeTool !== "select" && activeTool !== "hand" && e.button === 0) {
         if (!target.closest("[data-handle]")) {

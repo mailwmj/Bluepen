@@ -1,0 +1,24 @@
+diff --git a/dist/index.js b/dist/index.js
+index 9acfd2f449f350042f6887818389e1ab13ee3fed..f240a8aad509c867a154895eb3f90431afdbc423 100644
+--- a/dist/index.js
++++ b/dist/index.js
+@@ -4488,6 +4488,7 @@ function openTelemetryChannelSpanContext({
+ }) {
+   var _a25;
+   if (!isNodeRuntime()) {
++    Promise.resolve(completion).catch(() => {});
+     return void 0;
+   }
+   const diagnosticsChannel = loadBuiltinModule(
+diff --git a/src/telemetry/tracing-channel-publisher.ts b/src/telemetry/tracing-channel-publisher.ts
+index 060be5e4d845e5490c852868390f4b97912735f3..6d948a13bcecf92a66149a4e2ef59d71391d5089 100644
+--- a/src/telemetry/tracing-channel-publisher.ts
++++ b/src/telemetry/tracing-channel-publisher.ts
+@@ -136,6 +136,7 @@ export function openTelemetryChannelSpanContext({
+   completion: PromiseLike<unknown>;
+ }): TracingChannelContext | undefined {
+   if (!isNodeRuntime()) {
++    Promise.resolve(completion).catch(() => {});
+     return undefined;
+   }
+ 

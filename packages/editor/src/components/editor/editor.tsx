@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef, useEffect, useMemo } from "react";
+import { useState, useCallback, useRef, useEffect, useMemo, useSyncExternalStore } from "react";
 import type { EditorElement, ComponentType, Page } from "./types";
 import { Canvas, type CanvasHandle } from "./canvas/index";
 import { TopBar } from "./top-bar";
@@ -51,7 +51,14 @@ import { Button } from "@bluepen/editor/components/ui/button";
 import { libraryModes, type LibraryMode } from "./library/catalog";
 import { cn } from "@bluepen/editor/lib/utils";
 import { AgentPanel } from "./agent/agent-panel";
-import { planToElement, validatePrototypePlan, type PrototypePlan } from "./agent/prototype-plan";
+import type { PrototypePlan } from "./agent/prototype-plan";
+import { AgentController } from "./agent/agent-controller";
+import { agentStorage } from "./agent/agent-storage";
+import { runAgent } from "./agent/agent-runtime";
+import { AgentSettingsPage } from "./agent/agent-settings-page";
+import { prepareAgentArtifact } from "./agent/agent-canvas";
+import type { AgentContext, AppliedArtifact } from "./agent/agent-types";
+import { projectIdentity } from "./utils/project-identity";
 
 function genId() {
   return `el-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
@@ -160,6 +167,7 @@ export function Editor() {
   const setSelectedId = useCallback((id: string | null) => {
     setSelectedIds(id ? [id] : []);
   }, []);
+  const [projectId, setProjectId] = useState(() => genId());
   const [projectName, setProjectName] = useState("Untitled");
   const [currentFilePath, setCurrentFilePath] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -176,6 +184,16 @@ export function Editor() {
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [leftDrawerCollapsed, setLeftDrawerCollapsed] = useState(false);
   const [agentOpen, setAgentOpen] = useState(false);
+  const [agentWidth, setAgentWidth] = useState(420);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [agent] = useState(() => new AgentController(agentStorage, runAgent));
+  const agentState = useSyncExternalStore(agent.subscribe, agent.getSnapshot, agent.getSnapshot);
+  useEffect(() => { void agent.initialize(); }, [agent]);
+  useEffect(() => {
+    const save = () => { void agent.flush(); };
+    window.addEventListener("pagehide", save);
+    return () => { window.removeEventListener("pagehide", save); agent.stop(); void agent.flush(); };
+  }, [agent]);
   const [agentAnchor, setAgentAnchor] = useState<{ x: number; y: number } | null>(null);
 
   const toggleTheme = useCallback(() => {
@@ -203,6 +221,7 @@ export function Editor() {
         const uniquePages = ensureUniqueIds(project.pages);
         setPages(uniquePages);
         setProjectName(project.name || "Untitled");
+        setProjectId(projectIdentity(project));
         if (project.filePath) {
           setCurrentFilePath(project.filePath);
           fileBindingRef.current.path = project.filePath;
@@ -230,8 +249,8 @@ export function Editor() {
           setTheme(isDark ? "dark" : "light");
         }
       }
-      setDirty(false);
-      setSaveState("saved");
+      setDirty(!project?.id);
+      setSaveState(project?.id ? "saved" : "pending");
       setHydrated(true);
     })();
     return () => {
@@ -251,7 +270,7 @@ export function Editor() {
       setSaveState("saving");
       const save = async () => {
         const path = await saveProjectLocal({
-          version: 3, name: projectName, pages, savedAt: Date.now(),
+          version: 3, id: projectId, name: projectName, pages, savedAt: Date.now(),
         }, binding.path);
         if (path) binding.path = path;
         if (binding === fileBindingRef.current && path) setCurrentFilePath(path);
@@ -267,7 +286,7 @@ export function Editor() {
       });
     }, 600);
     return () => { cancelled = true; clearTimeout(t); };
-  }, [pages, projectName, currentFilePath, hydrated, dirty, saveRetry, manualSaving]);
+  }, [pages, projectId, projectName, currentFilePath, hydrated, dirty, saveRetry, manualSaving]);
 
   useEffect(() => {
     if (!dirty) return;
@@ -679,24 +698,14 @@ export function Editor() {
     [activeTool, addElement, elements],
   );
 
-  const generatePrototype = useCallback((plan: PrototypePlan) => {
-    const errors = validatePrototypePlan(plan);
-    if (errors.length) {
-      showToast({ type: "error", title: "原型计划无效", description: errors[0], id: "agent-plan-invalid" });
-      return;
-    }
-    const anchor = agentAnchor ?? { x: 80, y: 80 };
-    const root = planToElement(plan, anchor.x, anchor.y);
-    // Keep generated pages away from existing content when the requested anchor is occupied.
-    const overlaps = elements.some((el) => el.x < root.x + root.width && el.x + el.width > root.x && el.y < root.y + root.height && el.y + el.height > root.y);
-    if (overlaps && !agentAnchor) root.x += 40;
-    commit([...latestElementsRef.current, root]);
-    setSelectedIds([root.id]);
+  const generatePrototype = useCallback((plan: PrototypePlan, target: AgentContext, messageId: string): AppliedArtifact => {
+    const result = prepareAgentArtifact(plan, target, { projectId, pageId: activePageId, elements: latestElementsRef.current }, messageId);
+    commit(result.elements);
+    setSelectedIds([result.element.id]);
     setAgentAnchor(null);
-    setAgentOpen(false);
     canvasApiRef.current?.fitContent(true);
-    showToast({ title: "原型已生成", description: `${plan.pageName} · ${root.children.length} 个区域`, id: "agent-generated" });
-  }, [agentAnchor, commit, elements]);
+    return { pageId: activePageId, elementId: result.element.id, name: plan.pageName };
+  }, [projectId, activePageId, commit]);
 
   const lastCanvasPointerPosRef = useRef<{ x: number; y: number }>({ x: 200, y: 200 });
 
@@ -1298,18 +1307,20 @@ export function Editor() {
   );
 
   const getProject = useCallback(
-    () => ({ pages, name: projectName }),
-    [pages, projectName],
+    () => ({ id: projectId, pages, name: projectName }),
+    [projectId, pages, projectName],
   );
 
   const loadProject = useCallback(
-    (data: { pages: Page[]; name: string; filePath?: string | null }) => {
+    (data: { id?: string; pages: Page[]; name: string; filePath?: string | null }) => {
       const initialPages = data.pages && data.pages.length > 0
         ? data.pages
         : [{ id: genId(), name: "Page 1", elements: [] }];
       const loadedPages = ensureUniqueIds(initialPages);
       setPages(loadedPages);
       setProjectName(data.name || "Untitled");
+      setProjectId(projectIdentity(data));
+      setAgentAnchor(null);
       setCurrentFilePath(data.filePath ?? null);
       fileBindingRef.current = { path: data.filePath ?? null };
       pageHistoriesRef.current.clear();
@@ -1332,7 +1343,7 @@ export function Editor() {
     void confirmLocal("Replace the current project with the example template?").then(
       (ok) => {
         if (ok) {
-          loadProject({ pages: templatePages, name: projectName, filePath: currentFilePath });
+          loadProject({ id: projectId, pages: templatePages, name: projectName, filePath: currentFilePath });
           showToast({
             type: "success",
             title: "Template inserted",
@@ -1342,7 +1353,7 @@ export function Editor() {
         }
       },
     );
-  }, [loadProject, projectName, currentFilePath]);
+  }, [loadProject, projectId, projectName, currentFilePath]);
 
   const {
     isTauri,
@@ -1354,8 +1365,11 @@ export function Editor() {
     windowMaximized,
     windowFullscreen,
   } = useDesktop(getProject, loadProject, async () => {
-    if (!dirty) return true;
-    return confirmLocal("当前修改尚未保存成功。关闭客户端将丢失这些修改，仍要关闭吗？");
+    if (dirty && !(await confirmLocal("当前修改尚未保存成功。关闭客户端将丢失这些修改，仍要关闭吗？"))) return false;
+    agent.stop();
+    await agent.flush();
+    if (agent.getSnapshot().saveError && !(await confirmLocal("会话尚未保存成功。仍要关闭客户端吗？"))) return false;
+    return true;
   });
 
   const saveDesktopFile = useCallback(async (saveAs: boolean) => {
@@ -1409,6 +1423,7 @@ export function Editor() {
       if (!ok) return;
     }
     loadProject({
+      id: genId(),
       pages: [{ id: genId(), name: "Page 1", elements: [] }],
       name: "Untitled",
       filePath: null,
@@ -1439,6 +1454,7 @@ export function Editor() {
           }
           const baseName = file.name.replace(/\.(bluepen|json)$/, "") || "Untitled";
           loadProject({
+            id: data.id,
             pages: data.pages,
             name: data.name ?? baseName,
             filePath: null,
@@ -1467,6 +1483,7 @@ export function Editor() {
             }
             const baseName = file.name.replace(/\.(bluepen|json)$/, "") || "Untitled";
             loadProject({
+              id: data.id,
               pages: data.pages,
               name: data.name ?? baseName,
               filePath: null,
@@ -1645,6 +1662,10 @@ export function Editor() {
         fullscreen={windowFullscreen}
         maximized={windowMaximized}
         onToggleTheme={toggleTheme}
+        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenAgent={() => setAgentOpen(v => !v)}
+        agentActive={!!agentState.activeRun}
+        agentOpen={agentOpen}
         onUndo={undo}
         onRedo={redo}
         onSelectTool={() => setActiveTool("select")}
@@ -1693,7 +1714,7 @@ export function Editor() {
         </div>
       ) : (
         <div className="flex min-h-0 w-full flex-1 overflow-hidden">
-          <LeftSidebar
+          <div className={agentOpen ? "hidden lg:contents" : "contents"}><LeftSidebar
             pages={pages}
             activeTab={libraryTab}
             onTabChange={setLibraryTab}
@@ -1713,7 +1734,7 @@ export function Editor() {
             onAddAsset={handleSidebarAdd}
             drawerCollapsed={leftDrawerCollapsed}
             onToggleDrawer={toggleLeftDrawer}
-          />
+          /></div>
 
         <div className="relative flex flex-1 min-w-0 overflow-hidden">
           <ContextMenu
@@ -1886,6 +1907,9 @@ export function Editor() {
                 </>
               ) : (
                 <>
+                  <ContextMenuItem closeOnClick onClick={() => { setAgentAnchor({ ...lastCanvasPointerPosRef.current }); setAgentOpen(true); }}>
+                    <WandSparkles aria-hidden="true" />在此处用 AI 生成
+                  </ContextMenuItem>
                   <ContextMenuItem closeOnClick onClick={() => addElement("rectangle", lastCanvasPointerPosRef.current.x, lastCanvasPointerPosRef.current.y)}>
                     <Square aria-hidden="true" className="opacity-80" />
                     新建矩形
@@ -1913,7 +1937,7 @@ export function Editor() {
           </ContextMenu>
         </div>
 
-        <RightPanel
+        {!agentOpen && <RightPanel
           element={selected}
           selectedElements={selectedElements}
           allElements={allElementsFlat}
@@ -1930,6 +1954,20 @@ export function Editor() {
           onDuplicate={duplicate}
           onGroup={groupSelected}
           onUngroup={ungroupSelected}
+        />}
+        <AgentPanel
+          open={agentOpen} controller={agent} projectId={projectId}
+          context={{ projectId, pageId: activePageId, pageName: activePage?.name ?? "页面", ...(agentAnchor ? { anchor: agentAnchor } : {}) }}
+          width={agentWidth} onWidthChange={setAgentWidth}
+          onClose={() => setAgentOpen(false)} onSettings={() => setSettingsOpen(true)} onGenerate={generatePrototype}
+          onLocate={(target) => {
+            const page = pages.find(page => page.id === target.pageId);
+            if (!page) throw new Error("目标页面已删除");
+            if (target.elementId && !page.elements.some(element => element.id === target.elementId)) throw new Error("生成结果已被撤销或删除");
+            handlePageSelect(page.id);
+            setSelectedIds(target.elementId ? [target.elementId] : []);
+            requestAnimationFrame(() => canvasApiRef.current?.fitContent(!!target.elementId));
+          }}
         />
       </div>
       )}
@@ -1946,7 +1984,7 @@ export function Editor() {
 
       {/* Floating toolbar */}
       {!previewing && (
-        <div className="fixed bottom-12 left-1/2 z-50 -translate-x-1/2 select-none">
+        <div className="fixed bottom-12 left-1/2 z-30 -translate-x-1/2 select-none" style={agentOpen ? { left: `calc((100% - ${agentWidth}px) / 2)` } : undefined}>
         <div className="animate-fade-up">
           <CossToolbar className="rounded-full border border-border-visible bg-surface px-1.5 py-1">
           <ToolbarGroup>
@@ -1977,7 +2015,7 @@ export function Editor() {
               <Type aria-hidden="true" className="size-3" />
               TEXT
             </ToolbarButton>
-            <ToolbarButton className={toolClass("ai-generate")} onClick={() => setActiveTool("ai-generate")} title="AI 生成页面">
+            <ToolbarButton className={toolClass("ai-generate")} onClick={() => { setAgentAnchor(null); setAgentOpen(v => !v); }} title="打开 AI 助手">
               <WandSparkles aria-hidden="true" className="size-3" />
               AI
             </ToolbarButton>
@@ -1986,11 +2024,7 @@ export function Editor() {
         </div>
       </div>
       )}
-      <AgentPanel
-        open={agentOpen}
-        onClose={() => { setAgentOpen(false); setAgentAnchor(null); }}
-        onGenerate={generatePrototype}
-      />
+      <AgentSettingsPage open={settingsOpen} onClose={() => setSettingsOpen(false)} controller={agent} />
     </div>
     );
 

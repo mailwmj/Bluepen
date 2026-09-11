@@ -1,6 +1,9 @@
 import type { ComponentType, EditorElement } from "../types";
 import { library } from "../library";
 
+export const artifactKinds = ["page", "section", "component"] as const;
+export type ArtifactKind = (typeof artifactKinds)[number];
+
 export interface PrototypePlanNode {
   type: ComponentType;
   name: string;
@@ -13,16 +16,18 @@ export interface PrototypePlanNode {
 }
 
 export interface PrototypePlan {
+  artifactKind: ArtifactKind;
   pageName: string;
   purpose: string;
   notes: string[];
   root: PrototypePlanNode;
 }
 
-const knownTypes = new Set(library.map((item) => item.type));
+const knownTypes = new Set<ComponentType | "group">(["group", ...library.map((item) => item.type)]);
 
 export function validatePrototypePlan(plan: PrototypePlan): string[] {
   const errors: string[] = [];
+  if (!artifactKinds.includes(plan?.artifactKind)) errors.push("产物类型无效");
   if (!plan || typeof plan.pageName !== "string" || !plan.pageName.trim()) errors.push("缺少页面名称");
   if (!plan?.root) return [...errors, "缺少页面结构"];
   const walk = (node: PrototypePlanNode, path: string) => {
@@ -35,6 +40,47 @@ export function validatePrototypePlan(plan: PrototypePlan): string[] {
   };
   walk(plan.root, "root");
   return errors;
+}
+
+const PAGE_BACKGROUND_NAME = "页面底板";
+const pageBackgroundName = /^(页面|画布).*(底板|背景|底色)$/;
+
+function isPageBackground(node: PrototypePlanNode) {
+  return node.type === "rectangle" && pageBackgroundName.test(node.name.trim());
+}
+
+/** Page backgrounds are structural, so their presence and bounds cannot depend on model output. */
+export function normalizeArtifactBackground(plan: PrototypePlan): PrototypePlan {
+  const children = plan.root.children ?? [];
+  if (plan.artifactKind !== "page") {
+    const localChildren = children.filter((node) => !isPageBackground(node));
+    return localChildren.length === children.length
+      ? plan
+      : { ...plan, root: { ...plan.root, children: localChildren } };
+  }
+
+  const rectangleDefaults = library.find((item) => item.type === "rectangle")?.defaultProps ?? {};
+  const existing = children.find(isPageBackground);
+  const background: PrototypePlanNode = {
+    type: "rectangle",
+    name: PAGE_BACKGROUND_NAME,
+    x: 0,
+    y: 0,
+    width: plan.root.width,
+    height: plan.root.height,
+    props: existing
+      ? { ...rectangleDefaults, ...(existing.props ?? {}), radius: 0, fillEnabled: true }
+      : { ...rectangleDefaults, fill: "var(--surface)", radius: 0, fillEnabled: true },
+    children: [],
+  };
+
+  return {
+    ...plan,
+    root: {
+      ...plan.root,
+      children: [background, ...children.filter((node) => !isPageBackground(node))],
+    },
+  };
 }
 
 function makeId() {
@@ -62,13 +108,14 @@ export function planToElement(plan: PrototypePlan, anchorX: number, anchorY: num
       parentId,
     };
   };
-  return convert(plan.root, null);
+  return convert(normalizeArtifactBackground(plan).root, null);
 }
 
 /** Deterministic offline starter plan used until a BYOK provider is configured. */
 export function starterPlan(prompt: string): PrototypePlan {
   const title = prompt.trim() || "灵感模板页面";
   return {
+    artifactKind: "page",
     pageName: title.slice(0, 32),
     purpose: title,
     notes: ["静态原型：将交互需求以可见控件表达"],
