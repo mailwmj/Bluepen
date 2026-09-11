@@ -1,15 +1,19 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { Archive, ArrowDown, ArrowLeft, ArrowUp, ChevronDown, History, MessageSquare, Plus, Search, Settings2, Square, Trash2, X } from 'lucide-react';
 import { Button } from '@bluepen/editor/components/ui/button';
 import { Input } from '@bluepen/editor/components/ui/input';
-import { Textarea } from '@bluepen/editor/components/ui/textarea';
 import { cn } from '@bluepen/editor/lib/utils';
 import { AgentMessageView } from './agent-message';
 import type { AgentController } from './agent-controller';
-import type { AgentContext, AppliedArtifact } from './agent-types';
+import type { AgentContext, AppliedArtifact, AgentReference } from './agent-types';
 import type { PrototypePlan } from './prototype-plan';
+
+import { AgentComposer } from './agent-composer';
+import { indexAgentNodes } from './agent-document';
+import { library } from '../library/index';
+import type { Page } from '../types';
 
 const labelClass = 'font-mono text-[11px] uppercase tracking-wider text-muted-foreground';
 interface AgentPanelProps {
@@ -17,6 +21,9 @@ interface AgentPanelProps {
   controller: AgentController;
   projectId: string;
   context: AgentContext;
+  pages: Page[];
+  selectedIds: string[];
+  onAddSelection: () => void;
   width: number;
   onWidthChange: (width: number) => void;
   onClose: () => void;
@@ -25,7 +32,7 @@ interface AgentPanelProps {
   onLocate: (target: { pageId: string; elementId?: string }) => void;
 }
 
-export function AgentPanel({ open, controller, projectId, context, width, onWidthChange, onClose, onSettings, onGenerate, onLocate }: AgentPanelProps) {
+export function AgentPanel({ open, controller, projectId, context, width, onWidthChange, onClose, onSettings, onGenerate, onLocate, pages, selectedIds, onAddSelection }: AgentPanelProps) {
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const session = controller.current(projectId);
   const [history, setHistory] = useState(false);
@@ -35,6 +42,8 @@ export function AgentPanel({ open, controller, projectId, context, width, onWidt
   const [renaming, setRenaming] = useState(false);
   const [title, setTitle] = useState('');
   const [error, setError] = useState('');
+  const candidates = useMemo<AgentReference[]>(() => [...pages.flatMap(page => [...indexAgentNodes(page.elements).values()].map(node => ({ kind: 'canvas' as const, id: `canvas:${page.id}:${node.id}`, role: page.id === context.pageId ? 'target' as const : 'reference' as const, projectId, pageId: page.id, pageName: page.name, nodeId: node.id, name: node.name }))), ...library.map(item => ({ kind: 'catalog' as const, id: `catalog:${item.type}`, role: 'reference' as const, componentType: item.type, name: item.label }))], [pages, projectId, context.pageId]);
+  const [uploading, setUploading] = useState(false);
   const [atBottom, setAtBottom] = useState(true);
   const scroller = useRef<HTMLDivElement>(null);
   const composer = useRef<HTMLTextAreaElement>(null);
@@ -70,7 +79,7 @@ export function AgentPanel({ open, controller, projectId, context, width, onWidt
   const otherRun = state.activeRun && !currentBusy ? controller.session(state.activeRun.sessionId) : undefined;
   const sessions = state.sessions.filter(item => item.projectId === projectId && item.archived === showArchived && (!search.trim() || `${item.title} ${item.messages.map(message => message.content).join(' ')}`.toLowerCase().includes(search.trim().toLowerCase()))).sort((a, b) => b.updatedAt - a.updatedAt);
   const send = () => {
-    if (!session) return;
+    if (!session || uploading) return;
     follow.current = true; setAtBottom(true); setError('');
     void controller.send(session.id, session.draft, context).catch(error => setError(error instanceof Error ? error.message : '发送失败'));
   };
@@ -85,6 +94,7 @@ export function AgentPanel({ open, controller, projectId, context, width, onWidt
       <Button variant="ghost" size="icon-sm" aria-label="新建会话" title="新建会话" disabled={!state.loaded || !!state.historyError} onClick={() => { controller.newSession(projectId); setHistory(false); composer.current?.focus(); }}><Plus /></Button>
       <Button variant="ghost" size="icon-sm" aria-label="会话历史" title="会话历史" aria-pressed={history} onClick={() => setHistory(!history)}><History /></Button>
       <Button variant="ghost" size="icon-sm" aria-label="AI 服务设置" title="AI 服务设置" onClick={onSettings}><Settings2 /></Button>
+      <Button variant="ghost" size="xs" aria-label="切换到属性面板" onClick={onClose}>属性</Button>
       <Button variant="ghost" size="icon-sm" aria-label="收起 AI 助手" title="收起（继续运行）" onClick={onClose}><X /></Button>
     </header>
     {!state.loaded ? <p role="status" className="p-6 font-mono text-xs">[正在读取会话…]</p> : state.historyError ? <div className="space-y-3 p-6"><p role="alert" className="text-sm text-destructive">{state.historyError}</p><Button variant="outline" onClick={() => void controller.retryLoad()}>重新读取</Button></div> : history ? <>
@@ -111,18 +121,16 @@ export function AgentPanel({ open, controller, projectId, context, width, onWidt
         setAtBottom(follow.current);
         if (Math.abs(session.scrollTop - element.scrollTop) > 1) controller.updateSession(session.id, { scrollTop: element.scrollTop });
       }}>
-        {!session.messages.length && <div className="space-y-6 py-10"><MessageSquare className="size-6 text-muted-foreground" /><div className="space-y-2"><h2 className="text-base font-medium">把想法变成原型</h2><p className="text-sm leading-6 text-muted-foreground">一起梳理需求，确认方案后生成到画布。</p></div><div className="space-y-2">{['设计一个桌面端任务管理页面', '做一个移动端登录页', '先帮我梳理页面结构'].map(prompt => <button key={prompt} className="block w-full rounded-lg border border-border-visible px-3 py-3 text-left text-sm text-muted-foreground hover:border-foreground/50 hover:text-foreground focus-visible:outline-1" onClick={() => { controller.updateSession(session.id, { draft: prompt }); composer.current?.focus(); }}>{prompt}<ArrowUp className="float-right size-3.5" /></button>)}</div></div>}
+        {!session.messages.length && <div className="space-y-6 py-10"><MessageSquare className="size-6 text-muted-foreground" /><div className="space-y-2"><h2 className="text-base font-medium">选中对象，一起打磨原型</h2><p className="text-sm leading-6 text-muted-foreground">选中组件或组合后添加到会话，直接修改原型；也可以从模板和参考图开始。</p></div><div className="space-y-2">{(session.references?.some(ref => ref.role === 'target') ? ['统一这些组件的文案和尺寸', '优化这个区域的布局', '先帮我分析这个组件'] : ['设计一个桌面端任务管理页面', '做一个移动端登录页', '先帮我梳理页面结构']).map(prompt => <button key={prompt} className="block w-full rounded-lg border border-border-visible px-3 py-3 text-left text-sm text-muted-foreground hover:border-foreground/50 hover:text-foreground focus-visible:outline-1" onClick={() => { controller.updateSession(session.id, { draft: prompt }); composer.current?.focus(); }}>{prompt}<ArrowUp className="float-right size-3.5" /></button>)}</div></div>}
         {session.messages.map((message, index) => <AgentMessageView key={message.id} message={message} sessionId={session.id} controller={controller} busy={busy} last={index === session.messages.length - 1} archived={session.archived} context={context} onGenerate={onGenerate} onLocate={onLocate} onError={setError} />)}
       </div>
-      {!atBottom && <div className="flex justify-center pb-2"><Button variant="outline" size="pill-sm" onClick={() => { follow.current = true; setAtBottom(true); scroller.current?.scrollTo({ top: scroller.current.scrollHeight }); }}><ArrowDown className="size-3" />回到最新</Button></div>}
+      {!atBottom && session.messages.length > 0 && <div className="flex justify-center pb-2"><Button variant="outline" size="pill-sm" onClick={() => { follow.current = true; setAtBottom(true); scroller.current?.scrollTo({ top: scroller.current.scrollHeight }); }}><ArrowDown className="size-3" />回到最新</Button></div>}
       <div className="shrink-0 space-y-3 border-t border-border p-4">
         {!state.settings.apiKey && <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground"><span>连接模型后即可开始</span><Button variant="outline" size="pill-sm" onClick={onSettings}>前往设置</Button></div>}
         {state.settingsError && <p className="text-xs text-destructive">{state.settingsError}</p>}
-        <div className="flex items-center justify-between gap-3"><span className={cn(labelClass, 'truncate')} title={context.pageName}>新增到 / {context.pageName}</span><details className="relative max-w-[60%]"><summary className="flex cursor-pointer list-none items-center gap-1 font-mono text-[11px] text-muted-foreground"><span className="max-w-40 truncate" title={session.model || state.settings.model}>{session.model || state.settings.model}</span><ChevronDown className="size-3" /></summary><div className="absolute bottom-7 right-0 z-20 w-60 space-y-2 rounded-lg border border-border-visible bg-surface-raised p-3"><label className="block space-y-2"><span className={labelClass}>本会话模型</span><Input aria-label="本会话模型" disabled={session.archived} placeholder={state.settings.model} value={session.model} onChange={event => controller.updateSession(session.id, { model: event.target.value })} className="font-mono" /></label><p className="text-xs text-muted-foreground">留空使用默认模型，下次请求生效。</p></div></details></div>
-        {waiting ? <p className="text-xs leading-5 text-muted-foreground">等待你回答上方问题，提交后会继续原任务。</p> : <><Textarea ref={composer} value={session.draft} disabled={session.archived} aria-label="发送给 AI 助手" onChange={event => controller.updateSession(session.id, { draft: event.target.value })} onKeyDown={event => {
-          if (!event.nativeEvent.isComposing && event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); if (!busy && !waiting) send(); }
-        }} placeholder={waiting ? '先回答上方问题，或取消后继续讨论' : '描述目标、内容和用户任务…'} className="min-h-24 max-h-44 resize-y text-sm" />
-        <div className="flex items-center justify-between gap-2"><span className={labelClass}>⌘ / Ctrl + Enter</span>{currentBusy ? <Button variant="outline" size="pill-sm" onClick={() => controller.stop()}><Square className="size-3" />停止</Button> : <Button size="pill-sm" aria-label="发送消息" disabled={!session.draft.trim() || busy || waiting || session.archived || !state.settings.apiKey} onClick={send}><ArrowUp className="size-3.5" />发送</Button>}</div></>}
+        <div className="flex items-center justify-between gap-3"><span className={cn(labelClass, 'truncate')} title={context.pageName}>{session.references?.some(ref => ref.role === 'target') ? '修改对象' : '创作页面'} / {context.pageName}</span><details className="relative max-w-[60%]"><summary className="flex cursor-pointer list-none items-center gap-1 font-mono text-[11px] text-muted-foreground"><span className="max-w-40 truncate" title={session.model || state.settings.model}>{session.model || state.settings.model}</span><ChevronDown className="size-3" /></summary><div className="absolute bottom-7 right-0 z-20 w-60 space-y-2 rounded-lg border border-border-visible bg-surface-raised p-3"><label className="block space-y-2"><span className={labelClass}>本会话模型</span><Input aria-label="本会话模型" disabled={session.archived} placeholder={state.settings.model} value={session.model} onChange={event => controller.updateSession(session.id, { model: event.target.value })} className="font-mono" /></label><p className="text-xs text-muted-foreground">留空使用默认模型，下次请求生效。</p></div></details></div>
+        {waiting ? <p className="text-xs leading-5 text-muted-foreground">等待你回答上方问题，提交后会继续原任务。</p> : <><AgentComposer sessionId={session.id} draft={session.draft} references={session.references ?? []} candidates={candidates} disabled={session.archived} busy={busy} composerRef={composer} selectedCount={selectedIds.length} onSelection={onAddSelection} onDraft={draft => controller.updateSession(session.id, { draft })} onReferences={references => controller.updateSession(session.id, { references })} onSend={send} onError={setError} onUploadState={setUploading} onLocate={ref => { try { onLocate({ pageId: ref.pageId, elementId: ref.nodeId }); setError(''); } catch (error) { setError(error instanceof Error ? error.message : '无法定位对象'); } }} isMissing={ref => ref.kind === 'canvas' && !candidates.some(candidate => candidate.id === ref.id)} />
+        <div className="flex items-center justify-between gap-2"><span className={labelClass}>⌘ / Ctrl + Enter</span>{currentBusy ? <Button variant="outline" size="pill-sm" onClick={() => controller.stop()}><Square className="size-3" />停止</Button> : <Button size="pill-sm" aria-label="发送消息" disabled={!session.draft.trim() || busy || uploading || waiting || session.archived || !state.settings.apiKey} onClick={send}><ArrowUp className="size-3.5" />发送</Button>}</div></>}
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       </div>
     </>}

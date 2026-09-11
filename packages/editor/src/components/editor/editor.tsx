@@ -57,7 +57,11 @@ import { agentStorage } from "./agent/agent-storage";
 import { runAgent } from "./agent/agent-runtime";
 import { AgentSettingsPage } from "./agent/agent-settings-page";
 import { prepareAgentArtifact } from "./agent/agent-canvas";
-import type { AgentContext, AppliedArtifact } from "./agent/agent-types";
+import type { AgentContext, AppliedArtifact, AgentReference } from "./agent/agent-types";
+import { agentPreviewElements, agentReceiptState, canvasReferences, captureAgentContext, createAgentReceipt, indexAgentNodes, prepareAgentChanges, projectAgentElements, undoAgentReceipt } from './agent/agent-document';
+import { planToElement } from './agent/prototype-plan';
+import { combineBounds } from './utils/viewport';
+import { getLayoutElements } from './utils/layout-elements';
 import { projectIdentity } from "./utils/project-identity";
 
 function genId() {
@@ -184,6 +188,13 @@ export function Editor() {
   const [theme, setTheme] = useState<"dark" | "light">("dark");
   const [leftDrawerCollapsed, setLeftDrawerCollapsed] = useState(false);
   const [agentOpen, setAgentOpen] = useState(false);
+  useEffect(() => {
+    if (!agentOpen) return;
+    const narrow = window.matchMedia('(max-width: 1023px)');
+    const collapse = () => { if (narrow.matches) setLeftDrawerCollapsed(true); };
+    collapse(); narrow.addEventListener('change', collapse);
+    return () => narrow.removeEventListener('change', collapse);
+  }, [agentOpen]);
   const [agentWidth, setAgentWidth] = useState(420);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [agent] = useState(() => new AgentController(agentStorage, runAgent));
@@ -699,13 +710,71 @@ export function Editor() {
   );
 
   const generatePrototype = useCallback((plan: PrototypePlan, target: AgentContext, messageId: string): AppliedArtifact => {
+    const before = latestElementsRef.current;
     const result = prepareAgentArtifact(plan, target, { projectId, pageId: activePageId, elements: latestElementsRef.current }, messageId);
     commit(result.elements);
     setSelectedIds([result.element.id]);
     setAgentAnchor(null);
-    canvasApiRef.current?.fitContent(true);
-    return { pageId: activePageId, elementId: result.element.id, name: plan.pageName };
+    requestAnimationFrame(() => canvasApiRef.current?.focusBounds(result.element));
+    return { pageId: activePageId, elementId: result.element.id, name: plan.pageName, receipt: createAgentReceipt(before, result.elements, activePageId, messageId, plan.pageName, [result.element.id]) };
   }, [projectId, activePageId, commit]);
+
+  const addAgentReferences = (references: AgentReference[]) => {
+    try {
+      let session = agent.current(projectId);
+      if (!session || session.archived) session = agent.newSession(projectId);
+      if (!session) throw new Error('会话正在读取，请稍后重试');
+      agent.addReferences(session.id, references); setAgentOpen(true);
+    } catch (error) { showToast({ title: error instanceof Error ? error.message : '无法添加对象', type: 'error' }); }
+  };
+  const addSelectionToAgent = (ids = selectedIds) => addAgentReferences(canvasReferences(projectId, { id: activePageId, name: activePage?.name ?? '页面', elements: latestElementsRef.current }, ids));
+  const agentPage = (pageId: string) => pages.find(page => page.id === pageId);
+  const pageElements = (pageId: string) => pageId === activePageId ? latestElementsRef.current : agentPage(pageId)?.elements;
+  const focusAgentElements = (document: EditorElement[], ids: string[]) => {
+    const selected = getLayoutElements(document).filter(node => ids.includes(node.id));
+    const bounds = combineBounds(selected);
+    if (bounds) requestAnimationFrame(() => canvasApiRef.current?.focusBounds(bounds));
+  };
+  agent.setCanvasAdapter({
+    capture: context => {
+      if (context.projectId !== projectId) throw new Error('请回到此会话所属的项目');
+      return captureAgentContext(context, pages.map(page => page.id === activePageId ? { ...page, elements: latestElementsRef.current } : page));
+    },
+    apply: (changes, context, id) => {
+      if (context.projectId !== projectId || context.pageId !== activePageId) throw new Error(`请先回到目标页面「${context.pageName}」再应用修改`);
+      const result = prepareAgentChanges(changes, context, latestElementsRef.current, id);
+      commit(result.elements);
+      setSelectedIds(result.receipt.targetIds);
+      focusAgentElements(result.elements, result.receipt.targetIds);
+      return { pageId: activePageId, elementId: result.receipt.targetIds[0] ?? '', name: changes.summary, receipt: result.receipt };
+    },
+    status: artifact => {
+      const document = pageElements(artifact.pageId);
+      return artifact.receipt ? agentReceiptState(artifact.receipt, document) : !document ? 'unavailable' : indexAgentNodes(document).has(artifact.elementId) ? 'applied' : 'missing';
+    },
+    undo: artifact => {
+      if (artifact.pageId !== activePageId) throw new Error('请先切换到结果所在页面再撤销');
+      if (!artifact.receipt) throw new Error('此历史结果不含独立撤销记录，请使用编辑器历史撤销');
+      const next = undoAgentReceipt(artifact.receipt, latestElementsRef.current);
+      commit(next); setSelectedIds(selectedIds.filter(id => indexAgentNodes(next).has(id)));
+    },
+    preview: message => {
+      if (message.context.projectId !== projectId) throw new Error('请回到原项目预览');
+      if (message.plan) return { before: [], after: [planToElement(message.plan, 0, 0)] };
+      const before = agentPreviewElements(message.context);
+      if (message.applied?.receipt) {
+        const nodes = new Map(message.context.snapshot?.nodes.map(node => [node.id, node]) ?? []);
+        message.applied.receipt.nodes.forEach(delta => { if (delta.after) nodes.set(delta.id, delta.after); else nodes.delete(delta.id); });
+        return { before, after: agentPreviewElements({ ...message.context, snapshot: { ...message.context.snapshot!, nodes: [...nodes.values()] } }) };
+      }
+      if (!message.changes) throw new Error('没有可预览的修改');
+      const document = pageElements(message.context.pageId);
+      if (!document) throw new Error('目标页面已删除');
+      const next = prepareAgentChanges(message.changes, message.context, document, message.id);
+      const ids = (message.context.references ?? []).flatMap(ref => ref.kind === 'canvas' && ref.role === 'target' ? [ref.nodeId] : []);
+      return { before, after: projectAgentElements(next.elements, [...ids, ...next.receipt.targetIds]) };
+    },
+  });
 
   const lastCanvasPointerPosRef = useRef<{ x: number; y: number }>({ x: 200, y: 200 });
 
@@ -1714,7 +1783,7 @@ export function Editor() {
         </div>
       ) : (
         <div className="flex min-h-0 w-full flex-1 overflow-hidden">
-          <div className={agentOpen ? "hidden lg:contents" : "contents"}><LeftSidebar
+          <div className={agentOpen ? "contents [&_[data-library-shell]]:max-lg:w-12" : "contents"}><LeftSidebar
             pages={pages}
             activeTab={libraryTab}
             onTabChange={setLibraryTab}
@@ -1732,11 +1801,18 @@ export function Editor() {
             onUpdateElement={updateElement}
             onDeleteElement={deleteElement}
             onAddAsset={handleSidebarAdd}
+            onAddSelectionToAgent={() => addSelectionToAgent()}
+            onReferenceAsset={item => addAgentReferences([{ kind: 'catalog', role: 'reference', id: `catalog:${item.type}`, componentType: item.type, name: item.label }])}
             drawerCollapsed={leftDrawerCollapsed}
             onToggleDrawer={toggleLeftDrawer}
           /></div>
 
         <div className="relative flex flex-1 min-w-0 overflow-hidden">
+          {selectedIds.length > 0 && <div className="absolute left-4 top-4 z-20 flex max-w-[calc(100%-32px)] flex-wrap items-center gap-2 rounded-lg border border-border-visible bg-surface px-3 py-2" aria-label="选区操作">
+            <span className="font-mono text-[11px] text-muted-foreground">{selectedIds.length} 项已选</span>
+            <Button variant="ghost" size="xs" onClick={() => addSelectionToAgent()}><WandSparkles className="size-3.5" />添加到会话</Button>
+            {agentOpen && <Button variant="ghost" size="xs" onClick={() => setAgentOpen(false)}>查看属性</Button>}
+          </div>}
           <ContextMenu
             open={contextOpen}
             onOpenChange={(open) => {
@@ -1804,6 +1880,8 @@ export function Editor() {
             <ContextMenuPopup>
               {contextTarget === "element" && ((contextElementId && allElementsFlat.some((e: EditorElement) => e.id === contextElementId)) || selectedIds.length > 0) ? (
                 <>
+                  <ContextMenuItem closeOnClick onClick={() => addSelectionToAgent(selectedIds.length ? selectedIds : contextElementId ? [contextElementId] : [])}><WandSparkles />添加到 AI 会话</ContextMenuItem>
+                  <ContextMenuSeparator />
                   <ContextMenuItem closeOnClick onClick={cutSelected}>
                     <Scissors aria-hidden="true" className="opacity-80" />
                     剪切
@@ -1959,14 +2037,15 @@ export function Editor() {
           open={agentOpen} controller={agent} projectId={projectId}
           context={{ projectId, pageId: activePageId, pageName: activePage?.name ?? "页面", ...(agentAnchor ? { anchor: agentAnchor } : {}) }}
           width={agentWidth} onWidthChange={setAgentWidth}
+          pages={pages} selectedIds={selectedIds} onAddSelection={() => addSelectionToAgent()}
           onClose={() => setAgentOpen(false)} onSettings={() => setSettingsOpen(true)} onGenerate={generatePrototype}
           onLocate={(target) => {
             const page = pages.find(page => page.id === target.pageId);
             if (!page) throw new Error("目标页面已删除");
-            if (target.elementId && !page.elements.some(element => element.id === target.elementId)) throw new Error("生成结果已被撤销或删除");
+            if (target.elementId && !indexAgentNodes(page.elements).has(target.elementId)) throw new Error("对象已被撤销或删除");
             handlePageSelect(page.id);
             setSelectedIds(target.elementId ? [target.elementId] : []);
-            requestAnimationFrame(() => canvasApiRef.current?.fitContent(!!target.elementId));
+            focusAgentElements(page.elements, target.elementId ? [target.elementId] : page.elements.map(node => node.id));
           }}
         />
       </div>
@@ -1984,9 +2063,9 @@ export function Editor() {
 
       {/* Floating toolbar */}
       {!previewing && (
-        <div className="fixed bottom-12 left-1/2 z-30 -translate-x-1/2 select-none" style={agentOpen ? { left: `calc((100% - ${agentWidth}px) / 2)` } : undefined}>
+        <div className="fixed bottom-12 left-1/2 z-30 max-w-[calc(100vw-32px)] -translate-x-1/2 select-none" style={agentOpen ? { left: `calc(max(64px, (100% - ${agentWidth}px)) / 2)`, maxWidth: `max(64px, calc(100vw - ${agentWidth}px - 24px))` } : undefined}>
         <div className="animate-fade-up">
-          <CossToolbar className="rounded-full border border-border-visible bg-surface px-1.5 py-1">
+          <CossToolbar className="max-w-full overflow-x-auto rounded-full border border-border-visible bg-surface px-1.5 py-1 [&_[data-slot=toolbar-group]]:shrink-0">
           <ToolbarGroup>
             <ToolbarButton className={toolClass("select")} onClick={() => setActiveTool("select")} title="选择 (V)">
               <MousePointer2 aria-hidden="true" className="size-3" />

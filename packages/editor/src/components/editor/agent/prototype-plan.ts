@@ -1,5 +1,6 @@
 import type { ComponentType, EditorElement } from "../types";
 import { library } from "../library";
+import { createBlockTemplateGroup, isBlockTemplate } from '../library/block-templates';
 
 export const artifactKinds = ["page", "section", "component"] as const;
 export type ArtifactKind = (typeof artifactKinds)[number];
@@ -89,6 +90,14 @@ function makeId() {
 
 export function planToElement(plan: PrototypePlan, anchorX: number, anchorY: number): EditorElement {
   const convert = (node: PrototypePlanNode, parentId: string | null): EditorElement => {
+    if (isBlockTemplate(node.type)) {
+      const template = createBlockTemplateGroup(node.type, anchorX + node.x, anchorY + node.y, parentId);
+      if (template) {
+        const sx = node.width / template.width, sy = node.height / template.height;
+        const scale = (el: EditorElement): EditorElement => ({ ...el, x: el.x * sx, y: el.y * sy, width: el.width * sx, height: el.height * sy, children: el.children.map(scale) });
+        return { ...template, name: node.name, width: node.width, height: node.height, children: template.children.map(scale) };
+      }
+    }
     const id = makeId();
     return {
       id,

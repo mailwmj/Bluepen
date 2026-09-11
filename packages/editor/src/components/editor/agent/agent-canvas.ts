@@ -7,7 +7,8 @@ export function prepareAgentArtifact(plan: PrototypePlan, target: AgentContext, 
   if (target.projectId !== current.projectId) throw new Error('此方案属于其他项目，请回到原项目后生成');
   if (target.pageId !== current.pageId) throw new Error(`请先切换到目标页面「${target.pageName}」再生成`);
   const id = `agent-${messageId}`;
-  const existing = current.elements.find(element => element.id === id);
+  const find = (nodes: EditorElement[]): EditorElement | undefined => { for (const node of nodes) { if (node.id === id) return node; const child = find(node.children); if (child) return child; } };
+  const existing = find(current.elements);
   if (existing) return { element: existing, elements: current.elements };
   const errors = validatePrototypePlan(plan);
   if (errors.length) throw new Error(`原型方案无效：${errors[0]}`);

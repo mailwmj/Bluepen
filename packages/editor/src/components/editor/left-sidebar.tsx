@@ -155,6 +155,8 @@ interface LeftSidebarProps {
   onUpdateElement: (id: string, patch: Partial<EditorElement>) => void;
   onDeleteElement: (id: string) => void;
   onAddAsset: (asset: ComponentType | LibraryComponent) => void;
+  onReferenceAsset?: (asset: LibraryComponent) => void;
+  onAddSelectionToAgent?: () => void;
   drawerCollapsed?: boolean;
   onToggleDrawer?: () => void;
 }
@@ -758,6 +760,8 @@ export const LeftSidebar = memo(function LeftSidebar({
   onUpdateElement,
   onDeleteElement,
   onAddAsset,
+  onReferenceAsset,
+  onAddSelectionToAgent,
   drawerCollapsed: controlledDrawerCollapsed,
   onToggleDrawer,
 }: LeftSidebarProps) {
@@ -815,7 +819,7 @@ export const LeftSidebar = memo(function LeftSidebar({
   ];
 
   return (
-    <div className={cn("relative z-20 flex h-full shrink-0 select-none bg-surface text-foreground transition-[width] duration-200", isDrawerCollapsed ? "w-12" : "w-[296px]")}>
+    <div data-library-shell className={cn("relative z-20 flex h-full shrink-0 select-none bg-surface text-foreground transition-[width] duration-200", isDrawerCollapsed ? "w-12" : "w-[296px]")}>
       {/* 1. PRIMARY NARROW DOCK (48px) */}
       <div className="flex w-12 shrink-0 flex-col items-center justify-between border-r border-border bg-surface py-2 z-20">
         <div className="flex flex-col items-center gap-1.5">
@@ -908,8 +912,8 @@ export const LeftSidebar = memo(function LeftSidebar({
                       {!collapsed && (
                         <div className={cn("grid gap-2", isTemplate ? "grid-cols-2" : "grid-cols-3")}>
                           {items.map((item) => (
+                            <div key={item.type} className="flex min-w-0 flex-col gap-1">
                             <Button
-                              key={item.type}
                               variant="outline"
                               draggable
                               onDragStart={(event) => {
@@ -927,6 +931,8 @@ export const LeftSidebar = memo(function LeftSidebar({
                               <span className="line-clamp-2 w-full text-xs leading-4">{item.label}</span>
                               {isTemplate && <span className="font-mono text-[11px] text-muted-foreground">{item.defaultWidth} × {item.defaultHeight}</span>}
                             </Button>
+                            {onReferenceAsset && <Button variant="ghost" size="xs" className="h-6 text-[11px] text-muted-foreground" aria-label={`${item.label}作为 AI 参考`} title="添加到会话作为参考，不会插入画布" onClick={() => onReferenceAsset(item)}>用作 AI 参考</Button>}
+                            </div>
                           ))}
                         </div>
                       )}
@@ -1011,6 +1017,7 @@ export const LeftSidebar = memo(function LeftSidebar({
                 <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2 text-xs font-bold bg-surface">
                   <span className="font-mono text-xs font-bold tracking-wider uppercase text-foreground">[ 图层列表 ]</span>
                   <span className="nd-num text-[10px] font-mono text-muted-foreground">{String(roots.length).padStart(2, "0")}</span>
+                  {onAddSelectionToAgent && !!selectedIds?.length && <Button variant="ghost" size="icon-xs" aria-label="将选中图层添加到会话" title="将选中图层添加到会话" onClick={onAddSelectionToAgent}><Sparkles /></Button>}
                 </div>
 
                 {/* Tree Items List */}

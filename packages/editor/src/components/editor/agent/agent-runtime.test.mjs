@@ -204,3 +204,15 @@ test('reasoning shown in the UI is sourced from real provider reasoning deltas',
   await provider.responsesAgentProvider({ messages, settings, onEvent: event => events.push(event) });
   assert.equal(events.filter(event => event.type === 'reasoning').map(event => event.text).join(''), '先确定页面结构。');
 });
+
+test('Responses carries a bounded selection and image reference, and decodes in-place changes', async () => {
+  let request;
+  const output = { reply: '更新按钮文案', questions: [], plan: null, changes: { summary: '更新文案', operations: [{ kind: 'update', nodeId: 'button-a', fields: [{ key: 'props.text', value: '确认' }] }] } };
+  const provider = runtime(async (url, init) => { request = JSON.parse(init.body); return new Response(responseEvents(output), { headers: { 'content-type': 'text/event-stream' } }); });
+  const context = { projectId: 'p', pageId: 'page', pageName: '首页', references: [{ kind: 'image', id: 'image-ref', role: 'reference', name: '参考图', dataUrl: 'data:image/png;base64,aGVsbG8=' }], snapshot: { roots: ['button-a'], writableIds: ['button-a'], nodes: [], referenceNodes: [] } };
+  const result = await provider.responsesAgentProvider({ messages: [{ role: 'user', content: '修改此按钮' }], settings, context });
+  assert.equal(result.changes.operations[0].nodeId, 'button-a'); assert.equal(result.plan, undefined);
+  const user = request.input.find(item => item.role === 'user');
+  assert.ok(user.content.some(part => part.type === 'input_image' && part.image_url.startsWith('data:image/png;base64,')));
+  assert.ok(user.content.some(part => part.type === 'input_text' && part.text.includes('BLUEPEN_CONTEXT') && part.text.includes('button-a')));
+});

@@ -1,7 +1,18 @@
 import { z } from 'zod';
 import type { AgentProvider, AgentMessage } from './agent-runtime';
 import { validatePrototypePlan, type PrototypePlan } from './prototype-plan';
-import { agentId, defaultAgentSettings, type AgentContext, type AgentHistory, type AgentSession, type AgentSettings, type AppliedArtifact, type ConversationMessage } from './agent-types';
+import { agentId, defaultAgentSettings, type AgentContext, type AgentHistory, type AgentSession, type AgentSettings, type AppliedArtifact, type ConversationMessage, type AgentReference, type AgentChangeSet, type AgentResultState } from './agent-types';
+import { changesSchema, receiptSchema, referenceSchema, selectionSchema } from './agent-schema';
+import { mergeAgentReferences, same } from './agent-document';
+import type { EditorElement } from '../types';
+
+export interface AgentCanvasAdapter {
+  capture(context: AgentContext): AgentContext;
+  apply(changes: AgentChangeSet, context: AgentContext, id: string): AppliedArtifact;
+  status(artifact: AppliedArtifact): AgentResultState;
+  undo(artifact: AppliedArtifact): void;
+  preview(message: ConversationMessage): { before: EditorElement[]; after: EditorElement[] };
+}
 
 export interface AgentStorage {
   loadHistory(): Promise<AgentHistory | undefined>;
@@ -9,11 +20,11 @@ export interface AgentStorage {
   loadSettings(): Promise<AgentSettings>;
   saveSettings(settings: AgentSettings): Promise<void>;
 }
-const contextSchema = z.object({ projectId: z.string(), pageId: z.string(), pageName: z.string(), anchor: z.object({ x: z.number(), y: z.number() }).optional() });
+const contextSchema = z.object({ projectId: z.string(), pageId: z.string(), pageName: z.string(), anchor: z.object({ x: z.number(), y: z.number() }).optional(), references: z.array(referenceSchema).max(24).optional(), snapshot: selectionSchema.optional() });
 const historySchema = z.object({
   version: z.literal(1), selected: z.record(z.string(), z.string()),
   sessions: z.array(z.object({
-    id: z.string(), projectId: z.string(), title: z.string(), createdAt: z.number(), updatedAt: z.number(), archived: z.boolean(), draft: z.string(), model: z.string(), scrollTop: z.number(),
+    id: z.string(), projectId: z.string(), title: z.string(), createdAt: z.number(), updatedAt: z.number(), archived: z.boolean(), draft: z.string(), model: z.string(), scrollTop: z.number(), references: z.array(referenceSchema).max(24).optional(),
     messages: z.array(z.object({
       id: z.string(), role: z.enum(['user', 'assistant']), content: z.string(), createdAt: z.number(), context: contextSchema,
       status: z.enum(['running', 'waiting-input', 'waiting-approval', 'completed', 'failed', 'cancelled', 'interrupted', 'declined']),
@@ -23,7 +34,7 @@ const historySchema = z.object({
       answers: z.record(z.string(), z.string()).optional(),
       questionDraft: z.record(z.string(), z.object({ choices: z.array(z.string()), custom: z.string() })).optional(),
       plan: z.custom<PrototypePlan>(value => { try { return validatePrototypePlan(value as PrototypePlan).length === 0; } catch { return false; } }).optional(),
-      planVersion: z.number().optional(), applied: z.object({ pageId: z.string(), elementId: z.string(), name: z.string() }).optional(), error: z.string().optional(),
+      changes: changesSchema.optional(), planVersion: z.number().optional(), applied: z.object({ pageId: z.string(), elementId: z.string(), name: z.string(), receipt: receiptSchema.optional() }).optional(), error: z.string().optional(),
     })),
   })),
 });
@@ -47,7 +58,11 @@ export class AgentController {
   private queue: Promise<unknown> = Promise.resolve();
   private initialization?: Promise<void>;
   private revision = 0;
+  private canvas?: AgentCanvasAdapter;
   constructor(private storage: AgentStorage, private provider: AgentProvider) {}
+  setCanvasAdapter(adapter: AgentCanvasAdapter) { this.canvas = adapter; }
+  resultState(artifact: AppliedArtifact): AgentResultState { return this.canvas?.status(artifact) ?? 'unavailable'; }
+  preview(message: ConversationMessage) { if (!this.canvas) throw new Error('画布尚未就绪'); return this.canvas.preview(message); }
   subscribe = (listener: () => void) => { this.listeners.add(listener); return () => { this.listeners.delete(listener); }; };
   getSnapshot = () => this.state;
   private emit(patch: Partial<AgentSnapshot>) { this.state = { ...this.state, ...patch }; this.listeners.forEach(listener => listener()); }
@@ -113,8 +128,14 @@ export class AgentController {
     const session = this.session(id);
     if (session) this.changed({ selected: { ...this.state.selected, [session.projectId]: id } });
   }
-  updateSession(id: string, patch: Partial<Pick<AgentSession, 'title' | 'draft' | 'model' | 'scrollTop'>>) {
+  updateSession(id: string, patch: Partial<Pick<AgentSession, 'title' | 'draft' | 'model' | 'scrollTop' | 'references'>>) {
     this.changed({ sessions: this.state.sessions.map(session => session.id === id ? { ...session, ...patch } : session) });
+  }
+  addReferences(id: string, incoming: AgentReference[]) {
+    const session = this.session(id);
+    if (!session || session.archived) throw new Error('请恢复会话或新建会话后添加对象');
+    const references = mergeAgentReferences(session.references ?? [], incoming.map(ref => referenceSchema.parse(ref)));
+    this.updateSession(id, { references });
   }
   archive(id: string) {
     if (this.active?.sessionId === id) return;
@@ -131,15 +152,30 @@ export class AgentController {
   private modelMessages(session: AgentSession): AgentMessage[] {
     const valid = session.messages.filter(message => message.role === 'user' || ['completed', 'waiting-input', 'waiting-approval', 'declined'].includes(message.status));
     const lastPlan = valid.findLast(message => message.plan);
-    return valid.map(message => ({ role: message.role, content: message.content +
+    const messages = valid.map(message => ({ role: message.role, content: message.content +
+      (message.context.references?.length ? `\n本条消息引用：${JSON.stringify(message.context.references.map(ref => ({ kind: ref.kind, name: ref.name, role: ref.role, ...(ref.kind === 'canvas' ? { nodeId: ref.nodeId } : {}) })))}` : '') +
       (message.questions?.length ? `\n澄清问题：${JSON.stringify(message.questions)}` : '') +
-      (message === lastPlan ? `\n方案：${JSON.stringify(message.plan)}\n状态：${message.applied ? '已生成到画布' : message.status === 'declined' ? '用户要求修改或拒绝' : '尚未生成'}` : '') }));
+      (message === lastPlan ? `\n方案：${JSON.stringify(message.plan)}` : '') +
+      (message.changes ? `\n修改摘要：${message.changes.summary}` : '') +
+      (message.applied ? `\n画布当前状态：${({ applied: '修改仍存在', reverted: '已撤销', changed: '已有后续修改', missing: '对象已删除', unavailable: '目标页面不可用' })[this.resultState(message.applied)]}` : message.plan || message.changes ? `\n状态：${message.status === 'declined' ? '用户未采用' : '尚未应用'}` : '') }));
+    // Keep recent turns intact and make the omitted context explicit to the model.
+    let length = 0;
+    const recent: AgentMessage[] = [];
+    for (const message of messages.toReversed()) {
+      if (recent.length && length + message.content.length > 60_000) break;
+      recent.unshift(message); length += message.content.length;
+    }
+    if (recent.length < messages.length) recent.unshift({ role: 'user', content: '[较早会话已省略；不要推测缺失内容，以本次引用的当前画布数据为准。]' });
+    return recent;
   }
   async send(sessionId: string, content: string, context: AgentContext) {
     const session = this.session(sessionId);
     if (!session || session.archived || session.messages.at(-1)?.status === 'waiting-input' || this.active || !content.trim() || !this.state.loaded || this.state.historyError) return;
     if (session.projectId !== context.projectId) throw new Error('会话与目标项目不一致');
     if (!this.state.settings.apiKey.trim()) throw new Error('请先在设置 → AI 服务中填写 API Key');
+    if (content.length > 20_000) throw new Error('消息过长，请拆成几步发送');
+    context = { ...context, references: context.references ?? session.references ?? [] };
+    context = structuredClone(this.canvas?.capture(context) ?? context);
     const user: ConversationMessage = { id: agentId(), role: 'user', content: content.trim(), createdAt: Date.now(), status: 'completed', context, steps: [], reasoning: '' };
     this.changed({ sessions: this.state.sessions.map(item => item.id === sessionId ? { ...item, draft: '', title: item.messages.length || item.title !== '新会话' ? item.title : content.trim().slice(0, 30), messages: [...item.messages.map(message => message.status === 'waiting-approval' ? { ...message, status: 'declined' as const } : message), user] } : item) });
     await this.start(sessionId, context);
@@ -168,9 +204,12 @@ export class AgentController {
         },
       });
       if (this.active !== run) return;
-      this.patchMessage(sessionId, message.id, { content: result.reply, plan: result.plan, questions: result.questions,
+      if ([!!result.plan, !!result.changes, !!result.questions?.length].filter(Boolean).length > 1) throw new Error('返回了冲突的任务结果，请重试');
+      if (result.changes) changesSchema.parse(result.changes);
+      this.patchMessage(sessionId, message.id, { content: result.reply, plan: result.plan, changes: result.changes, questions: result.questions,
         planVersion: result.plan ? session.messages.filter(item => item.plan).length + 1 : undefined,
-        status: result.questions?.length ? 'waiting-input' : result.plan ? 'waiting-approval' : 'completed', finishedAt: Date.now() });
+        status: result.questions?.length ? 'waiting-input' : result.plan || result.changes ? 'waiting-approval' : 'completed', finishedAt: Date.now() });
+      if (result.changes && this.canvas && result.changes.operations.length <= 12 && result.changes.operations.every(op => op.kind === 'update')) this.applyChanges(sessionId, message.id, true);
     } catch (error) {
       if (this.active !== run) return;
       this.patchMessage(sessionId, message.id, { status: 'failed', error: this.errorText(error, settings.apiKey), finishedAt: Date.now(), steps: current().steps.map(step => step.status === 'running' ? { ...step, status: 'failed' } : step) });
@@ -193,7 +232,15 @@ export class AgentController {
     const message = session?.messages.find(item => item.id === messageId);
     if (!session || session.archived || !message || this.active || !['failed', 'cancelled', 'interrupted'].includes(message.status) || session.messages.at(-1)?.id !== messageId) return;
     if (!this.state.settings.apiKey.trim()) throw new Error('请先配置 API Key');
-    await this.start(sessionId, message.context);
+    await this.start(sessionId, structuredClone(this.canvas?.capture(message.context) ?? message.context));
+  }
+  async regenerate(sessionId: string, messageId: string) {
+    const session = this.session(sessionId), message = session?.messages.find(item => item.id === messageId);
+    if (!session || !message || this.active || session.archived || message.role !== 'assistant' || session.messages.at(-1)?.id !== messageId || message.status === 'waiting-input') return;
+    if (!this.state.settings.apiKey.trim()) throw new Error('请先配置 API Key');
+    const context = structuredClone(this.canvas?.capture(message.context) ?? message.context);
+    if (message.status === 'waiting-approval') this.dismiss(sessionId, messageId);
+    await this.start(sessionId, context);
   }
   updateQuestionDraft(sessionId: string, messageId: string, questionDraft: NonNullable<ConversationMessage['questionDraft']>) {
     const session = this.session(sessionId);
@@ -205,21 +252,40 @@ export class AgentController {
     if (!message || this.session(sessionId)?.archived || message.status !== 'waiting-input' || this.active) return;
     if (!this.state.settings.apiKey.trim()) throw new Error('请先在设置中填写 API Key');
     if (message.questions?.some(question => question.required && !answers[question.id]?.trim())) throw new Error('请回答所有必答问题');
+    const context = this.canvas?.capture(message.context) ?? message.context;
     const content = message.questions?.map(question => `${question.title}\n${answers[question.id]?.trim() || '已跳过（选答）'}`).join('\n\n') ?? '';
     this.patchMessage(sessionId, messageId, { status: 'completed', answers });
-    await this.send(sessionId, content, message.context);
+    await this.send(sessionId, content, context);
   }
   dismiss(sessionId: string, messageId: string) {
     const message = this.session(sessionId)?.messages.find(item => item.id === messageId);
-    if (message && ['waiting-input', 'waiting-approval'].includes(message.status)) this.patchMessage(sessionId, messageId, { status: message.plan ? 'declined' : 'cancelled' });
+    if (message && !this.session(sessionId)?.archived && ['waiting-input', 'waiting-approval'].includes(message.status)) this.patchMessage(sessionId, messageId, { status: message.plan || message.changes ? 'declined' : 'cancelled' });
+  }
+  private applied(sessionId: string, message: ConversationMessage, applied: AppliedArtifact) {
+    this.patchMessage(sessionId, message.id, { applied, status: 'completed', error: undefined });
+    // A new artifact becomes the next visible editing target, unless the draft was retargeted during the run.
+    const session = this.session(sessionId)!;
+    if (message.plan && same(session.references ?? [], message.context.references ?? [])) this.updateSession(sessionId, { references: [{ kind: 'canvas', role: 'target', id: `canvas:${applied.pageId}:${applied.elementId}`, projectId: message.context.projectId, pageId: applied.pageId, pageName: message.context.pageName, nodeId: applied.elementId, name: applied.name }] });
+    void this.flush();
+  }
+  applyChanges(sessionId: string, messageId: string, automatic = false) {
+    const message = this.session(sessionId)?.messages.find(item => item.id === messageId);
+    if (!message?.changes || !this.canvas || (!automatic && this.active) || this.session(sessionId)?.archived || message.status !== 'waiting-approval' || message.applied) return;
+    try { this.applied(sessionId, message, this.canvas.apply(message.changes, message.context, message.id)); }
+    catch (error) { this.patchMessage(sessionId, messageId, { error: this.errorText(error) }); }
+  }
+  undo(sessionId: string, messageId: string) {
+    const message = this.session(sessionId)?.messages.find(item => item.id === messageId);
+    if (!message?.applied || !this.canvas || this.active || this.session(sessionId)?.archived) return;
+    try { this.canvas.undo(message.applied); this.patchMessage(sessionId, messageId, { error: undefined }); }
+    catch (error) { this.patchMessage(sessionId, messageId, { error: this.errorText(error) }); }
   }
   apply(sessionId: string, messageId: string, generate: (plan: PrototypePlan, context: AgentContext, id: string) => AppliedArtifact) {
     const message = this.session(sessionId)?.messages.find(item => item.id === messageId);
     if (!message?.plan || this.active || this.session(sessionId)?.archived || message.status !== 'waiting-approval' || message.applied) return;
     try {
       const applied = generate(message.plan, message.context, message.id);
-      this.patchMessage(sessionId, messageId, { applied, status: 'completed', error: undefined });
-      void this.flush();
+      this.applied(sessionId, message, applied);
     } catch (error) { this.patchMessage(sessionId, messageId, { error: this.errorText(error) }); }
   }
 }

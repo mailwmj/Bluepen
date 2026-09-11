@@ -2,13 +2,13 @@
 
 调研日期：2026-09-11。范围：Lovart、Canva、Figma Make 的官方产品资料，以及 assistant-ui、AI Elements、CopilotKit、Ant Design X、Beautiful UI 的官方文档、源码和 npm 发布元数据。用户所写的「loverart」按 Lovart 理解。
 
-本文件补充 [前一轮调研](agent-experience-research.md)，聚焦「在原型中选中对象，带入对话并直接修改」。旧调研记录的是 2026-09-10 的工作区，不能继续把其中所有缺口当作当前事实。本次只新增本文件，未安装依赖、修改产品代码、覆盖已有研究，未登录体验外部产品或发送真实模型请求。
+本文件补充 [前一轮调研](agent-experience-research.md)，聚焦「在原型中选中对象，带入对话并直接修改」。旧调研记录的是 2026-09-10 的工作区，不能继续把其中所有缺口当作当前事实。研究仅维护本文件；后续授权的组件试接在仓库外临时目录安装依赖，未修改产品代码或工作区 package/lock，未登录体验外部产品或发送真实模型请求。实际试接结论见第 8 节。
 
 ## 1. 判断与选型建议
 
 Bluepen 应优先形成 **选中对象 → 添加到会话 → 说明修改 → 在原型上看到结果 → 撤销或继续调整** 的短路径。聊天历史、流式回复、停止和重试是基础；真正区别于独立聊天应用的是「这一轮会修改哪个原型对象」始终清楚。
 
-成熟组件能够减少聊天交互的重复开发。建议首先验证 **assistant-ui 的 ExternalStoreRuntime + Base UI 外观组件**，让现有控制器继续管理会话、运行、存储和画布提交。它是本次最契合对象引用与完整会话体验的候选；正式采用取决于一段真实端到端试接结果。若适配复杂度超过收益，则保留当前聊天结构，按需采用 AI Elements / Streamdown 的单项能力。CopilotKit 暂不作为本轮迁移方向，Ant Design X 主要参考结构化输入的交互，Beautiful UI 继续作为视觉与状态卡参考。
+成熟组件能够减少聊天交互的重复开发。经过仓库外实际试接，本轮建议 **保留 AgentController 与现有 coss 输入区，单独采用 Streamdown 2.6 渲染回复**。assistant-ui 的 ExternalStoreRuntime 能读取现有消息，但 Composer 另有内部草稿状态，完整接入需要同步镜像；本轮暂缓引入。后续若消息滚动和操作的维护收益足够，可只试接 Thread/Message 部件。CopilotKit 暂不作为本轮迁移方向，Ant Design X 主要参考结构化输入的交互，Beautiful UI 继续作为视觉与状态卡参考。第 8 节记录验证范围和代码。
 
 所有方案都需要 Bluepen 自己实现对象身份、组层级、模板实例、修改范围、版本冲突和撤销。一个可显示附件的输入框，并不会自动获得这些编辑器能力。
 
@@ -79,7 +79,7 @@ Nothing design 和现有 coss/Base UI 继续控制产品外观。外部组件的
 
 | 方案 | 对象引用 / 附件 | 消息与运行体验 | 会话与状态边界 | Bluepen 的适配判断 |
 | --- | --- | --- | --- | --- |
-| **assistant-ui** | 附件适配器支持文件、拖放、粘贴；还可用描述对象添加外部引用，无需 File 或上传。提供自定义 `@` 候选与 Base UI 外观。来源：[Attachments](https://www.assistant-ui.com/docs/guides/attachments)、[Mentions](https://www.assistant-ui.com/docs/guides/mentions)。 | 编辑、重新生成、停止、分支和工具结果有明确接入回调；可使用流式 Markdown 渲染器。来源：[ExternalStoreRuntime](https://www.assistant-ui.com/docs/runtimes/custom/external-store)、[Streamdown](https://www.assistant-ui.com/docs/guides/streamdown)。 | ExternalStoreRuntime 读取外部消息和回调；现有存储继续属于应用。线程需要适配器，切换身份必须与宿主状态一致。来源：[Adapters](https://www.assistant-ui.com/docs/runtimes/concepts/adapters)。 | **优先试接，成本中。** 能保留 AgentController 与现有运行时。对象身份和事务仍自建，消息转换不能把问题/计划/应用结果压平成正文。 |
+| **assistant-ui** | 附件适配器支持文件、拖放、粘贴；还可用描述对象添加外部引用，无需 File 或上传。提供自定义 `@` 候选与 Base UI 外观。来源：[Attachments](https://www.assistant-ui.com/docs/guides/attachments)、[Mentions](https://www.assistant-ui.com/docs/guides/mentions)。 | 编辑、重新生成、停止、分支和工具结果有明确接入回调；可使用流式 Markdown 渲染器。来源：[ExternalStoreRuntime](https://www.assistant-ui.com/docs/runtimes/custom/external-store)、[Streamdown](https://www.assistant-ui.com/docs/guides/streamdown)。 | ExternalStoreRuntime 读取外部消息和回调；现有存储继续属于应用。线程需要适配器，切换身份必须与宿主状态一致。来源：[Adapters](https://www.assistant-ui.com/docs/runtimes/concepts/adapters)。 | **本轮暂缓，成本中。** 消息适配可行，但 Composer 草稿需要镜像同步（见第 8 节）。对象身份和事务仍自建，消息转换不能把问题/计划/应用结果压平成正文。 |
 | **Vercel AI Elements** | Prompt Input 有附件、拖放、预览、数量/大小限制与可外置的输入状态；文件输入之外的节点引用自行接入。来源：[Prompt Input](https://elements.ai-sdk.dev/components/prompt-input)。 | Message 提供动作、分支展示、Streamdown Markdown；Conversation 提供自动滚动和返回最新。分支的数据与执行不是 SDK 自动完成的。来源：[Message](https://elements.ai-sdk.dev/components/message)、[Conversation](https://elements.ai-sdk.dev/components/conversation)。 | 按组件复制源码的 UI 层；持久化、提问恢复、修改事务、线程列表依然接现有业务状态。来源：[Introduction](https://elements.ai-sdk.dev/docs)。 | **按件采用的备选，成本低至中。** 最适合补消息渲染、输入或滚动；不为它重写运行时。完整替换仍要补很多产品状态。 |
 | **CopilotKit v2** | `useAgentContext` 提供应用上下文；`useFrontendTool` 能执行前端动作，适合把编辑器能力开放给 Agent。引用卡的 UI 与范围规则由应用实现。来源：[Agent Context](https://docs.copilotkit.ai/agent-app-context)、[Frontend Tools](https://docs.copilotkit.ai/frontend-tools)。 | 提供聊天、消息编辑/重生成的外观槽、工具呈现及暂停提问/恢复。来源：[Slots](https://docs.copilotkit.ai/custom-look-and-feel/slots)、[Human-in-the-loop](https://docs.copilotkit.ai/human-in-the-loop)。 | AG-UI 与 Runtime 是整体运行协议。官方 Rich Threads 包含持久化/重连等基础设施；使用自有存储需自己恢复上下文。来源：[OSS 与 Intelligence](https://docs.copilotkit.ai/concepts/oss-vs-enterprise)、[Rich Threads](https://docs.copilotkit.ai/threads)。 | **本轮不优先，成本高。** 产品内 AI 的方向很接近，但已有 AI SDK 与控制器无需为一块聊天界面改为另一套 Agent 平台。 |
 | **Ant Design X** | Sender 的 `tag/custom` 词槽适合对象标签；Attachments 支持文件列表、粘贴/拖放配合。来源：[Sender](https://x.ant.design/components/sender/)、[Attachments](https://x.ant.design/components/attachments/)。 | X Markdown 支持流式内容；useXChat 提供请求、终止、重新生成、消息更新及状态。来源：[X Markdown](https://x.ant.design/x-markdowns/introduce/)、[useXChat](https://x.ant.design/x-sdks/use-x-chat/)。 | Conversations 提供会话列表/切换；数据接入、持久化和运行工具语义仍需业务处理。来源：[Conversations](https://x.ant.design/components/conversations/)。 | **以交互参考为主，整套接入成本高。** 已有 Ant Design 项目更合适；这里引入 antd 及独立样式体系收益有限。 |
@@ -103,9 +103,9 @@ CopilotKit OSS 不要求使用其外部托管服务，但内置持久线程与�
 
 Ant Design X 的 UI 包当前要求 `antd: ^6.1.1`，而 `@ant-design/x-sdk` 可以独立使用、无需 antd。问题不是它不能运行 React 19，而是完整 UI 需要引入新的样式与组件体系，独立 SDK 又会与现有 AI SDK/控制器重叠。来源：[UI 包清单](https://github.com/ant-design/x/blob/main/packages/x/package.json)、[SDK 包清单](https://github.com/ant-design/x/blob/main/packages/x-sdk/package.json)。
 
-### 5.4 优先试接的 5 个部件
+### 5.4 可分别试接的 5 个部件
 
-先用 `useExternalStoreRuntime` 映射现有状态与回调，Controller、持久化和 AI SDK 7 运行时继续作为业务事实的唯一来源。以下部件逐项引入；**React peer 范围和依赖声明只是兼容线索，本轮尚未安装，AI SDK 7、Next 16 与 Tauri 的实际兼容性均未验证。**
+如后续采用 assistant-ui，可用 `useExternalStoreRuntime` 映射现有状态与回调，Controller、持久化和 AI SDK 7 运行时继续作为业务事实的唯一来源。以下是可单独评估的扩展点；**第 8 节仅验证了仓库外类型、JSDOM 和 SSR；AI SDK 7 适配包、Next 16 构建与 Tauri 实机兼容仍未在本研究中验证。**
 
 | 部件 / API | 优先解决的问题 | 适配要求与官方入口 |
 | --- | --- | --- |
@@ -143,4 +143,65 @@ Ant Design X 的 UI 包当前要求 `antd: ^6.1.1`，而 `@ant-design/x-sdk` 可
 | 平台与样式 | Next Web 与 Tauri 静态生产构建分别通过；深浅主题与 coss 交互一致；不会新增整套全局样式覆盖。 |
 | 实际成本 | 记录必要改动、增量依赖和产物体积，比较与当前控制器直接补齐的实现规模；没有测量就不给性能和开发天数承诺。 |
 
-组件选择服务于这条业务链。如果 assistant-ui 能以小适配层减少输入、消息操作与滚动维护，就采用它；如果需要为它重构当前运行和存储，则采用 AI Elements / Streamdown 的局部能力，把开发重点留给对象引用与安全的可编辑结果。
+组件选择服务于这条业务链。实际试接后本轮选择 Streamdown 的局部能力，把开发重点留给对象引用与可编辑结果；assistant-ui 的后续采用以减少实际维护成本为前提。
+
+## 8. 实际组件试接结论（2026-09-11）
+
+### 8.1 本轮选择：Streamdown，保留当前状态所有权
+
+在仓库外临时目录安装 `streamdown@2.6.0`、`@assistant-ui/react@0.15.18`、React/ReactDOM **19.2.4**，使用 TypeScript **5.9.3**、Tailwind CLI **4.2.2** 与 JSDOM **27.4.0** 验证。测试直接导入当前真实 `AgentController`，存储与 Provider 使用隔离内存夹具，不访问真实服务。Streamdown 的核心包没有 `ai` 或 Provider 依赖，只接收当前消息文本和运行状态，因此本轮无需新增 AI SDK 适配层；这不等于已验证 AI SDK 7 的第三方运行适配包。依据：[Streamdown 官方源码](https://github.com/vercel/streamdown/tree/main/packages/streamdown)、[README 安装说明](https://github.com/vercel/streamdown/blob/main/packages/streamdown/README.md)。
+
+以下为已通过类型和运行核查的最小接入，实际放置于客户端组件中：
+
+```tsx
+"use client";
+
+import { Streamdown } from "streamdown";
+
+export function AgentResponse({ content, running }: {
+  content: string;
+  running: boolean;
+}) {
+  return (
+    <Streamdown
+      mode={running ? "streaming" : "static"}
+      isAnimating={running}
+      animated={false}
+      controls={false}
+      skipHtml
+    >
+      {content}
+    </Streamdown>
+  );
+}
+```
+
+直接依赖只需 `streamdown@2.6.0`。第一阶段不启用 Mermaid、公式、高亮、CJK 或动画插件；中文正文、未闭合粗体和 GFM 表格的本次样例不需要插件。若后续需要更复杂的中日韩标点与强调规则，再以真实消息样例评估官方 CJK 插件，不将本次几个中文样例外推为全部边界都通过。
+
+Tailwind 4 需要显式扫描依赖中的类名。若 `streamdown` 声明在 `packages/editor`，在 `apps/app/src/app/globals.css` 中使用相对于该文件的实际安装位置：
+
+```css
+@source "../../../../packages/editor/node_modules/streamdown/dist/*.js";
+```
+
+这个项目已有对应的 `background/foreground/muted/border/ring` 等 token 映射，沿用现有定义；不要照搬包示例中的整套全局颜色。临时样例的 `@source "./node_modules/streamdown/dist/*.js"` 已成功编译，仓库内实际路径仍需安装后的构建验证。关闭 `animated` 后无需为文本渐入引入动画样式。默认粗体输出为 `span[data-streamdown="strong"]`，因此定制规则不能只匹配 `strong` 标签；可使用 `components` 或 `data-streamdown` 标记匹配现有排版。来源：[官方 README 与样式说明](https://github.com/vercel/streamdown/blob/main/packages/streamdown/README.md)。
+
+### 8.2 assistant-ui 的接入边界已实证
+
+`useExternalStoreRuntime` 的消息入口可使用 `messages`、`convertMessage`、`isRunning`、`isSendDisabled`、`onNew`、`onCancel`，发送与停止委托 `Controller.send` / `Controller.stop`；无需增加消息存储。`ThreadPrimitive.Messages` 提供消息 ID，可查回原始消息，继续用现有提问、计划和应用结果卡，不把这些业务状态变成第二套工具执行流程。来源：[ExternalStoreRuntime](https://www.assistant-ui.com/docs/runtimes/custom/external-store)。
+
+但 Composer 并不是纯粹读取现有外部草稿：安装版 `ExternalStoreAdapter` 没有受控 draft 字段，`BaseComposerRuntimeCore` 维护自己的 text。给 `ComposerPrimitive.Input` 传入 `value={session.draft}` 能显示恢复的草稿，默认 `ComposerPrimitive.Send` 仍读取内部空文本而禁用；该场景已在 JSDOM 复现。要使用完整 Composer，必须同步 Controller draft 与 runtime text，处理恢复、切会话、发送清空和持久化时序。本轮明确保留现有 coss 受控输入区，因此暂缓引入 assistant-ui。官方 API 依据：[Composer 使用示例](https://www.assistant-ui.com/docs/guides/editing)、[源码仓库](https://github.com/assistant-ui/assistant-ui)。
+
+保留 Thread 部件、使用宿主受控 textarea 的隔离样例已通过真实 Controller 草稿修改、发送清空、中止 AbortSignal、切换会话恢复草稿。它证明消息视图可单独适配，不证明需要在本轮增加整个依赖。完整示例包含约 80 行适配代码，另有映射运行状态和原始业务卡的接入点；不包含对象引用或画布事务实现。
+
+### 8.3 验证记录与边界
+
+| 临时目录中的验证命令 | 实际结果 |
+| --- | --- |
+| `./node_modules/.bin/tsc --noEmit` | 严格类型检查通过；示例包含 Streamdown、ExternalStoreRuntime、Thread/Composer 以及当前 Controller 类型。 |
+| `./node_modules/.bin/tailwindcss -i input.css -o output.css --minify` | Tailwind 4.2.2 编译成功，包含对安装包 dist 的显式扫描。 |
+| `node --import tsx bootstrap.mjs` | React19/JSDOM 中，未闭合中文粗体可阅读，流式结束后中文正文和 GFM 表格重渲染通过。 |
+| 同一运行脚本的 SSR 用例 | React19 静态渲染的文字和代码块通过；`skipHtml` 不输出脚本标签，测试的 `javascript:` 链接不输出危险 href。只描述这些具体用例，不作为全部内容安全审计。 |
+| 同一运行脚本的 Controller 用例 | Composer 受控 value 不会恢复内部可发送状态的限制得到确认；Thread 配合宿主输入区的草稿、发送、中止、切换会话通过。 |
+
+这些是仓库外的组件适配验证，JSDOM 使用必要的滚动/ResizeObserver 等环境替身，不能证明真实浏览器滚动、中文输入法、Next 构建、Tauri 原生链路或包体积。产品代码接入后的这些验证由实现流程完成；本研究没有安装工作区依赖、修改产品文件或产生真实模型调用。

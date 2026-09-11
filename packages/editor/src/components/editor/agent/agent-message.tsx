@@ -1,15 +1,18 @@
 "use client";
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { ArrowUpRight, Check, ChevronDown, CircleHelp, Copy, Search, Square, X } from 'lucide-react';
-import Markdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
+import { Streamdown } from 'streamdown';
 import { Button } from '@bluepen/editor/components/ui/button';
 import { Textarea } from '@bluepen/editor/components/ui/textarea';
 import { cn } from '@bluepen/editor/lib/utils';
 import type { AgentController } from './agent-controller';
 import type { AgentContext, AppliedArtifact, ConversationMessage } from './agent-types';
 import type { PrototypePlan } from './prototype-plan';
+import { planToElement } from './prototype-plan';
+import { AgentReferenceList } from './agent-references';
+import { AgentCanvasPreview, AgentPreviewDialog } from './agent-preview';
+import type { EditorElement } from '../types';
 
 const labelClass = 'font-mono text-[11px] uppercase tracking-wider text-muted-foreground';
 const statusLabels = { running: '执行中', 'waiting-input': '等待回答', 'waiting-approval': '等待确认', completed: '已完成', failed: '请求失败', cancelled: '已停止', interrupted: '已中断', declined: '未采用' };
@@ -53,22 +56,35 @@ export function AgentMessageView({ message, sessionId, controller, busy, last, c
 }) {
   const [copied, setCopied] = useState(false);
   const [reasoningOpen, setReasoningOpen] = useState(message.status === 'running');
+  const [editing, setEditing] = useState(false);
+  const [editText, setEditText] = useState(message.content);
+  const [preview, setPreview] = useState<{ before: EditorElement[]; after: EditorElement[] } | null>(null);
+  const planElements = useMemo(() => message.plan ? [planToElement(message.plan, 0, 0)] : [], [message.plan]);
+  const resultState = message.applied ? controller.resultState(message.applied) : undefined;
+  const resultLabel = resultState ? ({ applied: '已应用', reverted: '已撤销', changed: '已有后续修改', missing: '对象已删除', unavailable: '页面不可用' })[resultState] : '';
+  const showPreview = () => { try { setPreview(controller.preview(message)); } catch (error) { onError(error instanceof Error ? error.message : '预览失败'); } };
+  const copy = () => { void navigator.clipboard.writeText(message.content).then(() => setCopied(true)).catch(() => onError('无法复制，请检查剪贴板权限')); };
   useEffect(() => { if (message.status !== 'running') setReasoningOpen(false); }, [message.status]);
   const locate = (target: { pageId: string; elementId?: string }) => { try { onLocate(target); } catch (error) { onError(error instanceof Error ? error.message : '无法定位目标'); } };
-  if (message.role === 'user') return <article className="space-y-2 border-l-2 border-border-visible pl-4" aria-label="你的消息"><div className={labelClass}>你</div><p className="whitespace-pre-wrap break-words text-sm leading-6">{message.content}</p></article>;
+  if (message.role === 'user') return <article className="space-y-2 border-l-2 border-border-visible pl-4" aria-label="你的消息"><div className={labelClass}>你</div>
+    <AgentReferenceList references={message.context.references ?? []} onLocate={ref => locate({ pageId: ref.pageId, elementId: ref.nodeId })} />
+    {editing ? <form className="space-y-2" onSubmit={event => { event.preventDefault(); void controller.send(sessionId, editText, { ...message.context, snapshot: undefined }).then(() => setEditing(false)).catch(error => onError(error instanceof Error ? error.message : '发送失败')); }}><Textarea aria-label="编辑消息" value={editText} onChange={event => setEditText(event.target.value)} /><p className="text-xs text-muted-foreground">作为新一轮发送，画布上已有修改保留。</p><div className="flex gap-2"><Button type="submit" size="pill-sm" disabled={busy || !editText.trim()}>保存并重发</Button><Button variant="ghost" size="sm" onClick={() => setEditing(false)}>取消</Button></div></form> : <p className="whitespace-pre-wrap break-words text-sm leading-6">{message.content}</p>}
+    <div className="flex gap-1"><Button variant="ghost" size="icon-xs" aria-label="复制消息" onClick={copy}>{copied ? <Check /> : <Copy />}</Button><Button variant="ghost" size="xs" disabled={busy || archived || controller.session(sessionId)?.messages.at(-1)?.status === 'waiting-input'} onClick={() => { setEditText(message.content); setEditing(true); }}>编辑重发</Button></div>
+  </article>;
   return <article className="space-y-4" aria-label="助手消息">
     <div className="flex items-center justify-between gap-3"><span className={labelClass}>Bluepen <span className="ml-2">/ {statusLabels[message.status]}</span></span><Elapsed message={message} /></div>
     {message.status === 'running' && <div role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><span className="size-2 bg-foreground" />{message.phase || '正在分析需求'}</div>}
     {!!message.steps.length && <details className="group"><summary className="flex cursor-pointer list-none items-center gap-2 text-xs text-muted-foreground"><ChevronDown className="size-3.5 transition-transform duration-150 group-open:rotate-180" />{message.steps.length} 次组件查询 · {message.steps.filter(step => step.status === 'completed').length} 次完成</summary><ol className="mt-3 space-y-3 border-l border-border pl-4">{message.steps.map(step => <li key={step.id} className="space-y-1"><div className="flex items-center gap-2 text-xs">{step.status === 'completed' ? <Check className="size-3.5" /> : step.status === 'failed' || step.status === 'cancelled' ? <X className="size-3.5" /> : <Search className="size-3.5" />}{step.label}<span className={labelClass}>{({ running: '执行中', completed: '完成', failed: '失败', cancelled: '停止' })[step.status]}</span></div><p className="break-words pl-5 text-xs text-muted-foreground">{step.detail}</p></li>)}</ol></details>}
     {message.reasoning && <details open={reasoningOpen} onToggle={event => setReasoningOpen(event.currentTarget.open)}><summary className="cursor-pointer text-xs text-muted-foreground">思考摘要</summary><p className="mt-3 whitespace-pre-wrap text-xs leading-6 text-muted-foreground">{message.reasoning}</p></details>}
     {message.content && <div className="min-w-0 break-words text-sm leading-6 [&_p]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_h1]:my-3 [&_h2]:my-3 [&_h3]:my-3 [&_h1]:font-medium [&_h2]:font-medium [&_h3]:font-medium [&_pre]:overflow-auto [&_pre]:rounded-lg [&_pre]:border [&_pre]:border-border [&_pre]:p-3 [&_code]:font-mono [&_code]:text-xs [&_a]:text-interactive [&_a]:underline [&_table]:block [&_table]:overflow-auto [&_td]:border-b [&_td]:border-border [&_td]:p-2 [&_th]:p-2 [&_blockquote]:border-l [&_blockquote]:border-border-visible [&_blockquote]:pl-3">
-      <Markdown remarkPlugins={[remarkGfm]} components={{ a: ({ children, ...props }) => <a {...props} target="_blank" rel="noreferrer noopener">{children}</a>, img: ({ alt }) => <span className="text-muted-foreground">[图片：{alt || '参考图片'}]</span> }}>{message.content}</Markdown>
+      <Streamdown mode={message.status === 'running' ? 'streaming' : 'static'} isAnimating={message.status === 'running'} animated={false} controls={false} skipHtml components={{ a: ({ children, ...props }) => <a {...props} target="_blank" rel="noreferrer noopener">{children}</a>, img: ({ alt }) => <span className="text-muted-foreground">[图片：{alt || '参考图片'}]</span> }}>{message.content}</Streamdown>
     </div>}
     {!!message.questions?.length && <QuestionCard message={message} disabled={busy || archived} onAnswer={answers => controller.answer(sessionId, message.id, answers)} onCancel={() => controller.dismiss(sessionId, message.id)} onDraft={draft => controller.updateQuestionDraft(sessionId, message.id, draft)} />}
     {message.plan && <section className="space-y-3 rounded-xl border border-border-visible p-4" aria-label="原型方案">
-      <div className="flex items-center justify-between"><span className={labelClass}>{message.applied ? '已生成' : message.status === 'declined' ? '未采用的方案' : '待确认方案'}</span><span className={labelClass}>V{message.planVersion ?? 1} · {({ page: '页面', section: '区域', component: '组件' })[message.plan.artifactKind]}</span></div>
+      <div className="flex items-center justify-between"><span className={labelClass}>{message.applied ? resultLabel : message.status === 'declined' ? '未采用的方案' : '待确认方案'}</span><span className={labelClass}>V{message.planVersion ?? 1} · {({ page: '页面', section: '区域', component: '组件' })[message.plan.artifactKind]}</span></div>
       <h3 className="text-base font-medium">{message.plan.pageName}</h3><p className="text-sm leading-6 text-muted-foreground">{message.plan.purpose}</p>
       <p className="text-xs text-muted-foreground">新增到 {message.context.pageName} · <span className="font-mono">{message.plan.root.width} × {message.plan.root.height}</span></p>
+      <button className="block w-full rounded-lg focus-visible:outline-2" aria-label="放大原型预览" onClick={showPreview}><AgentCanvasPreview elements={planElements} /></button>
       <ul className="space-y-1 text-xs text-muted-foreground">{message.plan.root.children?.slice(0, 6).map((node, index) => <li key={index}>— {node.name}</li>)}</ul>
       {message.plan.notes.length > 0 && <details><summary className="cursor-pointer text-xs text-muted-foreground">方案说明</summary><ul className="mt-2 space-y-1 text-xs leading-5">{message.plan.notes.map((note, index) => <li key={index}>{note}</li>)}</ul></details>}
       {message.applied ? <Button variant="outline" size="pill-sm" onClick={() => locate(message.applied!)}><ArrowUpRight className="size-3.5" />定位到画布</Button> : message.status === 'waiting-approval' && <div className="flex flex-wrap items-center gap-2">
@@ -76,12 +92,23 @@ export function AgentMessageView({ message, sessionId, controller, busy, last, c
         <Button variant="ghost" size="sm" disabled={busy || archived} onClick={() => { controller.dismiss(sessionId, message.id); controller.updateSession(sessionId, { draft: '调整方案：' }); }}>继续调整</Button>
         <Button variant="ghost" size="sm" disabled={busy || archived} onClick={() => controller.dismiss(sessionId, message.id)}>不采用</Button>
       </div>}
-      {message.applied && <p className="text-xs text-muted-foreground">可在画布中编辑，或使用编辑器撤销。</p>}
+      {message.applied?.receipt && <Button variant="ghost" size="sm" disabled={busy || archived || resultState !== 'applied'} onClick={() => controller.undo(sessionId, message.id)}>撤销本次修改</Button>}
     </section>}
+    {message.changes && <section className="space-y-3 rounded-xl border border-border-visible p-4" aria-label="对象修改">
+      <div className="flex items-center justify-between gap-2"><span className={labelClass}>{message.applied ? resultLabel : message.status === 'declined' ? '未采用' : '待确认修改'}</span><span className={labelClass}>{message.changes.operations.length} 项调整</span></div>
+      <h3 className="text-sm font-medium">{message.changes.summary}</h3>
+      <p className="text-xs text-muted-foreground">{message.context.pageName} · 保留原组件，可继续手工编辑</p>
+      <details><summary className="cursor-pointer text-xs text-muted-foreground">查看修改明细</summary><ul className="mt-2 space-y-2 text-xs leading-5">{message.changes.operations.map((op, index) => <li key={index}>{({ update: '调整', insert: '新增', delete: '删除', move: '移动' })[op.kind]} {op.kind === 'insert' ? op.node.name : message.context.snapshot?.nodes.find(node => node.id === op.nodeId)?.name ?? '组件'}{op.kind === 'update' && `：${op.fields.map(field => `${field.key.replace('props.', '').replace('autoLayout.', '布局.')} → ${String(field.value).slice(0, 60)}`).join('；')}`}</li>)}</ul></details>
+      <div className="flex flex-wrap gap-2"><Button variant="outline" size="pill-sm" onClick={showPreview}>对比预览</Button>
+        {message.applied ? <><Button variant="ghost" size="sm" disabled={!message.applied.elementId || resultState === 'missing' || resultState === 'unavailable'} onClick={() => locate(message.applied!)}>定位对象</Button><Button variant="ghost" size="sm" disabled={busy || archived || resultState !== 'applied'} onClick={() => controller.undo(sessionId, message.id)}>撤销本次修改</Button></> : message.status === 'waiting-approval' && <><Button size="pill-sm" disabled={busy || archived} onClick={() => controller.applyChanges(sessionId, message.id)}>应用修改</Button><Button variant="ghost" size="sm" disabled={busy || archived} onClick={() => { controller.dismiss(sessionId, message.id); controller.updateSession(sessionId, { draft: '继续调整：' }); }}>继续调整</Button><Button variant="ghost" size="sm" disabled={busy || archived} onClick={() => controller.dismiss(sessionId, message.id)}>不采用</Button></>}
+      </div>
+    </section>}
+    <AgentPreviewDialog preview={preview} title={message.changes?.summary ?? message.plan?.pageName ?? '原型预览'} onClose={() => setPreview(null)} />
     {message.error && <p role="alert" className="text-sm leading-6 text-destructive">{message.error}</p>}
     <div className="flex items-center gap-2">
       {message.content && <Button variant="ghost" size="icon-xs" aria-label={copied ? '已复制回复' : '复制回复'} onClick={() => { void navigator.clipboard.writeText(message.content).then(() => setCopied(true)).catch(() => onError('无法复制，请检查剪贴板权限')); }}>{copied ? <Check /> : <Copy />}</Button>}
       {last && ['failed', 'cancelled', 'interrupted'].includes(message.status) && <Button size="pill-sm" variant="outline" disabled={busy || archived} onClick={() => { void controller.retry(sessionId, message.id).catch(error => onError(error instanceof Error ? error.message : '重试失败')); }}>重新尝试</Button>}
+      {last && ['completed', 'declined', 'waiting-approval'].includes(message.status) && <Button variant="ghost" size="sm" disabled={busy || archived} onClick={() => { void controller.regenerate(sessionId, message.id).catch(error => onError(error instanceof Error ? error.message : '重新生成失败')); }}>重新生成回复</Button>}
       {message.status === 'running' && <Button variant="ghost" size="sm" onClick={() => controller.stop()}><Square className="size-3" />停止</Button>}
     </div>
   </article>;

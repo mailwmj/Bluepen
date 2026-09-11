@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { library } from '../library/index';
 import type { ComponentType } from '../types';
+import type { AgentChangeSet } from './agent-types';
 import { artifactKinds, normalizeArtifactBackground, validatePrototypePlan, type PrototypePlan, type PrototypePlanNode } from './prototype-plan';
 
 // Strict Responses schemas cannot use arbitrary object keys. The wire format
@@ -29,8 +30,14 @@ export const agentOutputSchema = z.object({
     id: z.string(), title: z.string(), options: z.array(z.string()), multiple: z.boolean(), required: z.boolean(),
   })),
   plan: z.object({ artifactKind: z.enum(artifactKinds), pageName: z.string(), purpose: z.string(), notes: z.array(z.string()), root: nodeSchema }).nullable(),
+  changes: z.object({ summary: z.string(), operations: z.array(z.discriminatedUnion('kind', [
+    z.object({ kind: z.literal('update'), nodeId: z.string(), fields: z.array(z.object({ key: z.string(), value: z.union([z.string(), z.number(), z.boolean()]) })) }),
+    z.object({ kind: z.literal('delete'), nodeId: z.string() }),
+    z.object({ kind: z.literal('insert'), parentId: z.string(), index: z.number(), node: nodeSchema }),
+    z.object({ kind: z.literal('move'), nodeId: z.string(), parentId: z.string(), index: z.number(), x: z.number(), y: z.number() }),
+  ])) }).nullable(),
 });
-export function decodePlan(output: NonNullable<z.infer<typeof agentOutputSchema>['plan']>): PrototypePlan {
+export function decodeNode(output: OutputNode): PrototypePlanNode {
   let count = 0;
   const convert = (node: OutputNode, depth = 0): PrototypePlanNode => {
     if (++count > 600 || depth > 20) throw new Error('原型结构过大，请分区域生成');
@@ -44,7 +51,14 @@ export function decodePlan(output: NonNullable<z.infer<typeof agentOutputSchema>
     }
     return { ...node, type: node.type as ComponentType, props, children: node.children.map(child => convert(child, depth + 1)) };
   };
-  const plan = normalizeArtifactBackground({ ...output, root: convert(output.root) });
+  return convert(output);
+}
+export function decodeChanges(output: NonNullable<z.infer<typeof agentOutputSchema>['changes']>): AgentChangeSet {
+  if (!output.summary.trim() || !output.operations.length || output.operations.length > 100) throw new Error('修改方案无效，请分批处理');
+  return { ...output, operations: output.operations.map(op => op.kind === 'insert' ? { ...op, node: decodeNode(op.node) } : op) };
+}
+export function decodePlan(output: NonNullable<z.infer<typeof agentOutputSchema>['plan']>): PrototypePlan {
+  const plan = normalizeArtifactBackground({ ...output, root: decodeNode(output.root) });
   const errors = validatePrototypePlan(plan);
   if (errors.length) throw new Error(`原型计划无效：${errors[0]}`);
   if (plan.root.type !== 'group') throw new Error('原型页面必须包含根组合');

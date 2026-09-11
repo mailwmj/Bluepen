@@ -1,6 +1,6 @@
 // Protocol fixture only. Never imported by the application or used as a fallback.
 export function responseEvents(output) {
-  const text = JSON.stringify(output);
+  const text = JSON.stringify({ changes: null, ...output });
   return [
     { type: 'response.created', response: { id: 'resp_test', created_at: 1, model: 'gpt-5.6-terra' } },
     { type: 'response.output_item.added', output_index: 0, item: { type: 'message', id: 'msg_test' } },
