@@ -36,6 +36,9 @@
   "bundle": {
     "active": true,
     "targets": ["deb", "rpm"],
+    "macOS": {
+      "signingIdentity": "-"
+    },
     "shortDescription": "Wireframe at the speed of thought",
     "icon": [
       "icons/32x32.png",
