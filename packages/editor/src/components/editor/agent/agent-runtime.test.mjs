@@ -52,11 +52,11 @@ test('Chat Completions preserves DeepSeek thinking across tool calls and convers
   assert.ok(events.some(event => event.type === 'tool' && event.status === 'completed'));
 });
 
-test('only explicit unsupported schema errors retry with JSON mode and retain local validation', async () => {
+test('explicit prohibited schema errors retry with JSON mode and retain local validation', async () => {
   const requests = [];
   const provider = runtime(async (_url, init) => {
     const body = JSON.parse(init.body); requests.push(body);
-    if (requests.length === 1) return new Response(JSON.stringify({ error: { message: 'This response_format type is unavailable now' } }), { status: 400 });
+    if (requests.length === 1) return new Response(JSON.stringify({ error: { message: "Invalid schema for response_format 'response': In context=('properties', 'changes', 'anyOf', '0', 'properties', 'operations', 'items'), 'oneOf' is not permitted." } }), { status: 400 });
     return new Response(responseEvents({ reply: '连接成功', questions: [], plan: null, changes: null }), { headers: { 'content-type': 'text/event-stream' } });
   });
   assert.equal((await provider.responsesAgentProvider({ messages, settings })).reply, '连接成功');

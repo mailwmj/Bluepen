@@ -40,7 +40,7 @@ export function createAgentFetch(requestFetch: typeof fetch, settings: AgentSett
     if (!jsonMode && response.status === 400) {
       const error = await response.clone().json().catch(() => null);
       const message = error?.error?.message ?? error?.message;
-      if (typeof message === 'string' && /response_format|json_schema|text\.format/i.test(message) && /unsupported|not supported|unavailable/i.test(message)) {
+      if (typeof message === 'string' && /response_format|json_schema|text\.format/i.test(message) && /unsupported|not supported|unavailable|not permitted/i.test(message)) {
         jsonMode = true;
         onEvent?.({ type: 'phase', label: '正在使用兼容输出格式' });
         useJsonMode();
