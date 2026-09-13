@@ -9,7 +9,7 @@ async function database() {
     const request = indexedDB.open('bluepen_agent', 1);
     request.onupgradeneeded = () => request.result.createObjectStore('data');
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(new Error('无法打开会话存储，请检查浏览器存储权限'));
+    request.onerror = () => reject(new Error('无法打开任务存储，请检查浏览器存储权限'));
   });
 }
 
@@ -23,7 +23,7 @@ async function read<T>(key: string): Promise<T | undefined> {
     const tx = db.transaction('data', 'readonly');
     const request = tx.objectStore('data').get(key);
     tx.oncomplete = () => { db.close(); resolve(request.result); };
-    tx.onabort = tx.onerror = () => { db.close(); reject(new Error('读取会话失败，请重试')); };
+    tx.onabort = tx.onerror = () => { db.close(); reject(new Error('读取任务失败，请重试')); };
   });
 }
 

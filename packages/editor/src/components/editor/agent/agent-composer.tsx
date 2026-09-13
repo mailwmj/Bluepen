@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, type RefObject } from 'react';
-import { AtSign, ImagePlus, Layers, X } from 'lucide-react';
+import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { AtSign, ImagePlus, Layers, Plus, X } from 'lucide-react';
 import { Button } from '@bluepen/editor/components/ui/button';
 import { Input } from '@bluepen/editor/components/ui/input';
+import { Menu, MenuItem, MenuPopup, MenuTrigger } from '@bluepen/editor/components/ui/menu';
 import { Textarea } from '@bluepen/editor/components/ui/textarea';
 import { library } from '../library/index';
 import { processImageFile } from '../utils/image';
@@ -11,12 +12,13 @@ import { AgentReferenceList } from './agent-references';
 import { mergeAgentReferences } from './agent-document';
 import { agentId, type AgentReference } from './agent-types';
 
-export function AgentComposer({ sessionId, draft, references, candidates, disabled, busy, composerRef, selectedCount, onSelection, onDraft, onReferences, onSend, onError, onLocate, isMissing, onUploadState }: {
+export function AgentComposer({ sessionId, draft, references, candidates, disabled, busy, composerRef, selectedCount, onSelection, onDraft, onReferences, onSend, onError, onLocate, isMissing, onUploadState, actions, errorId }: {
   onUploadState: (busy: boolean) => void;
   sessionId: string; draft: string; references: AgentReference[]; candidates: AgentReference[]; disabled: boolean; busy: boolean;
   composerRef: RefObject<HTMLTextAreaElement | null>; selectedCount: number; onSelection: () => void;
   onDraft: (value: string) => void; onReferences: (references: AgentReference[]) => void; onSend: () => void; onError: (error: string) => void;
   onLocate: (ref: Extract<AgentReference, { kind: 'canvas' }>) => void; isMissing: (ref: AgentReference) => boolean;
+  actions?: ReactNode; errorId?: string;
 }) {
   const [picker, setPicker] = useState(false), [query, setQuery] = useState(''), [active, setActive] = useState(0), [uploading, setUploading] = useState(false);
   const input = useRef<HTMLInputElement>(null), latest = useRef({ sessionId, references, disabled });
@@ -63,16 +65,28 @@ export function AgentComposer({ sessionId, draft, references, candidates, disabl
     try { const item = JSON.parse(event.dataTransfer.getData('application/json')); const component = library.find(entry => entry.type === item.type); if (component) add([{ kind: 'catalog', id: `catalog:${component.type}`, role: 'reference', name: component.label, componentType: component.type }]); } catch { onError('请拖入组件库中的组件或参考图片'); }
   }}>
     <AgentReferenceList references={references} onRemove={disabled ? undefined : id => onReferences(references.filter(ref => ref.id !== id))} onRole={disabled ? undefined : (id, role) => onReferences(references.map(ref => ref.id === id && ref.kind === 'canvas' ? { ...ref, role } : ref))} onLocate={onLocate} isMissing={isMissing} />
-    {picker && <div className="absolute bottom-full left-0 z-30 mb-2 w-full rounded-xl border border-border-visible bg-surface p-2" aria-label="选择会话引用">
+    {picker && <div className="absolute bottom-full left-0 z-30 mb-2 w-full rounded-lg border border-border-visible bg-surface p-2" aria-label="选择目标或参考">
       <div className="mb-2 flex gap-1"><Input autoFocus={!mention.current} aria-label="搜索组件或图层" placeholder="搜索当前项目或组件库…" value={query} onChange={event => { setQuery(event.target.value); setActive(0); }} onKeyDown={navigate} /><Button variant="ghost" size="icon-sm" aria-label="关闭引用选择" onClick={() => setPicker(false)}><X /></Button></div>
       <div id={listId} role="listbox" aria-label="可引用对象" className="max-h-56 overflow-y-auto">{options.map((ref, index) => <button type="button" key={ref.id} id={`${listId}-${index}`} role="option" aria-selected={index === active} className={`flex w-full items-center justify-between gap-2 rounded-md px-2 py-2 text-left text-xs ${index === active ? 'bg-surface-raised' : 'hover:bg-surface-raised'}`} onClick={() => pick(ref)}><span className="truncate">{ref.name}</span><span className="shrink-0 font-mono text-[11px] text-muted-foreground">{ref.kind === 'canvas' ? ref.pageName : '组件库参考'}</span></button>)}{!options.length && <p className="px-2 py-4 text-xs text-muted-foreground">没有匹配对象，试试其他名称。</p>}</div>
     </div>}
-    <Textarea ref={composerRef} value={draft} disabled={disabled} aria-label="发送给 AI 助手" aria-controls={picker ? listId : undefined} aria-activedescendant={picker && options[active] ? `${listId}-${active}` : undefined} onChange={event => {
+    <Textarea ref={composerRef} value={draft} disabled={disabled} aria-label="发送给 AI" aria-controls={picker ? listId : undefined} aria-activedescendant={picker && options[active] ? `${listId}-${active}` : undefined} aria-describedby={errorId} aria-invalid={!!errorId} onChange={event => {
       onDraft(event.target.value); const match = event.target.value.match(/@([^\s@]*)$/);
       if (match && !(event.nativeEvent as InputEvent).isComposing) { mention.current = true; setQuery(match[1]); setActive(0); setPicker(true); } else if (mention.current) { setPicker(false); mention.current = false; }
-    }} onKeyDown={event => { if (navigate(event)) return; if (!event.nativeEvent.isComposing && event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); if (!busy && !uploading) onSend(); } }} onPaste={event => { const files = [...event.clipboardData.files]; if (files.length) { event.preventDefault(); event.stopPropagation(); void images(files); } }} placeholder="描述修改，输入 @ 引用对象；可粘贴或拖入图片…" className="min-h-24 max-h-44 resize-y text-sm" />
-    <div className="flex flex-wrap items-center gap-1"><Button variant="ghost" size="icon-sm" aria-label="添加引用" title="引用组件、组合或模板（@）" disabled={disabled} onClick={() => { mention.current = false; setQuery(''); setActive(0); setPicker(!picker); }}><AtSign /></Button><Button variant="ghost" size="icon-sm" aria-label="添加参考图片" disabled={disabled || uploading} onClick={() => input.current?.click()}><ImagePlus /></Button>{selectedCount > 0 && <Button variant="ghost" size="xs" disabled={disabled} onClick={onSelection}><Layers className="size-3.5" />添加选区 · {selectedCount}</Button>}{uploading && <span role="status" className="font-mono text-[11px] text-muted-foreground">[处理图片…]</span>}</div>
+    }} onKeyDown={event => { if (navigate(event)) return; if (!event.nativeEvent.isComposing && event.key === 'Enter' && (event.metaKey || event.ctrlKey)) { event.preventDefault(); if (!busy && !uploading) onSend(); } }} onPaste={event => { const files = [...event.clipboardData.files]; if (files.length) { event.preventDefault(); event.stopPropagation(); void images(files); } }} placeholder={references.some(reference => reference.kind === 'canvas' && reference.role === 'target') ? '想怎么改？' : '描述要创建的页面…'} className="min-h-16 max-h-32 resize-y text-sm" />
+    <div className="flex min-h-7 items-center justify-between gap-2">
+      <div className="flex min-w-0 items-center gap-1">
+        <Menu>
+          <MenuTrigger render={<Button variant="ghost" size="icon-sm" disabled={disabled || uploading} />} aria-label="添加目标或参考" title="添加目标或参考"><Plus aria-hidden="true" /></MenuTrigger>
+          <MenuPopup side="top" align="start">
+            {selectedCount > 0 && <MenuItem closeOnClick onClick={onSelection}><Layers aria-hidden="true" />加入当前选区<span className="ml-auto font-mono text-[11px] text-muted-foreground">{selectedCount}</span></MenuItem>}
+            <MenuItem closeOnClick onClick={() => { mention.current = false; setQuery(''); setActive(0); setPicker(true); }}><AtSign aria-hidden="true" />引用对象或模板</MenuItem>
+            <MenuItem closeOnClick onClick={() => input.current?.click()}><ImagePlus aria-hidden="true" />参考图片</MenuItem>
+          </MenuPopup>
+        </Menu>
+        {uploading && <span role="status" className="truncate font-mono text-[11px] text-muted-foreground">[处理图片…]</span>}
+      </div>
+      {actions}
+    </div>
     <input ref={input} type="file" multiple accept="image/png,image/jpeg,image/webp" className="hidden" aria-label="选择参考图片文件" onChange={event => { void images([...(event.target.files ?? [])]); event.target.value = ''; }} />
-    {references.some(ref => ref.kind === 'image') && <p className="text-[11px] leading-4 text-muted-foreground">发送时，参考图片将交给当前模型分析。</p>}
   </div>;
 }

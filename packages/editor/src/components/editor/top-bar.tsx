@@ -24,7 +24,6 @@ import {
   X,
   PenLine,
   Settings2,
-  Bot,
 } from "lucide-react";
 
 const ZOOM_PRESETS = [50, 75, 100, 125, 150, 200];
@@ -51,9 +50,6 @@ interface TopBarProps {
   maximized?: boolean;
   onToggleTheme?: () => void;
   onOpenSettings?: () => void;
-  onOpenAgent?: () => void;
-  agentOpen?: boolean;
-  agentActive?: boolean;
   onUndo: () => void;
   onRedo: () => void;
   onSelectTool?: () => void;
@@ -94,9 +90,6 @@ export function TopBar({
   maximized = false,
   onToggleTheme,
   onOpenSettings,
-  onOpenAgent,
-  agentOpen,
-  agentActive,
   onUndo,
   onRedo,
   onToggleGrid,
@@ -199,11 +192,7 @@ export function TopBar({
 
       {/* Right: Mode & Tool Controls */}
       <div className="flex items-center gap-1.5" onDoubleClick={(e) => e.stopPropagation()}>
-        {/* Theme switch */}
-        <Button variant="ghost" size="icon-xs" onClick={onOpenAgent} aria-label="打开 AI 助手" aria-pressed={agentOpen} title={agentActive ? "AI 正在运行" : "AI 助手"}>
-          <Bot aria-hidden="true" strokeWidth={1.5} />
-          {agentActive && <span className="absolute right-0 top-0 size-1.5 rounded-full bg-foreground" />}
-        </Button>
+        {/* App controls */}
         <Button variant="ghost" size="icon-xs" onClick={onOpenSettings} aria-label="打开设置" title="设置"><Settings2 aria-hidden="true" strokeWidth={1.5} /></Button>
         {onToggleTheme && (<Button
             variant="ghost"

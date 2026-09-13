@@ -12,7 +12,7 @@ export const libraryModes = {
     categories: ["Web模版", "Web导航", "Web表单", "Web展示", "Web反馈"],
   },
   agent: {
-    label: "Agent 客户端模板",
+    label: "Agent 产品界面",
     items: agentLibrary,
     categories: ["Agent场景模版", "Agent框架容器", "Agent基础图元", "Agent结构与数据", "Agent核心交互"],
   },

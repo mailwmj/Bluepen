@@ -66,6 +66,12 @@ export function mergeAgentReferences(existing: AgentReference[], incoming: Agent
   if (result.size > MAX_AGENT_REFERENCES) throw new Error(`每条消息最多添加 ${MAX_AGENT_REFERENCES} 个引用，请分批处理`);
   return [...result.values()];
 }
+export function retargetAgentReferences(existing: AgentReference[], targets: AgentReference[]): AgentReference[] {
+  const targetIds = new Set(targets.map(reference => reference.id));
+  const supporting = existing.filter(reference =>
+    !(reference.kind === 'canvas' && reference.role === 'target') && !targetIds.has(reference.id));
+  return mergeAgentReferences(targets, supporting);
+}
 export function captureAgentContext(context: AgentContext, pages: Page[]): AgentContext {
   const page = pages.find(item => item.id === context.pageId);
   if (!page) throw new Error('目标页面已删除，请重新选择');
@@ -146,7 +152,7 @@ export function prepareAgentChanges(changes: AgentChangeSet, context: AgentConte
   let roots = elements.map(node => node.id);
   const requireNode = (nodeId: string, structural = false) => {
     const base = baseline.get(nodeId), live = current.get(nodeId), node = nodes.get(nodeId);
-    if (!writable.has(nodeId) || !base) throw new Error('修改超出选定对象，请把需要修改的父组合或组件一起添加到会话');
+    if (!writable.has(nodeId) || !base) throw new Error('修改超出选定对象，请把需要修改的父组合或组件加入修改范围');
     if (!live || !node) throw new Error('目标已删除或被重复操作，请重新生成修改');
     assertUnlocked(nodeId, current);
     for (const ancestor of [base, ...ancestors(nodeId, baseline)]) {

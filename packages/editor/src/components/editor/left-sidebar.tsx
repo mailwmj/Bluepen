@@ -830,7 +830,7 @@ export const LeftSidebar = memo(function LeftSidebar({
     { id: "pages", label: "页面与图层", dockLabel: "页面", icon: Layers },
     { id: "components", label: "基础模式", dockLabel: "基础", icon: Box },
     { id: "web", label: "Web 模板", dockLabel: "Web", icon: LayoutTemplate },
-    { id: "agent", label: "Agent 客户端模板", dockLabel: "Agent", icon: Bot },
+    { id: "agent", label: "Agent 产品界面", dockLabel: "AI界面", icon: Bot },
   ];
 
   return (
@@ -946,7 +946,7 @@ export const LeftSidebar = memo(function LeftSidebar({
                               <span className="line-clamp-2 w-full text-xs leading-4">{item.label}</span>
                               {isTemplate && <span className="font-mono text-[11px] text-muted-foreground">{item.defaultWidth} × {item.defaultHeight}</span>}
                             </Button>
-                            {onReferenceAsset && <Button variant="ghost" size="icon-xs" className="absolute right-1 top-1 bg-surface text-muted-foreground opacity-0 transition-opacity group-hover/asset:opacity-100 group-focus-within/asset:opacity-100 pointer-coarse:opacity-100" aria-label={`${item.label}作为 AI 参考`} title="添加到 AI 会话作为参考" onClick={() => onReferenceAsset(item)}><Paperclip className="size-3" aria-hidden="true" /></Button>}
+                            {onReferenceAsset && <Button variant="ghost" size="icon-xs" className="absolute right-1 top-1 bg-surface text-muted-foreground opacity-0 transition-opacity group-hover/asset:opacity-100 group-focus-within/asset:opacity-100 pointer-coarse:opacity-100" aria-label={`${item.label}作为 AI 参考`} title="作为 AI 参考" onClick={() => onReferenceAsset(item)}><Paperclip className="size-3" aria-hidden="true" /></Button>}
                             </div>
                           ))}
                         </div>
@@ -1039,7 +1039,7 @@ export const LeftSidebar = memo(function LeftSidebar({
                 <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2 text-xs font-bold bg-surface">
                   <span className="font-mono text-xs font-bold tracking-wider uppercase text-foreground">[ 图层列表 ]</span>
                   <span className="nd-num text-[10px] font-mono text-muted-foreground">{String(roots.length).padStart(2, "0")}</span>
-                  {onAddSelectionToAgent && !!selectedIds?.length && <Button variant="ghost" size="icon-xs" aria-label="将选中图层添加到会话" title="将选中图层添加到会话" onClick={onAddSelectionToAgent}><Sparkles /></Button>}
+                  {onAddSelectionToAgent && !!selectedIds?.length && <Button variant="ghost" size="icon-xs" aria-label="AI 修改选中图层" title="AI 修改" onClick={onAddSelectionToAgent}><Sparkles aria-hidden="true" /></Button>}
                 </div>
 
                 {/* Tree Items List */}

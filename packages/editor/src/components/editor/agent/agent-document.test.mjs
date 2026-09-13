@@ -30,6 +30,15 @@ test('selection preserves object identity, deduplicates parent/child and bounds 
   assert.equal(ctx.snapshot.nodes.some(node => node.id === 'outside'), false);
   assert.throws(() => context(Array.from({ length: 601 }, (_, index) => button(`n${index}`)), Array.from({ length: 601 }, (_, index) => `n${index}`)), /600/);
 });
+test('contextual retargeting replaces old targets but keeps explicit references', () => {
+  const page = { id: 'page', name: '页面', elements: initial() };
+  const [oldTarget] = d.canvasReferences('project', page, ['a']);
+  const [supporting] = d.canvasReferences('project', page, ['b'], 'reference');
+  const [nextTarget] = d.canvasReferences('project', page, ['b']);
+  const image = { kind: 'image', id: 'image', role: 'reference', name: '参考图', dataUrl: 'data:image/png;base64,' };
+  const result = d.retargetAgentReferences([oldTarget, supporting, image], [nextTarget]);
+  assert.deepEqual(plain(result.map(reference => [reference.id, reference.role])), [[nextTarget.id, 'target'], ['image', 'reference']]);
+});
 test('batch update changes both selected components in place and merges props', () => {
   const elements = initial(), ctx = context(elements, ['a', 'b']);
   const result = apply(elements, ctx, change(update('a', '提交'), update('b', '取消')));

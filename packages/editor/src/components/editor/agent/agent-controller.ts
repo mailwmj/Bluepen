@@ -86,7 +86,7 @@ export class AgentController {
         } : message) }));
         this.emit({ ...data, sessions, historyError: '', loaded: true });
       } catch {
-        this.emit({ loaded: true, historyError: '无法恢复会话记录，请重试。原记录尚未覆盖。' });
+        this.emit({ loaded: true, historyError: '无法恢复任务记录，请重试。原记录尚未覆盖。' });
       }
     })();
     return this.initialization;
@@ -120,7 +120,7 @@ export class AgentController {
   current(projectId: string) { return this.state.sessions.find(session => session.id === this.state.selected[projectId] && session.projectId === projectId) ?? this.state.sessions.find(session => session.projectId === projectId && !session.archived); }
   newSession(projectId: string) {
     if (!this.state.loaded || this.state.historyError) return;
-    const session: AgentSession = { id: agentId(), projectId, title: '新会话', createdAt: Date.now(), updatedAt: Date.now(), archived: false, draft: '', model: '', scrollTop: 0, messages: [] };
+    const session: AgentSession = { id: agentId(), projectId, title: '新任务', createdAt: Date.now(), updatedAt: Date.now(), archived: false, draft: '', model: '', scrollTop: 0, messages: [] };
     this.changed({ sessions: [session, ...this.state.sessions], selected: { ...this.state.selected, [projectId]: session.id } });
     return session;
   }
@@ -133,7 +133,7 @@ export class AgentController {
   }
   addReferences(id: string, incoming: AgentReference[]) {
     const session = this.session(id);
-    if (!session || session.archived) throw new Error('请恢复会话或新建会话后添加对象');
+    if (!session || session.archived) throw new Error('请恢复或新建任务后添加对象');
     const references = mergeAgentReferences(session.references ?? [], incoming.map(ref => referenceSchema.parse(ref)));
     this.updateSession(id, { references });
   }
@@ -172,13 +172,13 @@ export class AgentController {
   async send(sessionId: string, content: string, context: AgentContext) {
     const session = this.session(sessionId);
     if (!session || session.archived || session.messages.at(-1)?.status === 'waiting-input' || this.active || !content.trim() || !this.state.loaded || this.state.historyError) return;
-    if (session.projectId !== context.projectId) throw new Error('会话与目标项目不一致');
+    if (session.projectId !== context.projectId) throw new Error('任务与目标项目不一致');
     if (!this.state.settings.apiKey.trim()) throw new Error('请先在设置 → AI 服务中填写 API Key');
     if (content.length > 20_000) throw new Error('消息过长，请拆成几步发送');
     context = { ...context, references: context.references ?? session.references ?? [] };
     context = structuredClone(this.canvas?.capture(context) ?? context);
     const user: ConversationMessage = { id: agentId(), role: 'user', content: content.trim(), createdAt: Date.now(), status: 'completed', context, steps: [], reasoning: '' };
-    this.changed({ sessions: this.state.sessions.map(item => item.id === sessionId ? { ...item, draft: '', title: item.messages.length || item.title !== '新会话' ? item.title : content.trim().slice(0, 30), messages: [...item.messages.map(message => message.status === 'waiting-approval' ? { ...message, status: 'declined' as const } : message), user] } : item) });
+    this.changed({ sessions: this.state.sessions.map(item => sessionId === item.id ? { ...item, draft: '', title: item.messages.length || !['新会话', '新任务'].includes(item.title) ? item.title : content.trim().slice(0, 30), messages: [...item.messages.map(message => message.status === 'waiting-approval' ? { ...message, status: 'declined' as const } : message), user] } : item) });
     await this.start(sessionId, context);
   }
   private async start(sessionId: string, context: AgentContext) {

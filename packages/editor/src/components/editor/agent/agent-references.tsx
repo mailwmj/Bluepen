@@ -1,8 +1,10 @@
 "use client";
 
-import { Boxes, Layers, X } from 'lucide-react';
+import { Boxes, ChevronDown, Image as ImageIcon, Layers, X } from 'lucide-react';
 import { Button } from '@bluepen/editor/components/ui/button';
+import { Popover, PopoverPopup, PopoverTrigger } from '@bluepen/editor/components/ui/popover';
 import type { AgentReference } from './agent-types';
+import { agentReferenceSummary } from './agent-reference-summary';
 
 export function AgentReferenceList({ references, onRemove, onRole, onLocate, isMissing }: {
   references: AgentReference[];
@@ -12,13 +14,39 @@ export function AgentReferenceList({ references, onRemove, onRole, onLocate, isM
   isMissing?: (ref: AgentReference) => boolean;
 }) {
   if (!references.length) return null;
-  return <ul aria-label="会话引用" className="flex flex-wrap gap-2">
-    {references.map(ref => <li key={ref.id} className="flex max-w-full items-center gap-1 rounded-lg border border-border-visible bg-background px-2 py-1.5 text-xs">
-      {ref.kind === 'image' ? <img src={ref.dataUrl} alt={ref.name} className="mr-1 size-8 rounded object-cover" /> : ref.kind === 'canvas' ? <Layers className="mr-1 size-3.5 shrink-0 text-muted-foreground" /> : <Boxes className="mr-1 size-3.5 shrink-0 text-muted-foreground" />}
-      <div className="min-w-0"><button type="button" disabled={ref.kind !== 'canvas' || !onLocate || isMissing?.(ref)} className="block max-w-40 truncate text-left enabled:hover:underline" title={ref.kind === 'canvas' ? `${ref.pageName} / ${ref.name}` : ref.name} onClick={() => { if (ref.kind === 'canvas') onLocate?.(ref); }}>{ref.name}</button>
-        {isMissing?.(ref) ? <span className="font-mono text-[11px] text-destructive">对象已删除</span> : onRole && ref.kind === 'canvas' ? <button type="button" className="font-mono text-[11px] text-muted-foreground underline decoration-dotted underline-offset-2" title="点击切换修改对象或仅作参考" aria-label={`${ref.name}：${ref.role === 'target' ? '修改对象，切换为参考' : '参考，切换为修改对象'}`} onClick={() => onRole(ref.id, ref.role === 'target' ? 'reference' : 'target')}>{ref.role === 'target' ? '修改对象' : '仅作参考'}</button> : <span className="font-mono text-[11px] text-muted-foreground">{ref.role === 'target' ? '修改对象' : ref.kind === 'catalog' ? '组件库参考' : '仅作参考'}</span>}
+  const missing = references.filter(reference => isMissing?.(reference)).length;
+  const summary = agentReferenceSummary(references);
+
+  return <Popover>
+    <PopoverTrigger render={<Button variant="outline" size="sm" className="max-w-full justify-start font-normal" />} aria-label={`查看目标与参考：${summary}`}>
+      <span className="truncate">{summary}</span>
+      {missing > 0 && <span className="shrink-0 font-mono text-[11px] text-destructive">{missing} 项失效</span>}
+      <ChevronDown aria-hidden="true" className="ml-auto" />
+    </PopoverTrigger>
+    <PopoverPopup side="top" align="start" className="w-80 max-w-[calc(100vw-32px)]">
+      <div className="flex flex-col gap-3">
+        <p className="font-mono text-[11px] uppercase text-muted-foreground">目标与参考</p>
+        <ul aria-label="目标与参考明细" className="max-h-64 overflow-y-auto">
+          {references.map((reference, index) => {
+            const deleted = isMissing?.(reference);
+            const Icon = reference.kind === 'canvas' ? Layers : reference.kind === 'catalog' ? Boxes : ImageIcon;
+            return <li key={reference.id} className={`flex min-h-10 items-center gap-2 py-2 ${index > 0 ? 'border-t border-border' : ''}`}>
+              {reference.kind === 'image'
+                ? <img src={reference.dataUrl} alt="" className="size-8 shrink-0 rounded object-cover" />
+                : <Icon aria-hidden="true" className="shrink-0 text-muted-foreground" />}
+              <div className="min-w-0 flex-1">
+                <button type="button" disabled={reference.kind !== 'canvas' || !onLocate || deleted} className="block w-full truncate text-left text-xs enabled:hover:underline" title={reference.kind === 'canvas' ? `${reference.pageName} / ${reference.name}` : reference.name} onClick={() => { if (reference.kind === 'canvas') onLocate?.(reference); }}>{reference.name}</button>
+                {deleted
+                  ? <span className="font-mono text-[11px] text-destructive">对象已删除</span>
+                  : reference.kind === 'canvas' && onRole
+                    ? <button type="button" className="font-mono text-[11px] text-muted-foreground hover:text-foreground" aria-label={`${reference.name}：${reference.role === 'target' ? '修改对象，切换为参考' : '参考，切换为修改对象'}`} onClick={() => onRole(reference.id, reference.role === 'target' ? 'reference' : 'target')}>{reference.role === 'target' ? '修改' : '参考'}</button>
+                    : <span className="font-mono text-[11px] text-muted-foreground">{reference.role === 'target' ? '修改' : '参考'}</span>}
+              </div>
+              {onRemove && <Button variant="ghost" size="icon-xs" aria-label={`移除：${reference.name}`} title={`移除 ${reference.name}`} onClick={() => onRemove(reference.id)}><X aria-hidden="true" /></Button>}
+            </li>;
+          })}
+        </ul>
       </div>
-      {onRemove && <Button variant="ghost" size="icon-xs" aria-label={`移除引用：${ref.name}`} onClick={() => onRemove(ref.id)}><X /></Button>}
-    </li>)}
-  </ul>;
+    </PopoverPopup>
+  </Popover>;
 }
