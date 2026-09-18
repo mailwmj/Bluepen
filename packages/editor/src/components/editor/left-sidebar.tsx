@@ -123,6 +123,7 @@ import {
   Video,
   BarChart3,
   Settings,
+  MoreHorizontal,
   Bot,
   UserCheck,
   Terminal,
@@ -158,6 +159,7 @@ interface LeftSidebarProps {
   onAddAsset: (asset: ComponentType | LibraryComponent) => void;
   onReferenceAsset?: (asset: LibraryComponent) => void;
   onAddSelectionToAgent?: () => void;
+  onOpenSettings?: () => void;
   drawerCollapsed?: boolean;
   onToggleDrawer?: () => void;
 }
@@ -771,6 +773,7 @@ export const LeftSidebar = memo(function LeftSidebar({
   onAddAsset,
   onReferenceAsset,
   onAddSelectionToAgent,
+  onOpenSettings,
   drawerCollapsed: controlledDrawerCollapsed,
   onToggleDrawer,
 }: LeftSidebarProps) {
@@ -871,6 +874,22 @@ export const LeftSidebar = memo(function LeftSidebar({
           })}
         </div>
 
+        {onOpenSettings && (
+          <div className="flex flex-col items-center gap-1.5">
+            <button
+              type="button"
+              className="group relative flex size-10 flex-col items-center justify-center rounded-lg font-mono transition-colors duration-150 cursor-pointer select-none text-muted-foreground hover:bg-surface-raised/50 hover:text-foreground"
+              aria-label="打开设置"
+              onClick={onOpenSettings}
+              title="设置"
+            >
+              <MoreHorizontal className="size-4 text-muted-foreground group-hover:text-foreground" strokeWidth={1.5} />
+              <span className="mt-0.5 font-mono text-[10px] tracking-wider uppercase leading-none text-muted-foreground/70 group-hover:text-foreground">
+                设置
+              </span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* The drawer's width is reserved so it never covers the canvas. */}

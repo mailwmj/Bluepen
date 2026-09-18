@@ -63,3 +63,20 @@ test("cancelling the unsaved-changes close request keeps the desktop window open
   await desktop.requestClose();
   assert.equal(desktop.closeCount(), 1);
 });
+
+test("isDesktop and isMac correctly report platform from window and navigator", () => {
+  const { isDesktop, isMac } = loadTypeScript(fileURLToPath(new URL("./use-desktop.ts", import.meta.url)), {
+    globals: { window: { __TAURI_INTERNALS__: {} }, navigator: { platform: "MacIntel", userAgent: "Mac" } },
+    mocks: {
+      react: { useRef: () => ({ current: null }), useCallback: (fn) => fn, useEffect: () => {}, useState: (v) => [v, () => {}] },
+      "./use-toast": { showToast() {} },
+      "./local-store": { getProjectsDir: async () => "", projectFileName: () => "", saveProjectLocal: async () => {} },
+      "@tauri-apps/api/window": { getCurrentWindow: () => ({}) },
+      "@tauri-apps/api/event": { listen: async () => () => {} },
+      "@tauri-apps/plugin-dialog": { open: async () => null, save: async () => null },
+      "@tauri-apps/plugin-fs": { readTextFile: async () => "" },
+    },
+  });
+  assert.equal(isDesktop(), true);
+  assert.equal(isMac(), true);
+});

@@ -1726,6 +1726,8 @@ export function Editor() {
         maximized={windowMaximized}
         onToggleTheme={toggleTheme}
         onOpenSettings={() => setSettingsOpen(true)}
+        notice={notice}
+        onDismissNotice={dismissEditorNotice}
         onUndo={undo}
         onRedo={redo}
         onSelectTool={() => setActiveTool("select")}
@@ -1795,6 +1797,7 @@ export function Editor() {
             onAddAsset={handleSidebarAdd}
             onAddSelectionToAgent={() => openAgentModify()}
             onReferenceAsset={item => addAgentReferences([{ kind: 'catalog', role: 'reference', id: `catalog:${item.type}`, componentType: item.type, name: item.label }])}
+            onOpenSettings={() => setSettingsOpen(true)}
             drawerCollapsed={leftDrawerCollapsed}
             onToggleDrawer={toggleLeftDrawer}
           /></div>
@@ -2044,19 +2047,9 @@ export function Editor() {
       </div>
       )}
 
-      <footer className="flex h-7 shrink-0 items-center justify-between gap-4 border-t border-border bg-surface px-3 text-[11px]">
-        <span className="truncate font-mono uppercase tracking-wider text-muted-foreground">{activePage?.name} · {allElementsFlat.length} 个图层</span>
-        {notice ? (
-          <div className="flex min-w-0 items-center gap-2" role={notice.type === "error" ? "alert" : "status"}>
-            <span className={cn("truncate", notice.type === "error" ? "text-destructive" : "text-muted-foreground")}>[{notice.title}]{notice.description ? ` ${notice.description}` : ""}</span>
-            <Button variant="ghost" size="icon-xs" aria-label="关闭状态消息" onClick={dismissEditorNotice}><X aria-hidden="true" /></Button>
-          </div>
-        ) : previewing ? <span className="truncate text-muted-foreground">原型预览 · Esc 返回编辑</span> : null}
-      </footer>
-
       {/* Floating toolbar */}
       {!previewing && (
-        <div className="fixed bottom-12 left-1/2 z-30 max-w-[calc(100vw-32px)] -translate-x-1/2 select-none" style={agentOpen ? { left: `calc(max(64px, (100% - ${agentWidth}px)) / 2)`, maxWidth: `max(64px, calc(100vw - ${agentWidth}px - 24px))` } : undefined}>
+        <div className="fixed bottom-6 left-1/2 z-30 max-w-[calc(100vw-32px)] -translate-x-1/2 select-none" style={agentOpen ? { left: `calc(max(64px, (100% - ${agentWidth}px)) / 2)`, maxWidth: `max(64px, calc(100vw - ${agentWidth}px - 24px))` } : undefined}>
         <div className="animate-fade-up">
           <CossToolbar className="max-w-full overflow-x-auto rounded-full border border-border-visible bg-surface px-1.5 py-1 [&_[data-slot=toolbar-group]]:shrink-0">
           <ToolbarGroup>
@@ -2102,7 +2095,14 @@ export function Editor() {
         exportingRef.current = false; setExportRequest(null);
         showToast({ type: "error", title: "图片导出失败", description: error instanceof Error ? error.message : "请重试", id: "export-png" });
       }} />}
-      <AgentSettingsPage open={settingsOpen} onClose={() => setSettingsOpen(false)} controller={agent} />
+      <AgentSettingsPage
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+        controller={agent}
+        isMac={isMac}
+        isTauri={isTauri}
+        fullscreen={windowFullscreen}
+      />
     </div>
     );
 

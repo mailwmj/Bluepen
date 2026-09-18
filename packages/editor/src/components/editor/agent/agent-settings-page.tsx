@@ -6,13 +6,31 @@ import { Dialog, DialogPortal, DialogPrimitive, DialogTitle, DialogDescription }
 import { Button } from '@bluepen/editor/components/ui/button';
 import { Input } from '@bluepen/editor/components/ui/input';
 import { Select, SelectTrigger, SelectValue, SelectPopup, SelectItem } from '@bluepen/editor/components/ui/select';
-import { isDesktop } from '../hooks/use-desktop';
+import { cn } from '@bluepen/editor/lib/utils';
+import { isDesktop, isMac } from '../hooks/use-desktop';
 import { runAgent } from './agent-runtime';
 import type { AgentController } from './agent-controller';
 const protocols = [{ value: 'responses', label: 'Responses' }, { value: 'chat-completions', label: 'Chat Completions' }];
 const thinkingOptions = [{ value: 'default', label: '服务默认' }, { value: 'high', label: '开启 · High' }, { value: 'off', label: '关闭' }];
 
-export function AgentSettingsPage({ open, onClose, controller }: { open: boolean; onClose: () => void; controller: AgentController }) {
+export function AgentSettingsPage({
+  open,
+  onClose,
+  controller,
+  isMac: isMacProp,
+  isTauri: isTauriProp,
+  fullscreen = false,
+}: {
+  open: boolean;
+  onClose: () => void;
+  controller: AgentController;
+  isMac?: boolean;
+  isTauri?: boolean;
+  fullscreen?: boolean;
+}) {
+  const isDesktopPlatform = isTauriProp ?? isDesktop();
+  const isMacPlatform = isMacProp ?? isMac();
+  const showTrafficSpacer = isDesktopPlatform && isMacPlatform && !fullscreen;
   const state = useSyncExternalStore(controller.subscribe, controller.getSnapshot, controller.getSnapshot);
   const [form, setForm] = useState(state.settings);
   const [busy, setBusy] = useState<'save' | 'test' | null>(null);
@@ -51,8 +69,14 @@ export function AgentSettingsPage({ open, onClose, controller }: { open: boolean
   return <Dialog open={open} onOpenChange={next => { if (!next) close(); }}>
     <DialogPortal>
       <DialogPrimitive.Popup ref={setPortalContainer} className="nd-overlay fixed inset-0 z-[100] flex flex-col bg-background text-foreground outline-none [&_svg]:stroke-[1.5]" onKeyDown={event => event.stopPropagation()}>
-        <header className="flex h-14 shrink-0 items-center gap-4 border-b border-border px-6">
-          <Button variant="ghost" size="icon" aria-label="返回编辑器" onClick={close}><ArrowLeft /></Button>
+        <header
+          data-tauri-drag-region
+          className={cn(
+            "flex h-14 shrink-0 items-center gap-4 border-b border-border bg-surface pr-6 transition-[padding] duration-150",
+            showTrafficSpacer ? "pl-[80px]" : "px-6",
+          )}
+        >
+          <Button variant="ghost" size="icon" aria-label="返回编辑器" onClick={close} className="shrink-0"><ArrowLeft className="size-4" /></Button>
           <DialogTitle className="font-mono text-xs font-normal uppercase tracking-wider">设置 / Settings</DialogTitle>
         </header>
         <div className="flex min-h-0 flex-1">

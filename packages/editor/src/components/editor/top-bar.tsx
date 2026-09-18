@@ -50,6 +50,8 @@ interface TopBarProps {
   maximized?: boolean;
   onToggleTheme?: () => void;
   onOpenSettings?: () => void;
+  notice?: { type: "info" | "success" | "error" | "warning"; title: string; description?: string } | null;
+  onDismissNotice?: () => void;
   onUndo: () => void;
   onRedo: () => void;
   onSelectTool?: () => void;
@@ -90,6 +92,8 @@ export function TopBar({
   maximized = false,
   onToggleTheme,
   onOpenSettings,
+  notice,
+  onDismissNotice,
   onUndo,
   onRedo,
   onToggleGrid,
@@ -152,6 +156,18 @@ export function TopBar({
               <Button variant="outline" size="xs" onClick={onRetrySave} aria-label="重试自动保存">重试</Button>
             )}
           </div>
+          {notice && (
+            <div className="flex shrink-0 items-center gap-1 font-mono text-[11px] uppercase" role={notice.type === "error" ? "alert" : "status"}>
+              <span className={cn("max-w-[200px] truncate sm:max-w-[300px]", notice.type === "error" ? "text-destructive" : "text-muted-foreground")}>
+                [{notice.title}]{notice.description ? ` ${notice.description}` : ""}
+              </span>
+              {onDismissNotice && (
+                <button type="button" aria-label="关闭状态消息" onClick={onDismissNotice} className="cursor-pointer text-muted-foreground hover:text-foreground">
+                  <X aria-hidden="true" className="size-3" />
+                </button>
+              )}
+            </div>
+          )}
         </div>
 
         <Separator orientation="vertical" className="mx-1 h-3.5 bg-border" />
