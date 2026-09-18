@@ -17,33 +17,69 @@ export interface AgentCanvasAdapter {
 export interface AgentStorage {
   loadHistory(): Promise<AgentHistory | undefined>;
   saveHistory(history: AgentHistory): Promise<void>;
+  /** Optional: keeps the untouched record before a salvaged load overwrites it. */
+  saveHistoryRecovery?(raw: unknown): Promise<void>;
   loadSettings(): Promise<AgentSettings>;
   saveSettings(settings: AgentSettings): Promise<void>;
 }
 const contextSchema = z.object({ projectId: z.string(), pageId: z.string(), pageName: z.string(), anchor: z.object({ x: z.number(), y: z.number() }).optional(), references: z.array(referenceSchema).max(24).optional(), snapshot: selectionSchema.optional() });
-const historySchema = z.object({
-  version: z.literal(1), selected: z.record(z.string(), z.string()),
-  sessions: z.array(z.object({
-    id: z.string(), projectId: z.string(), title: z.string(), createdAt: z.number(), updatedAt: z.number(), archived: z.boolean(), draft: z.string(), model: z.string(), scrollTop: z.number(), references: z.array(referenceSchema).max(24).optional(),
-    messages: z.array(z.object({
-      id: z.string(), role: z.enum(['user', 'assistant']), content: z.string(), createdAt: z.number(), context: contextSchema,
-      status: z.enum(['running', 'waiting-input', 'waiting-approval', 'completed', 'failed', 'cancelled', 'interrupted', 'declined']),
-      model: z.string().optional(), phase: z.string().optional(), finishedAt: z.number().optional(),
-      steps: z.array(z.object({ id: z.string(), label: z.string(), status: z.enum(['running', 'completed', 'failed', 'cancelled']), detail: z.string() })), reasoning: z.string(),
-      questions: z.array(z.object({ id: z.string(), title: z.string(), options: z.array(z.string()), multiple: z.boolean(), required: z.boolean() })).optional(),
-      answers: z.record(z.string(), z.string()).optional(),
-      questionDraft: z.record(z.string(), z.object({ choices: z.array(z.string()), custom: z.string() })).optional(),
-      plan: z.custom<PrototypePlan>(value => { try { return validatePrototypePlan(value as PrototypePlan).length === 0; } catch { return false; } }).optional(),
-      changes: changesSchema.optional(), planVersion: z.number().optional(), applied: z.object({ pageId: z.string(), elementId: z.string(), name: z.string(), receipt: receiptSchema.optional() }).optional(), error: z.string().optional(),
-    })),
-  })),
+const messageSchema = z.object({
+  id: z.string(), role: z.enum(['user', 'assistant']), content: z.string(), createdAt: z.number(), context: contextSchema,
+  status: z.enum(['running', 'waiting-input', 'waiting-approval', 'completed', 'failed', 'cancelled', 'interrupted', 'declined']),
+  model: z.string().optional(), phase: z.string().optional(), finishedAt: z.number().optional(),
+  steps: z.array(z.object({ id: z.string(), label: z.string(), status: z.enum(['running', 'completed', 'failed', 'cancelled']), detail: z.string() })), reasoning: z.string(),
+  questions: z.array(z.object({ id: z.string(), title: z.string(), options: z.array(z.string()), multiple: z.boolean(), required: z.boolean() })).optional(),
+  answers: z.record(z.string(), z.string()).optional(),
+  questionDraft: z.record(z.string(), z.object({ choices: z.array(z.string()), custom: z.string() })).optional(),
+  plan: z.custom<PrototypePlan>(value => { try { return validatePrototypePlan(value as PrototypePlan).length === 0; } catch { return false; } }).optional(),
+  changes: changesSchema.optional(), planVersion: z.number().optional(), applied: z.object({ pageId: z.string(), elementId: z.string(), name: z.string(), receipt: receiptSchema.optional() }).optional(), error: z.string().optional(),
 });
+const sessionSchema = z.object({
+  id: z.string(), projectId: z.string(), title: z.string(), createdAt: z.number(), updatedAt: z.number(), archived: z.boolean(), draft: z.string(), model: z.string(), scrollTop: z.number(), references: z.array(referenceSchema).max(24).optional(),
+  messages: z.array(messageSchema),
+});
+const historySchema = z.object({ version: z.literal(1), selected: z.record(z.string(), z.string()), sessions: z.array(sessionSchema) });
+
+/**
+ * Stored history is user data that outlives the code that wrote it, so a field this build no longer
+ * understands must not hide every other conversation. Valid sessions are kept whole; inside a broken
+ * session only the unreadable messages are dropped, and the caller reports how many. Genuinely
+ * unrecognisable values still fail so the caller can refuse to overwrite them.
+ */
+function restoreHistory(value: unknown): { history: AgentHistory; dropped: number } | undefined {
+  const parsed = historySchema.safeParse(value);
+  if (parsed.success) return { history: parsed.data as AgentHistory, dropped: 0 };
+  if (!value || typeof value !== 'object') return undefined;
+  const source = value as { selected?: unknown; sessions?: unknown };
+  if (!Array.isArray(source.sessions)) return undefined;
+  const selected = z.record(z.string(), z.string()).safeParse(source.selected);
+  const history: AgentHistory = { version: 1, selected: selected.success ? selected.data : {}, sessions: [] };
+  let dropped = 0;
+  for (const entry of source.sessions) {
+    const session = sessionSchema.safeParse(entry);
+    if (session.success) { history.sessions.push(session.data as AgentSession); continue; }
+    const messages = entry && typeof entry === 'object' ? (entry as { messages?: unknown }).messages : undefined;
+    const shell = Array.isArray(messages) ? sessionSchema.safeParse({ ...entry, messages: [] }) : undefined;
+    if (!shell?.success) { dropped++; continue; }
+    const kept = (messages as unknown[]).flatMap(message => {
+      const result = messageSchema.safeParse(message);
+      return result.success ? [result.data as ConversationMessage] : [];
+    });
+    dropped += (messages as unknown[]).length - kept.length;
+    history.sessions.push({ ...(shell.data as AgentSession), messages: kept });
+  }
+  // Nothing survived, so there is no honest salvage: report failure and leave the record untouched.
+  if (dropped && !history.sessions.length) return undefined;
+  return { history, dropped };
+}
 
 export interface AgentSnapshot extends AgentHistory {
   loaded: boolean;
   settings: AgentSettings;
   settingsError: string;
   historyError: string;
+  /** Set when a load had to skip unreadable entries; the rest of the history is usable. */
+  historyWarning: string;
   saveError: string;
   saving: boolean;
   activeRun?: { sessionId: string; messageId: string };
@@ -51,7 +87,7 @@ export interface AgentSnapshot extends AgentHistory {
 
 /** One editor-owned controller outlives panel visibility and session selection. */
 export class AgentController {
-  private state: AgentSnapshot = { version: 1, sessions: [], selected: {}, loaded: false, settings: defaultAgentSettings, settingsError: '', historyError: '', saveError: '', saving: false };
+  private state: AgentSnapshot = { version: 1, sessions: [], selected: {}, loaded: false, settings: defaultAgentSettings, settingsError: '', historyError: '', historyWarning: '', saveError: '', saving: false };
   private listeners = new Set<() => void>();
   private active?: { sessionId: string; messageId: string; controller: AbortController };
   private timer?: ReturnType<typeof setTimeout>;
@@ -79,12 +115,14 @@ export class AgentController {
       else this.emit({ settingsError: this.errorText(settings.reason) });
       try {
         if (history.status === 'rejected') throw history.reason;
-        const data = history.value ? historySchema.parse(history.value) : { version: 1 as const, sessions: [], selected: {} };
-        const sessions = data.sessions.map(session => ({ ...session, messages: session.messages.map(message => message.status === 'running' ? {
+        const restored = history.value ? restoreHistory(history.value) : { history: { version: 1 as const, sessions: [], selected: {} } as AgentHistory, dropped: 0 };
+        if (!restored) throw new Error('任务记录结构无法识别');
+        const sessions = restored.history.sessions.map(session => ({ ...session, messages: session.messages.map(message => message.status === 'running' ? {
           ...message, status: 'interrupted' as const, finishedAt: Date.now(), error: '上次运行已中断，可重新尝试',
           steps: message.steps.map(step => step.status === 'running' ? { ...step, status: 'cancelled' as const } : step),
         } : message) }));
-        this.emit({ ...data, sessions, historyError: '', loaded: true });
+        if (restored.dropped) { try { await this.storage.saveHistoryRecovery?.(history.value); } catch { /* the recovery copy is best effort */ } }
+        this.emit({ ...restored.history, sessions, historyError: '', historyWarning: restored.dropped ? `已跳过 ${restored.dropped} 条无法读取的任务记录` : '', loaded: true });
       } catch {
         this.emit({ loaded: true, historyError: '无法恢复任务记录，请重试。原记录尚未覆盖。' });
       }

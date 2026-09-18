@@ -7,7 +7,7 @@
 | 需求 | 实现位置 | 验证证据 |
 | --- | --- | --- |
 | 独立设置页 | `agent-settings-page.tsx`、顶栏设置入口 | 静态生产预览实际保存 API 地址/测试 Key/默认模型；连接测试完成真实 SDK 工具往返与严格输出解析；未保存返回提示已验证 |
-| 凭据隔离与迁移 | `agent-storage.ts`、Rust `agent_credentials.rs` | 4 项存储回归覆盖 Web 迁移、失败保留旧数据、桌面命令路径与凭据库失败；macOS 原生凭据库独立临时条目的写/读/删测试通过 |
+| 凭据隔离与迁移 | `agent-storage.ts` | 6 项存储回归覆盖 Web 迁移、失败保留旧数据、桌面本地文件读写与轮换、历史与恢复副本不含 Key、写入失败不静默保留；桌面 Key 与普通设置同存于应用数据目录，不再触碰系统凭据库 |
 | 新建和历史管理 | `agent-controller.ts`、`agent-panel.tsx` | 浏览器验证新建、切换、重命名、标题搜索、归档、恢复、删除；刷新后恢复草稿；控制器回归验证双角色消息和独立项目恢复 |
 | 完整消息流、执行与思考 | `agent-runtime.ts`、`agent-message.tsx` | 浏览器展示实际组件检索完成与 Markdown 回复；SDK 回归断言工具开始/结束事件和原始 reasoning delta，未凭空生成思考文本 |
 | Ask human | 严格输出 schema、控制器及 QuestionCard | 浏览器必答空提交被拒绝、自由文本+多选提交后继续生成；选择与补充回答切换会话后保留；单元回归验证答案草稿重载和重复提交只续跑一次 |
@@ -22,7 +22,6 @@
 - `corepack pnpm typecheck`：编辑器与应用类型检查通过。
 - `BLUEPEN_BUILD_DIR=.next-agent-check NEXT_EXPORT=true corepack pnpm --filter app exec next build --webpack`：静态生产导出通过；验证无需 Node `/api/chat` 服务即可运行的桌面构建模式。
 - `cargo check --locked --manifest-path apps/app/src-tauri/Cargo.toml`：通过。
-- `cargo test --manifest-path apps/app/src-tauri/Cargo.toml native_credential_round_trip -- --ignored`：**1 项原生凭据读写删除检查通过**；使用单独验证 service/account，未接触用户 API Key。
 - `git diff --check`、本地 QA 服务语法检查通过。
 
 ## 可复现的浏览器验收
@@ -40,9 +39,19 @@
 
 当前助手能力是讨论并新增可编辑原型；不声称读取当前选择、直接修改已有图层或并发执行多个 Agent。聊天完整历史保存在本机，不随 `.bluepen` 文件导出；导出的项目保留稳定 ID。
 
-重启恢复历史与待回答/待确认内容；不重建已断开的网络流，原运行显示为中断并允许重试。Web Key 使用 sessionStorage，关闭标签页后重新填写；桌面使用系统凭据库。
+重启恢复历史与待回答/待确认内容；不重建已断开的网络流，原运行显示为中断并允许重试。Web Key 使用 sessionStorage，关闭标签页后重新填写；桌面 Key 以明文保存在应用数据目录的 `agent.json` 中，与普通设置同文件。
 
-浏览器完整流程在静态生产预览与本地 Responses 模拟服务上验证；没有使用真实用户 Key 进行联网生成，没有打包或发布安装包。原生凭据存储在 macOS 实测，Windows/Linux 仅保留相应 keyring 后端配置，未实机验收。
+### 凭据存储改版（2026-09-18）
+
+改为本地文件的原因：安装包使用 ad-hoc 签名，每次构建的代码身份都不同，macOS 因此把新构建当作陌生程序，读取钥匙串 `im.bluepen.agent` 时需要用户输入登录钥匙串密码。该弹窗出现在启动路径上，用户一旦拒绝，`read_agent_key` 失败并使历史加载整体失败，AI 功能不可用。应用数据目录中的文件不需要任何系统授权，启动路径上不再有授权弹窗。代价是 Key 以明文落盘，设置页已如实提示，请勿在共享设备上使用。
+
+### 历史加载健壮性（2026-09-18）
+
+同一轮修复了一个使 AI 功能永久不可用的缺陷：`agent-schema.ts` 的节点类型枚举由组件面板 `library` 推导，而面板只列出 211 个 `ComponentType` 中的 129 个。`web-login-card` 等模版会展开出 `link` 这类面板没有的合法子组件，于是已写入的 receipt 校验失败，导致整份历史加载失败，而控制器在 `historyError` 状态下拒绝一切新建与发送。
+
+现在：`agent-schema.ts` 仅对编辑器自己写出的画布节点放宽为任意非空类型字符串，模型生成的节点仍由 `planNode` / `prototype-output.ts` 按面板严格校验；`restoreHistory` 改为保留可读会话，丢弃无法读取的单条消息并如实报告数量，同时把未改动的原始记录另存为 `historyRecovery` 后才允许覆盖。两项均有回归覆盖。
+
+浏览器完整流程在静态生产预览与本地 Responses 模拟服务上验证；没有使用真实用户 Key 进行联网生成，没有打包或发布安装包。凭据存储改版本轮仅通过类型检查与存储回归验证，未实机重启安装包确认启动路径不再弹出钥匙串授权；Windows/Linux 沿用同一文件存储路径，未实机验收。
 
 最后一轮补测时浏览器验收空间已关闭，因此未再次执行“浏览器重载待回答/运行中任务”的补测；对应持久化和中断行为已有直接加载生产控制器的自动化回归。窄窗检查发现工具栏靠近输入区域，已将其按剩余画布空间定位；此最终定位修正通过代码与构建检查，未再截图。其余上述浏览器流程均已实际完成。
 

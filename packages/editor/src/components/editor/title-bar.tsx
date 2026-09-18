@@ -16,7 +16,7 @@ export function TitleBar({ maximized, onMinimize, onMaximize, onClose }: TitleBa
       onDoubleClick={onMaximize}
       className="flex h-9 shrink-0 select-none items-center gap-2 border-b border-border bg-surface px-3 text-foreground"
     >
-      <img src="/brand/bluepen-icon.svg" alt="Bluepen" className="size-3.5 grayscale invert dark:invert-0" draggable={false} />
+      <img src="/brand/bluepen-icon.svg" alt="Bluepen" className="size-3.5 rounded-xs grayscale invert dark:invert-0" draggable={false} />
       <span className="font-mono text-xs font-bold tracking-wider uppercase text-foreground">BLUEPEN</span>
 
       <div className="ml-auto flex items-center gap-0.5" onDoubleClick={(e) => e.stopPropagation()}>

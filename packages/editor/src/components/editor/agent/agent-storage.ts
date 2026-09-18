@@ -3,6 +3,7 @@ import { defaultAgentSettings, type AgentHistory, type AgentSettings } from './a
 
 const LEGACY_KEY = 'bluepen:ai-settings';
 const SESSION_KEY = 'bluepen:agent-key';
+const RECOVERY_KEY = 'historyRecovery';
 
 async function database() {
   return new Promise<IDBDatabase>((resolve, reject) => {
@@ -44,38 +45,34 @@ async function write(key: string, value: unknown): Promise<void> {
   });
 }
 
-async function readKey(): Promise<string> {
-  if (!isDesktop()) return sessionStorage.getItem(SESSION_KEY) ?? '';
-  const { invoke } = await import('@tauri-apps/api/core');
-  return invoke<string>('read_agent_key');
-}
-
-async function writeKey(apiKey: string): Promise<void> {
-  if (!isDesktop()) {
+/**
+ * Desktop credentials live in the same local file as the rest of the AI settings. The OS keychain is
+ * deliberately avoided: the bundle is ad-hoc signed, so every release has a new code identity and
+ * macOS treats it as a stranger, blocking launch behind a login-keychain password prompt.
+ * Browsers have no equivalent durable store here, so the key survives only for the current tab.
+ */
+export async function saveAgentSettings(settings: AgentSettings) {
+  const shared = {
+    baseUrl: settings.baseUrl.trim(),
+    model: settings.model.trim(),
+    protocol: settings.protocol ?? 'responses',
+    thinking: settings.thinking ?? 'default',
+  };
+  const apiKey = settings.apiKey.trim();
+  if (isDesktop()) {
+    await write('settings', { ...shared, apiKey });
+  } else {
+    await write('settings', { ...shared, apiKey: '' });
     if (apiKey) sessionStorage.setItem(SESSION_KEY, apiKey);
     else sessionStorage.removeItem(SESSION_KEY);
-    return;
-  }
-  const { invoke } = await import('@tauri-apps/api/core');
-  await invoke('write_agent_key', { apiKey });
-}
-
-export async function saveAgentSettings(settings: AgentSettings) {
-  const previousKey = await readKey();
-  await writeKey(settings.apiKey.trim());
-  try {
-    // Whitelist public fields: the credential never reaches agent.json / IndexedDB.
-    await write('settings', { baseUrl: settings.baseUrl.trim(), model: settings.model.trim(), protocol: settings.protocol ?? 'responses', thinking: settings.thinking ?? 'default' });
-  } catch (error) {
-    await writeKey(previousKey);
-    throw error;
   }
   localStorage.removeItem(LEGACY_KEY);
 }
 
 export async function loadAgentSettings(): Promise<AgentSettings> {
   const saved = await read<Partial<AgentSettings>>('settings');
-  const apiKey = await readKey();
+  const storedKey = typeof saved?.apiKey === 'string' ? saved.apiKey : '';
+  const apiKey = isDesktop() ? storedKey : sessionStorage.getItem(SESSION_KEY) ?? '';
   const raw = localStorage.getItem(LEGACY_KEY);
   if (raw && !saved) {
     let legacy: Partial<AgentSettings>;
@@ -89,7 +86,7 @@ export async function loadAgentSettings(): Promise<AgentSettings> {
     return migrated;
   }
   // Finish cleanup if the previous migration committed but cleanup was interrupted.
-  if (saved && raw && apiKey) localStorage.removeItem(LEGACY_KEY);
+  if (saved && raw) localStorage.removeItem(LEGACY_KEY);
   return {
     baseUrl: typeof saved?.baseUrl === 'string' ? saved.baseUrl : defaultAgentSettings.baseUrl,
     model: typeof saved?.model === 'string' ? saved.model : defaultAgentSettings.model,
@@ -102,6 +99,8 @@ export async function loadAgentSettings(): Promise<AgentSettings> {
 export const agentStorage = {
   loadHistory: () => read<AgentHistory>('history'),
   saveHistory: (history: AgentHistory) => write('history', history),
+  /** Unreadable entries are dropped on load, so keep the untouched record before it is overwritten. */
+  saveHistoryRecovery: (raw: unknown) => write(RECOVERY_KEY, { at: Date.now(), raw }),
   loadSettings: loadAgentSettings,
   saveSettings: saveAgentSettings,
 };

@@ -13,10 +13,11 @@ const context = { projectId: 'project-a', pageId: 'page-a', pageName: '首页' }
 const settings = { baseUrl: 'https://example.com/v1', apiKey: 'test-secret', model: 'fixture' };
 const plan = { artifactKind: 'component', pageName: '按钮', purpose: '测试新增', notes: [], root: { type: 'group', name: '按钮组合', x: 0, y: 0, width: 120, height: 40, children: [] } };
 function setup(provider = async () => ({ reply: '完成', plan }), initial) {
-  const memory = { history: initial, settings, fail: false };
+  const memory = { history: initial, settings, fail: false, recovery: undefined };
   const storage = {
     loadHistory: async () => structuredClone(memory.history), loadSettings: async () => ({ ...memory.settings }),
     saveHistory: async history => { if (memory.fail) throw new Error('磁盘已满'); memory.history = structuredClone(history); },
+    saveHistoryRecovery: async raw => { memory.recovery = structuredClone(raw); },
     saveSettings: async value => { memory.settings = value; },
   };
   return { controller: new AgentController(storage, provider), memory, storage };
@@ -119,6 +120,38 @@ test('save failure is visible and latest history can be retried; archive and del
   memory.fail = false; await agent.flush(); assert.equal(memory.history.sessions[0].draft, '不能丢的草稿'); assert.equal(agent.getSnapshot().saveError, '');
   agent.archive(session.id); await agent.flush(); assert.equal(memory.history.sessions[0].archived, true);
   agent.archive(session.id); agent.remove(session.id); await agent.flush(); assert.equal(memory.history.sessions.length, 0);
+});
+
+test('receipt nodes outside the component palette stay readable', async () => {
+  // `web-login-card` is a palette template that expands into `link` children, so receipts legitimately
+  // record types the palette never lists. Validating those against the palette bricked the whole load.
+  assert.ok(!library.library.some(item => item.type === 'link'));
+  const node = (id, type, name) => ({ id, type, name, parentId: null, childIds: [], x: 0, y: 0, width: 100, height: 32, rotation: 0, opacity: 1, visible: true, locked: false, props: {}, autoLayout: null });
+  const receipt = { id: 'receipt-1', pageId: context.pageId, name: '登录卡片', targetIds: [], nodes: [{ id: 'el-1', before: null, after: node('el-1', 'link', '忘记密码链接') }] };
+  const history = { version: 1, selected: { 'project-a': 's1' }, sessions: [{
+    id: 's1', projectId: context.projectId, title: '登录页', createdAt: 1, updatedAt: 1, archived: false, draft: '', model: 'fixture', scrollTop: 0,
+    messages: [{ id: 'm1', role: 'assistant', content: '已生成登录页', createdAt: 1, context, status: 'completed', steps: [], reasoning: '', applied: { pageId: context.pageId, elementId: 'el-1', name: '登录页', receipt } }],
+  }] };
+  const { controller: agent } = setup(undefined, history); await agent.initialize();
+  assert.equal(agent.getSnapshot().historyError, '');
+  assert.equal(agent.getSnapshot().historyWarning, '');
+  assert.equal(agent.session('s1').messages.length, 1);
+  assert.equal(agent.session('s1').messages[0].applied.receipt.nodes[0].after.type, 'link');
+});
+
+test('one unreadable message is skipped instead of hiding every other conversation', async () => {
+  const message = (id, content, extra = {}) => ({ id, role: 'user', content, createdAt: 1, context, status: 'completed', steps: [], reasoning: '', ...extra });
+  const history = { version: 1, selected: {}, sessions: [{
+    id: 's1', projectId: context.projectId, title: '保留标题', createdAt: 1, updatedAt: 1, archived: false, draft: '', model: 'fixture', scrollTop: 0,
+    messages: [message('m1', '保留我'), message('m2', '坏消息', { context: { projectId: 5 } })],
+  }] };
+  const { controller: agent, memory } = setup(undefined, history); await agent.initialize();
+  const snapshot = agent.getSnapshot();
+  assert.equal(snapshot.historyError, '');
+  assert.match(snapshot.historyWarning, /1/);
+  assert.equal(agent.session('s1').title, '保留标题');
+  assert.deepEqual(agent.session('s1').messages.map(item => item.content), ['保留我']);
+  assert.deepEqual(memory.recovery, history);
 });
 
 test('canvas application rejects wrong project/page and has stable deduplicated artifact IDs', () => {

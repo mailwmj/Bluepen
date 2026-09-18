@@ -73,6 +73,7 @@ export function AgentQuickComposer({ open, controller, projectId, context, candi
                   : <Button size="icon-sm" className="rounded-full" aria-label="发送" title="发送" disabled={!session.draft.trim() || uploading || session.archived} onClick={send}><ArrowUp aria-hidden="true" /></Button>
           } />
           {state.settingsError && <p className="mt-2 text-xs text-destructive">{state.settingsError}</p>}
+          {state.historyWarning && <p role="status" className="mt-2 font-mono text-xs text-muted-foreground">[{state.historyWarning}]</p>}
           {error && <p id={errorId} role="alert" className="mt-2 text-xs text-destructive">{error}</p>}
           {state.saveError && <div className="mt-2 flex items-center gap-2 text-xs text-destructive"><span title={state.saveError}>保存失败</span><Button variant="ghost" size="xs" onClick={() => void controller.flush()}>重试</Button></div>}
         </> : <p role="status" className="py-3 font-mono text-xs text-muted-foreground">[正在准备任务…]</p>}
