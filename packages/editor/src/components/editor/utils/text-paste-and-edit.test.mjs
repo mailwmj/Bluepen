@@ -130,3 +130,117 @@ test("Button typography resolution supports custom fontSize, fontFamily, and def
   assert.equal(customButton.fontFamily, "'PingFang SC', sans-serif");
   assert.equal(customButton.textColor, "#3B82F6");
 });
+
+test("Shape and node typography resolution defaults to Nothing Design System specifications", () => {
+  function resolveShapeTypography(type, props = {}) {
+    const rawTextColor = String(props.textColor || "");
+    const textColor = !rawTextColor || rawTextColor === "#18181B" ? "var(--foreground)" : rawTextColor;
+    const fontSize = Number(props.fontSize || 16);
+    const fontFamily = props.fontFamily ? String(props.fontFamily) : "var(--font-sans)";
+    const lineHeight = props.lineHeight ? `${props.lineHeight}px` : "1.5";
+    return { textColor, fontSize, fontFamily, lineHeight };
+  }
+
+  // Default rectangle with no text props
+  const defaultRect = resolveShapeTypography("rectangle");
+  assert.equal(defaultRect.textColor, "var(--foreground)");
+  assert.equal(defaultRect.fontSize, 16);
+  assert.equal(defaultRect.fontFamily, "var(--font-sans)");
+  assert.equal(defaultRect.lineHeight, "1.5");
+
+  // Legacy element that had #18181B saved
+  const legacyNode = resolveShapeTypography("flow-process", { textColor: "#18181B" });
+  assert.equal(legacyNode.textColor, "var(--foreground)", "Normalizes legacy #18181B to var(--foreground)");
+
+  // Custom styling preserved
+  const customNode = resolveShapeTypography("rectangle", {
+    textColor: "#D71921",
+    fontSize: 24,
+    fontFamily: "var(--font-mono)",
+    lineHeight: 28,
+  });
+  assert.equal(customNode.textColor, "#D71921");
+  assert.equal(customNode.fontSize, 24);
+  assert.equal(customNode.fontFamily, "var(--font-mono)");
+  assert.equal(customNode.lineHeight, "28px");
+});
+
+test("InlineTextEditor container layout and alignment mirrors read-only previewers exactly", () => {
+  function resolveInlineEditorLayout(element) {
+    const isButton =
+      element.type === "button" ||
+      element.type === "button-primary" ||
+      element.type === "web-button";
+    const isPureText = element.type === "text";
+    const isStickyNote = element.type === "sticky-note";
+    const isBadgeOrChip = element.type === "badge" || element.type === "chip";
+    const isPlaceholder = element.type === "placeholder";
+
+    const paddingClass = isButton
+      ? element.type === "web-button"
+        ? "px-3 py-0"
+        : "px-4 py-0"
+      : isPureText
+      ? "px-1"
+      : isStickyNote
+      ? "p-3"
+      : isBadgeOrChip
+      ? "px-2 py-0.5"
+      : isPlaceholder
+      ? "px-2 py-1"
+      : "p-2";
+
+    const align = element.props?.textAlign || element.props?.align || (element.type === "text" ? "left" : "center");
+    const textVerticalAlign = element.props?.textVerticalAlign || (element.type === "text" ? "top" : "middle");
+
+    const justifyClass = isButton || isBadgeOrChip || isPlaceholder
+      ? "justify-center"
+      : isStickyNote
+      ? "justify-start"
+      : align === "left"
+      ? "justify-start"
+      : align === "right"
+      ? "justify-end"
+      : "justify-center";
+
+    const itemsClass = isButton || isBadgeOrChip || isPlaceholder
+      ? "items-center"
+      : isStickyNote
+      ? "items-start"
+      : isPureText
+      ? textVerticalAlign === "middle" || textVerticalAlign === "center"
+        ? "items-center"
+        : textVerticalAlign === "bottom"
+        ? "items-end"
+        : "items-start"
+      : textVerticalAlign === "top"
+      ? "items-start"
+      : textVerticalAlign === "bottom"
+      ? "items-end"
+      : "items-center";
+
+    return { paddingClass, justifyClass, itemsClass };
+  }
+
+  // 1. Standard flowchart node (as in User Fig 1 & Fig 2)
+  const flowNode = resolveInlineEditorLayout({ type: "flow-process", props: {} });
+  assert.equal(flowNode.paddingClass, "p-2", "Matches ShapeTextRenderer p-2 container padding");
+  assert.equal(flowNode.justifyClass, "justify-center", "Centered horizontally");
+  assert.equal(flowNode.itemsClass, "items-center", "Centered vertically, zero upward jump");
+
+  // 2. Pure text element
+  const textEl = resolveInlineEditorLayout({ type: "text", props: { textAlign: "left", textVerticalAlign: "top" } });
+  assert.equal(textEl.paddingClass, "px-1");
+  assert.equal(textEl.justifyClass, "justify-start");
+  assert.equal(textEl.itemsClass, "items-start");
+
+  // 3. Button
+  const buttonEl = resolveInlineEditorLayout({ type: "button", props: {} });
+  assert.equal(buttonEl.paddingClass, "px-4 py-0");
+  assert.equal(buttonEl.justifyClass, "justify-center");
+  assert.equal(buttonEl.itemsClass, "items-center");
+
+  // 4. Web button
+  const webButtonEl = resolveInlineEditorLayout({ type: "web-button", props: {} });
+  assert.equal(webButtonEl.paddingClass, "px-3 py-0");
+});

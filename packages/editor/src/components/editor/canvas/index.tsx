@@ -72,6 +72,7 @@ interface CanvasProps {
     rotation?: number,
     parentId?: string | null,
     props?: Record<string, string | number | boolean>,
+    selectAfterCreate?: boolean,
   ) => void;
   onCommitMove: () => void;
   onDelete: () => void;
@@ -754,7 +755,88 @@ const DrawingPreviewOverlay = memo(function DrawingPreviewOverlay({
 });
 
 /**
- * Dedicated layer rendering all smart reactive connector lines.
+ * Resolves the computed geometry, routing waypoints, and midpoint for a connector.
+ */
+function getConnectorGeometry(c: EditorElement, allElementsFlat: EditorElement[]) {
+  const startEl = c.props.startElementId ? allElementsFlat.find((e) => e.id === c.props.startElementId) : null;
+  const endEl = c.props.endElementId ? allElementsFlat.find((e) => e.id === c.props.endElementId) : null;
+
+  let startPt: Point;
+  let startDir: Vector | undefined;
+  let startBox: Rect | undefined;
+  let endPt: Point;
+  let endDir: Vector | undefined;
+  let endBox: Rect | undefined;
+
+  if (startEl) {
+    const anchor = getElementAnchor(startEl, (c.props.startPort as AnchorPort) || "right", allElementsFlat);
+    startPt = anchor.point;
+    startDir = anchor.dir;
+    startBox = getElementWorldBounds(startEl, allElementsFlat);
+  } else {
+    startPt = { x: Number(c.props.startPointX ?? c.x), y: Number(c.props.startPointY ?? c.y) };
+  }
+
+  if (endEl) {
+    const anchor = getElementAnchor(endEl, (c.props.endPort as AnchorPort) || "left", allElementsFlat);
+    endPt = anchor.point;
+    endDir = anchor.dir;
+    endBox = getElementWorldBounds(endEl, allElementsFlat);
+  } else {
+    endPt = { x: Number(c.props.endPointX ?? c.x + c.width), y: Number(c.props.endPointY ?? c.y + c.height) };
+  }
+
+  const routing = String(c.props.routing || "orthogonal");
+  const radius = Number(c.props.radius ?? 8);
+
+  let customPts: Point[] | null = null;
+  if (c.props.customWaypoints && typeof c.props.customWaypoints === "string") {
+    try {
+      const parsed = JSON.parse(c.props.customWaypoints);
+      if (Array.isArray(parsed) && parsed.length >= 2) {
+        customPts = parsed;
+      }
+    } catch {}
+  }
+
+  let d: string;
+  let midpoint: Point;
+  let waypoints: Point[];
+
+  if (routing === "straight") {
+    const res = calculateStraightPath({ point: startPt }, { point: endPt });
+    d = res.d;
+    midpoint = res.midpoint;
+    waypoints = res.waypoints;
+  } else if (routing === "curved") {
+    const res = calculateCurvedPath({ point: startPt, dir: startDir }, { point: endPt, dir: endDir });
+    d = res.d;
+    midpoint = res.midpoint;
+    waypoints = res.waypoints;
+  } else {
+    if (customPts) {
+      const adapted = adaptCustomWaypoints(customPts, startPt, endPt);
+      d = buildRoundedSvgPath(adapted, radius);
+      midpoint = calculatePolylineMidpoint(adapted);
+      waypoints = adapted;
+    } else {
+      const res = calculateOrthogonalPath(
+        { point: startPt, dir: startDir, box: startBox },
+        { point: endPt, dir: endDir, box: endBox },
+        radius,
+      );
+      d = res.d;
+      midpoint = res.midpoint;
+      waypoints = res.waypoints;
+    }
+  }
+
+  return { startPt, startDir, startBox, endPt, endDir, endBox, routing, radius, d, midpoint, waypoints };
+}
+
+/**
+ * Dedicated base layer (z-[5]) rendering connector stroke paths, selection halo, and click hit areas.
+ * Kept below element nodes so lines do not slice awkwardly across card surfaces.
  */
 const ConnectorLinesLayer = memo(function ConnectorLinesLayer({
   connectors,
@@ -764,8 +846,6 @@ const ConnectorLinesLayer = memo(function ConnectorLinesLayer({
   previewing,
   onSelect,
   onSelectIds,
-  onStartEndpointDrag,
-  onStartSegmentDrag,
 }: {
   connectors: EditorElement[];
   allElementsFlat: EditorElement[];
@@ -774,15 +854,6 @@ const ConnectorLinesLayer = memo(function ConnectorLinesLayer({
   previewing: boolean;
   onSelect: (id: string | null) => void;
   onSelectIds?: (ids: string[]) => void;
-  onStartEndpointDrag: (e: React.MouseEvent, connector: EditorElement, endpoint: "start" | "end") => void;
-  onStartSegmentDrag?: (
-    e: React.MouseEvent,
-    connector: EditorElement,
-    segmentIndex: number,
-    isVertical: boolean,
-    currentWaypoints: Point[],
-    startPos: number,
-  ) => void;
 }) {
   if (!connectors || connectors.length === 0) return null;
 
@@ -813,79 +884,7 @@ const ConnectorLinesLayer = memo(function ConnectorLinesLayer({
       {connectors.map((c) => {
         if (!c.visible) return null;
         const isSelected = selectedIds.includes(c.id);
-
-        const startEl = c.props.startElementId ? allElementsFlat.find((e) => e.id === c.props.startElementId) : null;
-        const endEl = c.props.endElementId ? allElementsFlat.find((e) => e.id === c.props.endElementId) : null;
-
-        let startPt: Point;
-        let startDir: Vector | undefined;
-        let startBox: Rect | undefined;
-        let endPt: Point;
-        let endDir: Vector | undefined;
-        let endBox: Rect | undefined;
-
-        if (startEl) {
-          const anchor = getElementAnchor(startEl, (c.props.startPort as AnchorPort) || "right", allElementsFlat);
-          startPt = anchor.point;
-          startDir = anchor.dir;
-          startBox = getElementWorldBounds(startEl, allElementsFlat);
-        } else {
-          startPt = { x: Number(c.props.startPointX ?? c.x), y: Number(c.props.startPointY ?? c.y) };
-        }
-
-        if (endEl) {
-          const anchor = getElementAnchor(endEl, (c.props.endPort as AnchorPort) || "left", allElementsFlat);
-          endPt = anchor.point;
-          endDir = anchor.dir;
-          endBox = getElementWorldBounds(endEl, allElementsFlat);
-        } else {
-          endPt = { x: Number(c.props.endPointX ?? c.x + c.width), y: Number(c.props.endPointY ?? c.y + c.height) };
-        }
-
-        const routing = String(c.props.routing || "orthogonal");
-        const radius = Number(c.props.radius ?? 8);
-
-        let customPts: Point[] | null = null;
-        if (c.props.customWaypoints && typeof c.props.customWaypoints === "string") {
-          try {
-            const parsed = JSON.parse(c.props.customWaypoints);
-            if (Array.isArray(parsed) && parsed.length >= 2) {
-              customPts = parsed;
-            }
-          } catch {}
-        }
-
-        let d: string;
-        let midpoint: Point;
-        let waypoints: Point[];
-
-        if (routing === "straight") {
-          const res = calculateStraightPath({ point: startPt }, { point: endPt });
-          d = res.d;
-          midpoint = res.midpoint;
-          waypoints = res.waypoints;
-        } else if (routing === "curved") {
-          const res = calculateCurvedPath({ point: startPt, dir: startDir }, { point: endPt, dir: endDir });
-          d = res.d;
-          midpoint = res.midpoint;
-          waypoints = res.waypoints;
-        } else {
-          if (customPts) {
-            const adapted = adaptCustomWaypoints(customPts, startPt, endPt);
-            d = buildRoundedSvgPath(adapted, radius);
-            midpoint = calculatePolylineMidpoint(adapted);
-            waypoints = adapted;
-          } else {
-            const res = calculateOrthogonalPath(
-              { point: startPt, dir: startDir, box: startBox },
-              { point: endPt, dir: endDir, box: endBox },
-              radius,
-            );
-            d = res.d;
-            midpoint = res.midpoint;
-            waypoints = res.waypoints;
-          }
-        }
+        const { d } = getConnectorGeometry(c, allElementsFlat);
 
         const stroke = String(c.props.stroke || "#71717A");
         const borderWidth = Number(c.props.borderWidth ?? 1.5);
@@ -893,7 +892,6 @@ const ConnectorLinesLayer = memo(function ConnectorLinesLayer({
         const strokeDasharray = strokeStyle === "dashed" ? "5 4" : strokeStyle === "dotted" ? "2 3" : undefined;
         const startArrow = String(c.props.startArrow || "none");
         const endArrow = String(c.props.endArrow || "arrow");
-        const text = String(c.props.text || "");
 
         const handleSelectConnector = (e: React.MouseEvent) => {
           if (previewing) return;
@@ -909,7 +907,21 @@ const ConnectorLinesLayer = memo(function ConnectorLinesLayer({
           }
         };
 
-        const scaleFactor = Math.max(0.5, zoom);
+        const handleDoubleClickConnector = (e: React.MouseEvent) => {
+          if (previewing) return;
+          e.stopPropagation();
+          onSelect(c.id);
+          onSelectIds?.([c.id]);
+          setTimeout(() => {
+            const input = document.querySelector<HTMLInputElement | HTMLTextAreaElement>(
+              "aside input:not([type='color']):not([type='checkbox']), aside textarea"
+            );
+            if (input) {
+              input.focus();
+              input.select?.();
+            }
+          }, 60);
+        };
 
         return (
           <g
@@ -919,6 +931,7 @@ const ConnectorLinesLayer = memo(function ConnectorLinesLayer({
             className="group pointer-events-auto cursor-pointer select-none"
             onClick={(e) => e.stopPropagation()}
             onMouseDown={handleSelectConnector}
+            onDoubleClick={handleDoubleClickConnector}
           >
             {/* Wide transparent hit path for easy clicking & selection */}
             <path
@@ -956,7 +969,73 @@ const ConnectorLinesLayer = memo(function ConnectorLinesLayer({
               markerEnd={endArrow === "arrow" ? `url(#arrow-end-${c.id})` : endArrow === "circle" ? `url(#circle-${c.id})` : undefined}
               className="pointer-events-none transition-colors group-hover:stroke-blue-500"
             />
+          </g>
+        );
+      })}
+    </svg>
+  );
+});
 
+/**
+ * Dedicated top-level overlay layer (z-30) rendering interactive connector handles:
+ * - Reconnection endpoint circles (always float on top of components without clipping - "盖住组件")
+ * - Orthogonal segment shifting pills
+ * - Midpoint text condition labels
+ */
+const ConnectorHandlesLayer = memo(function ConnectorHandlesLayer({
+  connectors,
+  allElementsFlat,
+  selectedIds,
+  zoom,
+  previewing,
+  onSelect,
+  onSelectIds,
+  onStartEndpointDrag,
+  onStartSegmentDrag,
+}: {
+  connectors: EditorElement[];
+  allElementsFlat: EditorElement[];
+  selectedIds: string[];
+  zoom: number;
+  previewing: boolean;
+  onSelect: (id: string | null) => void;
+  onSelectIds?: (ids: string[]) => void;
+  onStartEndpointDrag: (e: React.MouseEvent, connector: EditorElement, endpoint: "start" | "end") => void;
+  onStartSegmentDrag?: (
+    e: React.MouseEvent,
+    connector: EditorElement,
+    segmentIndex: number,
+    isVertical: boolean,
+    currentWaypoints: Point[],
+    startPos: number,
+  ) => void;
+}) {
+  const activeConnectors = connectors.filter(
+    (c) => c.visible && (selectedIds.includes(c.id) || Boolean(c.props.text)),
+  );
+  if (!activeConnectors || activeConnectors.length === 0) return null;
+
+  const scaleFactor = Math.max(0.5, zoom);
+
+  return (
+    <svg
+      className="pointer-events-none absolute top-0 left-0 overflow-visible z-30"
+      style={{ width: 1, height: 1 }}
+    >
+      {activeConnectors.map((c) => {
+        const isSelected = selectedIds.includes(c.id);
+        const { startPt, endPt, midpoint, waypoints, routing } = getConnectorGeometry(c, allElementsFlat);
+        const text = String(c.props.text || "");
+
+        const handleSelectConnector = (e: React.MouseEvent) => {
+          if (previewing) return;
+          e.stopPropagation();
+          onSelect(c.id);
+          onSelectIds?.([c.id]);
+        };
+
+        return (
+          <g key={`handles-${c.id}`}>
             {/* Midpoint Text Label */}
             {text && (
               <g
@@ -1037,7 +1116,6 @@ const ConnectorLinesLayer = memo(function ConnectorLinesLayer({
                           );
                         }}
                       >
-                        {/* Invisible generous hit target to ensure stable and smooth grabbing */}
                         <rect
                           x={seg.mid.x - hitW / 2}
                           y={seg.mid.y - hitH / 2}
@@ -1047,7 +1125,6 @@ const ConnectorLinesLayer = memo(function ConnectorLinesLayer({
                           stroke="transparent"
                           style={{ cursor }}
                         />
-                        {/* Crisp visible pill handle without jumping scale transforms */}
                         <rect
                           x={seg.mid.x - handleW / 2}
                           y={seg.mid.y - handleH / 2}
@@ -1066,7 +1143,7 @@ const ConnectorLinesLayer = memo(function ConnectorLinesLayer({
               </g>
             )}
 
-            {/* Reconnection Endpoint Handles */}
+            {/* Reconnection Endpoint Handles - Rendered at z-30 to float completely above elements ("盖住组件") */}
             {isSelected && !previewing && !c.locked && (
               <>
                 <g
@@ -1080,7 +1157,7 @@ const ConnectorLinesLayer = memo(function ConnectorLinesLayer({
                   <circle
                     cx={startPt.x}
                     cy={startPt.y}
-                    r={10 / scaleFactor}
+                    r={12 / scaleFactor}
                     fill="transparent"
                     stroke="transparent"
                     className="cursor-crosshair"
@@ -1088,11 +1165,11 @@ const ConnectorLinesLayer = memo(function ConnectorLinesLayer({
                   <circle
                     cx={startPt.x}
                     cy={startPt.y}
-                    r={5 / scaleFactor}
+                    r={5.5 / scaleFactor}
                     fill="#2563EB"
                     stroke="#FFFFFF"
                     strokeWidth={2 / scaleFactor}
-                    className="pointer-events-none transition-colors group-hover/endpoint:fill-blue-500"
+                    className="pointer-events-none transition-colors group-hover/endpoint:fill-blue-500 shadow-sm"
                   />
                   <title>重新连接起点</title>
                 </g>
@@ -1107,7 +1184,7 @@ const ConnectorLinesLayer = memo(function ConnectorLinesLayer({
                   <circle
                     cx={endPt.x}
                     cy={endPt.y}
-                    r={10 / scaleFactor}
+                    r={12 / scaleFactor}
                     fill="transparent"
                     stroke="transparent"
                     className="cursor-crosshair"
@@ -1115,11 +1192,11 @@ const ConnectorLinesLayer = memo(function ConnectorLinesLayer({
                   <circle
                     cx={endPt.x}
                     cy={endPt.y}
-                    r={5 / scaleFactor}
+                    r={5.5 / scaleFactor}
                     fill="#2563EB"
                     stroke="#FFFFFF"
                     strokeWidth={2 / scaleFactor}
-                    className="pointer-events-none transition-colors group-hover/endpoint:fill-blue-500"
+                    className="pointer-events-none transition-colors group-hover/endpoint:fill-blue-500 shadow-sm"
                   />
                   <title>重新连接终点</title>
                 </g>
@@ -1194,33 +1271,61 @@ function InlineTextEditor({ element, zoom, onUpdateText, onFinish }: InlineTextE
       ? "主要操作"
       : "";
   const textProp = String(element.props.text ?? (element.type === "text" ? "" : defaultText));
-  const [localText, setLocalText] = useState(textProp);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const editableRef = useRef<HTMLSpanElement>(null);
   const finishCalledRef = useRef(false);
 
   const handleFinish = useCallback(() => {
     if (finishCalledRef.current) return;
     finishCalledRef.current = true;
+    const finalVal = editableRef.current?.innerText ?? "";
+    onUpdateText(finalVal);
     onFinish();
-  }, [onFinish]);
+  }, [onFinish, onUpdateText]);
 
   useEffect(() => {
-    const textarea = textareaRef.current;
-    if (textarea) {
-      textarea.focus();
-      // Select all text on double click edit
-      const len = textarea.value.length;
-      textarea.setSelectionRange(0, len);
+    const el = editableRef.current;
+    if (!el) return;
+    // Set initial text once directly on DOM node to prevent React from resetting caret during typing
+    el.textContent = textProp;
+    el.focus();
+    // Select all text in place on double click edit (matching benchmark behavior)
+    if (textProp.length > 0) {
+      try {
+        const selection = window.getSelection();
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+      } catch {
+        // fallback
+      }
     }
   }, []);
 
-  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const nextVal = e.target.value;
-    setLocalText(nextVal);
+  const handleInput = (e: React.FormEvent<HTMLSpanElement>) => {
+    const nextVal = e.currentTarget.innerText ?? "";
     onUpdateText(nextVal);
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+  const handlePaste = (e: React.ClipboardEvent<HTMLSpanElement>) => {
+    e.preventDefault();
+    const plainText = e.clipboardData.getData("text/plain");
+    if (!plainText) return;
+    const selection = window.getSelection();
+    if (!selection || !selection.rangeCount) return;
+    selection.deleteFromDocument();
+    const range = selection.getRangeAt(0);
+    const textNode = document.createTextNode(plainText);
+    range.insertNode(textNode);
+    range.setStartAfter(textNode);
+    range.setEndAfter(textNode);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    const nextVal = editableRef.current?.innerText ?? "";
+    onUpdateText(nextVal);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLSpanElement>) => {
     e.stopPropagation();
     if (e.key === "Escape") {
       e.preventDefault();
@@ -1238,10 +1343,11 @@ function InlineTextEditor({ element, zoom, onUpdateText, onFinish }: InlineTextE
     element.type === "button-primary"
       ? "var(--primary-foreground)"
       : "var(--foreground)";
-  const textColor = String(element.props.textColor || defaultTextColor);
+  const rawTextColor = String(element.props.textColor || defaultTextColor);
+  const textColor = rawTextColor === "#18181B" ? "var(--foreground)" : rawTextColor;
   const textOpacity = Number(element.props.textOpacity ?? 100);
-  const color = textColor.startsWith("#") ? hexToRgba(textColor, textOpacity) : textColor;
-  const fontSize = Number(element.props.fontSize || (isButton ? 12 : 14));
+  const color = hexToRgba(textColor, textOpacity);
+  const fontSize = Number(element.props.fontSize || (isButton ? 12 : 16));
   const fontWeight = Number(
     element.props.fontWeight || (element.type === "button-primary" ? 600 : isButton ? 500 : 400)
   );
@@ -1249,12 +1355,12 @@ function InlineTextEditor({ element, zoom, onUpdateText, onFinish }: InlineTextE
     ? String(element.props.fontFamily)
     : isButton
     ? "var(--font-mono)"
-    : undefined;
+    : "var(--font-sans)";
   const align = String(
     element.props.textAlign || element.props.align || (element.type === "text" ? "left" : "center")
   ) as "left" | "center" | "right" | "justify";
   const textVerticalAlign = String(element.props.textVerticalAlign || (element.type === "text" ? "top" : "middle"));
-  const lineHeight = element.props.lineHeight ? `${element.props.lineHeight}px` : "1.4";
+  const lineHeight = element.props.lineHeight ? `${element.props.lineHeight}px` : "1.5";
   const letterSpacing =
     element.props.letterSpacing !== undefined
       ? typeof element.props.letterSpacing === "number"
@@ -1275,17 +1381,52 @@ function InlineTextEditor({ element, zoom, onUpdateText, onFinish }: InlineTextE
       ? "line-through"
       : undefined;
 
-  const isShape = element.type !== "text";
+  const isPureText = element.type === "text";
+  const isStickyNote = element.type === "sticky-note";
+  const isBadgeOrChip = element.type === "badge" || element.type === "chip";
+  const isPlaceholder = element.type === "placeholder";
+  const isCircle = element.type === "circle" || element.type === "flow-database";
 
-  // Auto-fit height when vertically centered or bottom-aligned so flex positioning matches TextPreview / ShapeTextRenderer
-  useEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-    if (textVerticalAlign === "middle" || textVerticalAlign === "center" || textVerticalAlign === "bottom") {
-      textarea.style.height = "auto";
-      textarea.style.height = `${Math.min(textarea.scrollHeight, element.height)}px`;
-    }
-  }, [localText, textVerticalAlign, element.height]);
+  // Replicate exact container padding & flex distribution of read-only preview renderers
+  const paddingClass = isButton
+    ? element.type === "web-button"
+      ? "px-3 py-0"
+      : "px-4 py-0"
+    : isPureText
+    ? "px-1"
+    : isStickyNote
+    ? "p-3"
+    : isBadgeOrChip
+    ? "px-2 py-0.5"
+    : isPlaceholder
+    ? "px-2 py-1"
+    : "p-2";
+
+  const justifyClass = isButton || isBadgeOrChip || isPlaceholder
+    ? "justify-center"
+    : isStickyNote
+    ? "justify-start"
+    : align === "left"
+    ? "justify-start"
+    : align === "right"
+    ? "justify-end"
+    : "justify-center";
+
+  const itemsClass = isButton || isBadgeOrChip || isPlaceholder
+    ? "items-center"
+    : isStickyNote
+    ? "items-start"
+    : isPureText
+    ? textVerticalAlign === "middle" || textVerticalAlign === "center"
+      ? "items-center"
+      : textVerticalAlign === "bottom"
+      ? "items-end"
+      : "items-start"
+    : textVerticalAlign === "top"
+    ? "items-start"
+    : textVerticalAlign === "bottom"
+    ? "items-end"
+    : "items-center";
 
   const buttonRadius =
     element.props.radius !== undefined
@@ -1295,32 +1436,42 @@ function InlineTextEditor({ element, zoom, onUpdateText, onFinish }: InlineTextE
   return (
     <div
       className={cn(
-        "absolute inset-0 z-50 flex size-full border border-dashed border-blue-500 select-text bg-transparent",
-        isButton && !buttonRadius ? "rounded-full" : "rounded-xs",
-        textVerticalAlign === "middle" || textVerticalAlign === "center"
-          ? "items-center"
-          : textVerticalAlign === "bottom"
-          ? "items-end"
-          : "items-start"
+        "absolute inset-0 z-50 flex overflow-hidden select-text bg-transparent",
+        paddingClass,
+        justifyClass,
+        itemsClass
       )}
-      style={{
-        borderRadius: buttonRadius,
-      }}
       onMouseDown={(e) => e.stopPropagation()}
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
       onDoubleClick={(e) => e.stopPropagation()}
     >
-      <textarea
-        ref={textareaRef}
-        value={localText}
-        onChange={handleChange}
-        onKeyDown={handleKeyDown}
-        onBlur={handleFinish}
-        rows={isButton ? 1 : undefined}
+      {/* Dashed boundary outline preserved per user directive, rendered as an overlay to prevent inner layout displacement */}
+      <div
         className={cn(
-          "w-full resize-none border-0 bg-transparent outline-none whitespace-pre-wrap break-words overflow-hidden",
-          isButton ? "px-4 py-0 text-center uppercase" : isShape ? "p-2 text-center" : "p-0 px-1"
+          "pointer-events-none absolute inset-0 border border-dashed border-blue-500",
+          isButton && !buttonRadius ? "rounded-full" : isCircle ? "rounded-full" : "rounded-xs"
+        )}
+        style={{
+          borderRadius: buttonRadius ?? (isCircle ? "50%" : undefined),
+        }}
+      />
+
+      <span
+        ref={editableRef}
+        contentEditable
+        suppressContentEditableWarning
+        role="textbox"
+        aria-multiline={!isButton}
+        data-placeholder={element.type === "text" ? "输入文本…" : "输入内容…"}
+        onInput={handleInput}
+        onKeyDown={handleKeyDown}
+        onPaste={handlePaste}
+        onBlur={handleFinish}
+        className={cn(
+          "outline-none max-w-full max-h-full whitespace-pre-wrap break-words select-text cursor-text relative z-10",
+          "empty:before:content-[attr(data-placeholder)] empty:before:text-muted-foreground/50 empty:before:pointer-events-none",
+          isButton && "uppercase"
         )}
         style={{
           color,
@@ -1333,13 +1484,11 @@ function InlineTextEditor({ element, zoom, onUpdateText, onFinish }: InlineTextE
           fontStyle,
           textDecoration,
           caretColor: color.startsWith("var(--primary-foreground)") ? "var(--primary-foreground)" : "currentColor",
-          height:
-            textVerticalAlign === "middle" || textVerticalAlign === "center" || textVerticalAlign === "bottom"
-              ? undefined
-              : "100%",
-          maxHeight: "100%",
+          wordBreak: "break-word",
+          minWidth: "2px",
+          minHeight: "1em",
+          display: "inline-block",
         }}
-        placeholder={element.type === "text" ? "输入文本内容…" : "输入内容…"}
       />
     </div>
   );
@@ -1430,10 +1579,17 @@ const ElementNode = memo(function ElementNode({
 
   if (!el.visible) return null;
 
+  const isDraggingAny = Boolean(
+    interaction &&
+    interaction.type !== "create-connector" &&
+    interaction.type !== "connector-endpoint"
+  );
+
   const showAnchors =
     !previewing &&
     !locked &&
     !isEditing &&
+    !isDraggingAny &&
     el.type !== "connector" &&
     (isConnectorMode
       ? (isConnecting
@@ -1442,7 +1598,7 @@ const ElementNode = memo(function ElementNode({
             interaction?.targetElementId === el.id ||
             isHovered
           : isHovered || isSelected)
-      : false);
+      : (isSingleSelected || isHovered));
 
   return (
     <div
@@ -1490,6 +1646,12 @@ const ElementNode = memo(function ElementNode({
         }
       }}
     >
+      {/* Target Element Magnetic Snap Halo during connection */}
+      {isConnecting && interaction?.targetElementId === el.id && (
+        <div
+          className="pointer-events-none absolute -inset-1 rounded-[inherit] border-2 border-blue-500/80 shadow-[0_0_12px_rgba(37,99,235,0.35)] z-40 transition-all"
+        />
+      )}
       <ElementRenderer
         element={el}
         isSelected={isSelected}
@@ -1575,7 +1737,7 @@ const ElementNode = memo(function ElementNode({
                 key={port}
                 data-handle
                 data-anchor-port={port}
-                className="absolute z-[35] flex size-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center cursor-crosshair group/anchor"
+                className="absolute z-50 flex size-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center cursor-crosshair group/anchor"
                 style={posStyle}
                 title={`从此处连线 (${PORT_LABELS[port]})`}
                 onMouseDown={(e) => onAnchorMouseDown(e, el, port)}
@@ -1662,8 +1824,8 @@ const ElementNode = memo(function ElementNode({
                 </div>
               )}
 
-              {/* Show rotation and resize handles on single selection */}
-              {isSingleSelected && (
+              {/* Show rotation and resize handles on single selection (suppressed when in connector mode) */}
+              {isSingleSelected && !isConnectorMode && (
                 <>
                   {/* Live rotation angle badge during active rotation */}
                   {interaction?.type === "rotate" && interaction.id === el.id && (
@@ -1703,34 +1865,28 @@ const ElementNode = memo(function ElementNode({
                     />
                   ))}
 
-                  {/* 4 border edge drag hit areas */}
+                  {/* 4 border edge drag hit areas (leaves center 24px free for anchor ports) */}
                   {[
-                    { id: "n", style: { top: -4, left: 4, right: 4, height: 8, cursor: "ns-resize" } },
-                    { id: "s", style: { bottom: -4, left: 4, right: 4, height: 8, cursor: "ns-resize" } },
-                    { id: "w", style: { left: -4, top: 4, bottom: 4, width: 8, cursor: "ew-resize" } },
-                    { id: "e", style: { right: -4, top: 4, bottom: 4, width: 8, cursor: "ew-resize" } },
+                    { id: "n", style: { top: -4, left: 16, right: 16, height: 8, cursor: "ns-resize" } },
+                    { id: "s", style: { bottom: -4, left: 16, right: 16, height: 8, cursor: "ns-resize" } },
+                    { id: "w", style: { left: -4, top: 16, bottom: 16, width: 8, cursor: "ew-resize" } },
+                    { id: "e", style: { right: -4, top: 16, bottom: 16, width: 8, cursor: "ew-resize" } },
                   ].map((edge) => (
                     <div
                       key={`edge-${edge.id}`}
                       data-handle
-                      className="absolute z-35 pointer-events-auto"
+                      className="absolute z-30 pointer-events-auto"
                       style={edge.style}
                       onMouseDown={(e) => onResizeMouseDown(e, el.id, edge.id)}
                     />
                   ))}
 
-                  {/* 8 resize handle control points (4 corners + 4 edge midpoints) */}
+                  {/* 4 corner resize handle control points (clean corners without edge midpoint conflict) */}
                   {[
-                    // 4 corner handles
                     { id: "nw", style: { top: -10, left: -10, cursor: "nwse-resize" } },
                     { id: "ne", style: { top: -10, right: -10, cursor: "nesw-resize" } },
                     { id: "se", style: { bottom: -10, right: -10, cursor: "nwse-resize" } },
                     { id: "sw", style: { bottom: -10, left: -10, cursor: "nesw-resize" } },
-                    // 4 edge midpoint handles
-                    { id: "n", style: { top: -10, left: "50%", transform: "translateX(-50%)", cursor: "ns-resize" } },
-                    { id: "s", style: { bottom: -10, left: "50%", transform: "translateX(-50%)", cursor: "ns-resize" } },
-                    { id: "w", style: { top: "50%", left: -10, transform: "translateY(-50%)", cursor: "ew-resize" } },
-                    { id: "e", style: { top: "50%", right: -10, transform: "translateY(-50%)", cursor: "ew-resize" } },
                   ].map((handle) => (
                     <div
                       key={handle.id}
@@ -2721,8 +2877,12 @@ export function Canvas({
               strokeEnabled: true,
               text: "",
             },
+            false,
           );
           dragOccurred.current = true;
+          onSelect(null);
+          onSelectIds?.([]);
+          onSelectTool?.("select");
         }
       } else if (curInter?.type === "connector-endpoint") {
         const targetConn = allElementsFlat.find((e) => e.id === curInter.id);
@@ -3190,7 +3350,6 @@ export function Canvas({
   const handleAnchorMouseDown = useCallback(
     (e: React.MouseEvent, el: EditorElement, port: AnchorPort) => {
       if (previewing || el.locked) return;
-      if (activeTool !== "connector" && interaction?.type !== "create-connector" && interaction?.type !== "connector-endpoint") return;
       e.stopPropagation();
       e.preventDefault();
       const anchor = getElementAnchor(el, port, allElementsFlat);
@@ -3208,7 +3367,7 @@ export function Canvas({
       interactionRef.current = inter;
       setInteraction(inter);
     },
-    [previewing, activeTool, interaction, allElementsFlat],
+    [previewing, allElementsFlat],
   );
 
   const handleConnectorEndpointMouseDown = useCallback(
@@ -3402,7 +3561,7 @@ export function Canvas({
             />
           )}
 
-          {/* Interactive Connector Lines Layer */}
+          {/* Interactive Connector Lines Layer (Base layer: z-[5]) */}
           <ConnectorLinesLayer
             connectors={elements.filter((el) => el.type === "connector")}
             allElementsFlat={allElementsFlat}
@@ -3411,8 +3570,6 @@ export function Canvas({
             previewing={previewing}
             onSelect={onSelect}
             onSelectIds={onSelectIds}
-            onStartEndpointDrag={handleConnectorEndpointMouseDown}
-            onStartSegmentDrag={handleConnectorSegmentMouseDown}
           />
 
           {elements
@@ -3445,6 +3602,19 @@ export function Canvas({
                 onUpdateElement={onUpdateElement}
               />
             ))}
+
+          {/* Interactive Connector Handles Layer (Overlay layer: z-30, covers components cleanly) */}
+          <ConnectorHandlesLayer
+            connectors={elements.filter((el) => el.type === "connector")}
+            allElementsFlat={allElementsFlat}
+            selectedIds={effectiveSelectedIds}
+            zoom={zoom}
+            previewing={previewing}
+            onSelect={onSelect}
+            onSelectIds={onSelectIds}
+            onStartEndpointDrag={handleConnectorEndpointMouseDown}
+            onStartSegmentDrag={handleConnectorSegmentMouseDown}
+          />
 
           {/* Unified Multi-Selection Bounding Box */}
           <MultiSelectionBoundingBox selectedElements={selectedElements} allElementsFlat={allElementsFlat} />

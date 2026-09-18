@@ -9,8 +9,8 @@ export const baseLibrary: LibraryComponent[] = [
     icon: "Type",
     shortcut: "T",
     defaultWidth: 160,
-    defaultHeight: 20,
-    defaultProps: { text: "请输入文本内容", textColor: "var(--foreground)", fontSize: 14, fontWeight: 400, align: "left" },
+    defaultHeight: 24,
+    defaultProps: { text: "请输入文本内容", textColor: "var(--foreground)", fontSize: 16, fontWeight: 400, align: "left" },
   },
   {
     type: "rectangle",
@@ -20,7 +20,7 @@ export const baseLibrary: LibraryComponent[] = [
     shortcut: "R",
     defaultWidth: 180,
     defaultHeight: 120,
-    defaultProps: { fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1, radius: 4, fillEnabled: true, strokeEnabled: true },
+    defaultProps: { fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1, radius: 4, fillEnabled: true, strokeEnabled: true, textColor: "var(--foreground)", fontSize: 16 },
   },
   {
     type: "circle",
@@ -30,7 +30,7 @@ export const baseLibrary: LibraryComponent[] = [
     shortcut: "O",
     defaultWidth: 100,
     defaultHeight: 100,
-    defaultProps: { fill: "var(--surface-raised)", stroke: "var(--border-visible)", borderWidth: 1, fillEnabled: true, strokeEnabled: true },
+    defaultProps: { fill: "var(--surface-raised)", stroke: "var(--border-visible)", borderWidth: 1, fillEnabled: true, strokeEnabled: true, textColor: "var(--foreground)", fontSize: 16 },
   },
   {
     type: "line",
@@ -227,7 +227,7 @@ export const baseLibrary: LibraryComponent[] = [
     icon: "Square",
     defaultWidth: 140,
     defaultHeight: 70,
-    defaultProps: { text: "处理流程", fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1.5, fontSize: 13, align: "center", fillEnabled: true, strokeEnabled: true },
+    defaultProps: { text: "处理流程", fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1.5, fontSize: 16, textColor: "var(--foreground)", align: "center", fillEnabled: true, strokeEnabled: true },
   },
   {
     type: "flow-decision",
@@ -236,7 +236,7 @@ export const baseLibrary: LibraryComponent[] = [
     icon: "Diamond",
     defaultWidth: 120,
     defaultHeight: 70,
-    defaultProps: { text: "逻辑判定", fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1.5, fontSize: 13, align: "center", fillEnabled: true, strokeEnabled: true },
+    defaultProps: { text: "逻辑判定", fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1.5, fontSize: 16, textColor: "var(--foreground)", align: "center", fillEnabled: true, strokeEnabled: true },
   },
   {
     type: "flow-start-end",
@@ -245,7 +245,7 @@ export const baseLibrary: LibraryComponent[] = [
     icon: "CircleDot",
     defaultWidth: 130,
     defaultHeight: 50,
-    defaultProps: { text: "开始 / 结束", fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1.5, fontSize: 13, align: "center", fillEnabled: true, strokeEnabled: true },
+    defaultProps: { text: "开始 / 结束", fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1.5, fontSize: 16, textColor: "var(--foreground)", align: "center", fillEnabled: true, strokeEnabled: true },
   },
   {
     type: "flow-document",
@@ -254,7 +254,7 @@ export const baseLibrary: LibraryComponent[] = [
     icon: "FileText",
     defaultWidth: 130,
     defaultHeight: 70,
-    defaultProps: { text: "文档单据", fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1.5, fontSize: 13, align: "center", fillEnabled: true, strokeEnabled: true },
+    defaultProps: { text: "文档单据", fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1.5, fontSize: 16, textColor: "var(--foreground)", align: "center", fillEnabled: true, strokeEnabled: true },
   },
   {
     type: "flow-data",
@@ -263,7 +263,7 @@ export const baseLibrary: LibraryComponent[] = [
     icon: "Binary",
     defaultWidth: 130,
     defaultHeight: 60,
-    defaultProps: { text: "数据输入/输出", fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1.5, fontSize: 13, align: "center", fillEnabled: true, strokeEnabled: true },
+    defaultProps: { text: "数据输入/输出", fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1.5, fontSize: 16, textColor: "var(--foreground)", align: "center", fillEnabled: true, strokeEnabled: true },
   },
   {
     type: "flow-subprocess",
@@ -272,7 +272,7 @@ export const baseLibrary: LibraryComponent[] = [
     icon: "SquareSplitVertical",
     defaultWidth: 140,
     defaultHeight: 70,
-    defaultProps: { text: "预设子流程", fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1.5, fontSize: 13, align: "center", fillEnabled: true, strokeEnabled: true },
+    defaultProps: { text: "预设子流程", fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1.5, fontSize: 16, textColor: "var(--foreground)", align: "center", fillEnabled: true, strokeEnabled: true },
   },
   {
     type: "flow-external-data",
@@ -281,7 +281,7 @@ export const baseLibrary: LibraryComponent[] = [
     icon: "HardDriveDownload",
     defaultWidth: 130,
     defaultHeight: 70,
-    defaultProps: { text: "外部数据源", fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1.5, fontSize: 13, align: "center", fillEnabled: true, strokeEnabled: true },
+    defaultProps: { text: "外部数据源", fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1.5, fontSize: 16, textColor: "var(--foreground)", align: "center", fillEnabled: true, strokeEnabled: true },
   },
   {
     type: "flow-internal-storage",
@@ -290,7 +290,7 @@ export const baseLibrary: LibraryComponent[] = [
     icon: "HardDrive",
     defaultWidth: 130,
     defaultHeight: 70,
-    defaultProps: { text: "内部存储", fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1.5, fontSize: 13, align: "center", fillEnabled: true, strokeEnabled: true },
+    defaultProps: { text: "内部存储", fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1.5, fontSize: 16, textColor: "var(--foreground)", align: "center", fillEnabled: true, strokeEnabled: true },
   },
   {
     type: "flow-queue",
@@ -299,7 +299,7 @@ export const baseLibrary: LibraryComponent[] = [
     icon: "Layers",
     defaultWidth: 80,
     defaultHeight: 80,
-    defaultProps: { text: "消息队列", fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1.5, fontSize: 13, align: "center", fillEnabled: true, strokeEnabled: true },
+    defaultProps: { text: "消息队列", fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1.5, fontSize: 16, textColor: "var(--foreground)", align: "center", fillEnabled: true, strokeEnabled: true },
   },
   {
     type: "flow-database",
@@ -308,7 +308,7 @@ export const baseLibrary: LibraryComponent[] = [
     icon: "Database",
     defaultWidth: 100,
     defaultHeight: 80,
-    defaultProps: { text: "数据库", fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1.5, fontSize: 13, align: "center", fillEnabled: true, strokeEnabled: true },
+    defaultProps: { text: "数据库", fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1.5, fontSize: 16, textColor: "var(--foreground)", align: "center", fillEnabled: true, strokeEnabled: true },
   },
   {
     type: "flow-manual-input",
@@ -317,7 +317,7 @@ export const baseLibrary: LibraryComponent[] = [
     icon: "Keyboard",
     defaultWidth: 130,
     defaultHeight: 60,
-    defaultProps: { text: "人工输入", fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1.5, fontSize: 13, align: "center", fillEnabled: true, strokeEnabled: true },
+    defaultProps: { text: "人工输入", fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1.5, fontSize: 16, textColor: "var(--foreground)", align: "center", fillEnabled: true, strokeEnabled: true },
   },
   {
     type: "flow-card",
@@ -326,7 +326,7 @@ export const baseLibrary: LibraryComponent[] = [
     icon: "CreditCard",
     defaultWidth: 130,
     defaultHeight: 70,
-    defaultProps: { text: "卡片记录", fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1.5, fontSize: 13, align: "center", fillEnabled: true, strokeEnabled: true },
+    defaultProps: { text: "卡片记录", fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1.5, fontSize: 16, textColor: "var(--foreground)", align: "center", fillEnabled: true, strokeEnabled: true },
   },
   {
     type: "flow-tape",
@@ -335,7 +335,7 @@ export const baseLibrary: LibraryComponent[] = [
     icon: "Bookmark",
     defaultWidth: 130,
     defaultHeight: 60,
-    defaultProps: { text: "连续条带", fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1.5, fontSize: 13, align: "center", fillEnabled: true, strokeEnabled: true },
+    defaultProps: { text: "连续条带", fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1.5, fontSize: 16, textColor: "var(--foreground)", align: "center", fillEnabled: true, strokeEnabled: true },
   },
   {
     type: "flow-display",
@@ -344,7 +344,7 @@ export const baseLibrary: LibraryComponent[] = [
     icon: "Monitor",
     defaultWidth: 130,
     defaultHeight: 60,
-    defaultProps: { text: "屏幕展示", fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1.5, fontSize: 13, align: "center", fillEnabled: true, strokeEnabled: true },
+    defaultProps: { text: "屏幕展示", fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1.5, fontSize: 16, textColor: "var(--foreground)", align: "center", fillEnabled: true, strokeEnabled: true },
   },
   {
     type: "flow-manual-op",
@@ -353,7 +353,7 @@ export const baseLibrary: LibraryComponent[] = [
     icon: "Wrench",
     defaultWidth: 130,
     defaultHeight: 60,
-    defaultProps: { text: "人工干预操作", fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1.5, fontSize: 13, align: "center", fillEnabled: true, strokeEnabled: true },
+    defaultProps: { text: "人工干预操作", fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1.5, fontSize: 16, textColor: "var(--foreground)", align: "center", fillEnabled: true, strokeEnabled: true },
   },
   {
     type: "flow-preparation",
@@ -362,7 +362,7 @@ export const baseLibrary: LibraryComponent[] = [
     icon: "Hexagon",
     defaultWidth: 130,
     defaultHeight: 60,
-    defaultProps: { text: "系统初始化", fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1.5, fontSize: 13, align: "center", fillEnabled: true, strokeEnabled: true },
+    defaultProps: { text: "系统初始化", fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1.5, fontSize: 16, textColor: "var(--foreground)", align: "center", fillEnabled: true, strokeEnabled: true },
   },
   {
     type: "flow-loop-limit",
@@ -371,7 +371,7 @@ export const baseLibrary: LibraryComponent[] = [
     icon: "Repeat",
     defaultWidth: 130,
     defaultHeight: 60,
-    defaultProps: { text: "循环界限控制", fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1.5, fontSize: 13, align: "center", fillEnabled: true, strokeEnabled: true },
+    defaultProps: { text: "循环界限控制", fill: "var(--surface)", stroke: "var(--border-visible)", borderWidth: 1.5, fontSize: 16, textColor: "var(--foreground)", align: "center", fillEnabled: true, strokeEnabled: true },
   },
 
   // ================= 4. 结构与容器 (Structures & Frames - Organisms) =================

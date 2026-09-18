@@ -32,7 +32,7 @@ export const agentLibrary: LibraryComponent[] = [
     defaultProps: {
       text: "双击输入文字...",
       textColor: "var(--foreground)",
-      fontSize: 13,
+      fontSize: 16,
       fontWeight: 400,
       align: "left",
     },

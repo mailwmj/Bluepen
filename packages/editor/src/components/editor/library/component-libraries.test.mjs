@@ -173,3 +173,27 @@ test("Unified file-list is present across Base, Web, and Agent libraries with sc
   assert.ok(agentLayout, "agent-knowledge-base-layout exists in agentLibrary");
   assert.equal(agentLayout.category, "Agent场景模版");
 });
+
+test("Rectangles, circles, and flowchart nodes define Nothing Design System compliant default typography", () => {
+  const rect = baseLibrary.find((c) => c.type === "rectangle");
+  assert.ok(rect, "rectangle exists");
+  assert.equal(rect.defaultProps.textColor, "var(--foreground)");
+  assert.equal(rect.defaultProps.fontSize, 16);
+
+  const circle = baseLibrary.find((c) => c.type === "circle");
+  assert.ok(circle, "circle exists");
+  assert.equal(circle.defaultProps.textColor, "var(--foreground)");
+  assert.equal(circle.defaultProps.fontSize, 16);
+
+  const text = baseLibrary.find((c) => c.type === "text");
+  assert.ok(text, "text exists");
+  assert.equal(text.defaultProps.textColor, "var(--foreground)");
+  assert.equal(text.defaultProps.fontSize, 16);
+
+  const flowNodes = baseLibrary.filter((c) => c.type.startsWith("flow-"));
+  assert.ok(flowNodes.length >= 17, "All flowchart nodes exist");
+  for (const node of flowNodes) {
+    assert.equal(node.defaultProps.textColor, "var(--foreground)", `${node.type} must have textColor var(--foreground)`);
+    assert.equal(node.defaultProps.fontSize, 16, `${node.type} must have fontSize 16 (--body)`);
+  }
+});

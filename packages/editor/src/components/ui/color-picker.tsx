@@ -133,6 +133,25 @@ export function parseColor(colorStr: string, defaultOpacity = 100): RGBA & { isT
     return { r: 255, g: 255, b: 255, a: 0, isTransparent: true };
   }
 
+  // CSS variables (e.g. var(--foreground), var(--primary), var(--surface))
+  if (str.startsWith("var(")) {
+    if (typeof window !== "undefined" && typeof document !== "undefined") {
+      const varName = str.slice(4, -1).trim();
+      const resolved = getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+      if (resolved) {
+        return parseColor(resolved, defaultOpacity);
+      }
+    }
+    const isDark = typeof document !== "undefined" ? document.documentElement.classList.contains("dark") : true;
+    if (str.includes("primary-foreground")) {
+      const v = isDark ? 0 : 255;
+      return { r: v, g: v, b: v, a: defaultOpacity / 100, isTransparent: false };
+    }
+    return isDark
+      ? { r: 232, g: 232, b: 232, a: defaultOpacity / 100, isTransparent: false }
+      : { r: 26, g: 26, b: 26, a: defaultOpacity / 100, isTransparent: false };
+  }
+
   // Hex: #RGB, #RGBA, #RRGGBB, #RRGGBBAA
   if (str.startsWith("#")) {
     const hex = str.slice(1);
@@ -174,7 +193,10 @@ export function parseColor(colorStr: string, defaultOpacity = 100): RGBA & { isT
     return { r, g, b, a, isTransparent: a === 0 };
   }
 
-  return { r: 24, g: 24, b: 27, a: defaultOpacity / 100, isTransparent: false };
+  const isDark = typeof document !== "undefined" ? document.documentElement.classList.contains("dark") : true;
+  return isDark
+    ? { r: 232, g: 232, b: 232, a: defaultOpacity / 100, isTransparent: false }
+    : { r: 26, g: 26, b: 26, a: defaultOpacity / 100, isTransparent: false };
 }
 
 export function rgbaToHsla({ r, g, b, a }: RGBA): HSLA {
@@ -264,10 +286,10 @@ export function hslaToRgba({ h, s, l, a }: HSLA): RGBA {
 
 const RECENT_COLORS_STORAGE_KEY = "bluepen_recent_colors";
 const DEFAULT_RECENT_COLORS = [
-  "#FFFFFF", "#F4F4F5", "#E4E4E7", "#D4D4D8",
-  "#A1A1AA", "#71717A", "#3F3F46", "#18181B",
-  "transparent", "#EF4444", "#F59E0B", "#10B981",
-  "#3B82F6", "#6366F1", "#8B5CF6", "#EC4899",
+  "#FFFFFF", "#E8E8E8", "#D4D4D8", "#A1A1AA",
+  "#71717A", "#3F3F46", "#1A1A1A", "#111111",
+  "transparent", "#D71921", "#4A9E5C", "#D4A843",
+  "#007AFF", "#3B82F6", "#8B5CF6", "#EC4899",
 ];
 
 function getRecentColors(): string[] {
@@ -600,7 +622,7 @@ export function ColorSwatchBadge({
         <div
           className="size-full"
           style={{
-            backgroundColor: hex,
+            backgroundColor: color.startsWith("var(") ? color : hex,
             opacity: parsed.a,
           }}
         />

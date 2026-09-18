@@ -627,7 +627,7 @@ export function createBlockTemplateGroup(
         makeChild("divider", "分割线", 24, 94, 712, 1, groupId, { text: "" }),
         makeChild("text", "步骤标题", 24, 114, 400, 24, groupId, {
           text: "第二步：配置集群访问策略与网络路由",
-          fontSize: 13,
+          fontSize: 14,
           fontWeight: 700,
         }),
         makeChild("web-input", "服务标识", 24, 150, 344, 56, groupId, {
@@ -1373,7 +1373,7 @@ export function createBlockTemplateGroup(
         makeChild("text", "挂载槽说明", 700, 310, 540, 28, groupId, {
           text: "[ 实时任务工作区 · 画板挂载槽 ]",
           align: "center",
-          fontSize: 13,
+          fontSize: 14,
           textColor: "var(--foreground)",
         }),
         makeChild("rectangle", "参数与状态检查器框架", 680, 628, 580, 148, groupId, {
@@ -1476,7 +1476,7 @@ export function createBlockTemplateGroup(
         }),
         makeChild("text", "模版分类标题", 280, 180, 400, 24, groupId, {
           text: "[ PPT制作 模版 ]",
-          fontSize: 13,
+          fontSize: 14,
           fontWeight: 700,
           textColor: "var(--foreground)",
         }),

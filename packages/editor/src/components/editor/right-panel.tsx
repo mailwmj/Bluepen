@@ -1292,7 +1292,7 @@ export const RightPanel = memo(function RightPanel({
       : "";
   const textContent = String(prop("text", defaultText));
   const hasText = isTextLike || Boolean(element.props.hasText) || textContent.length > 0;
-  const fontSize = Number(prop("fontSize", isButton ? 12 : 14));
+  const fontSize = Number(prop("fontSize", isButton ? 12 : 16));
   const fontWeight = Number(
     prop("fontWeight", element.type === "button-primary" ? 600 : isButton ? 500 : 400)
   );
@@ -1300,10 +1300,9 @@ export const RightPanel = memo(function RightPanel({
   const defaultTextColor =
     element.type === "button-primary"
       ? "var(--primary-foreground)"
-      : isButton
-      ? "var(--foreground)"
-      : "#18181B";
-  const textColor = String(prop("textColor", defaultTextColor));
+      : "var(--foreground)";
+  const rawTextColor = String(prop("textColor", defaultTextColor));
+  const textColor = rawTextColor === "#18181B" ? "var(--foreground)" : rawTextColor;
   const textOpacity = Number(prop("textOpacity", 100));
   const textAlign = String(prop("textAlign", prop("align", "center")));
   const lineHeight = Number(prop("lineHeight", 20));
@@ -2762,15 +2761,15 @@ export const RightPanel = memo(function RightPanel({
                   </>
                 )}
 
-                {/* 30. Button / Document / General Text */}
-                {(element.type === "button" || element.type === "button-primary" || element.type === "document") && (
+                {/* 30. Document */}
+                {element.type === "document" && (
                   <div className="flex flex-col gap-1">
-                    <span className="text-[10px] text-muted-foreground">文本内容</span>
-                    <textarea
-                      value={String(prop(element.type === "document" ? "title" : "text", element.type.startsWith("button") ? "按钮" : "文本内容"))}
-                      onChange={(e) => setProp(element.type === "document" ? "title" : "text", e.target.value)}
-                      rows={1}
-                      className="w-full resize-y rounded-md border border-input bg-background p-1.5 text-xs outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                    <span className="text-[10px] text-muted-foreground">文档标题</span>
+                    <Input
+                      size="sm"
+                      value={String(prop("title", "文档内容"))}
+                      onChange={(e) => setProp("title", e.target.value)}
+                      className="h-7 text-xs"
                     />
                   </div>
                 )}
@@ -5534,19 +5533,6 @@ export const RightPanel = memo(function RightPanel({
               defaultOpen={isTextLike || Boolean(element.props.hasText) || Boolean(textContent)}
             >
               <div className="flex flex-col gap-2">
-                {/* Text Content */}
-                <textarea
-                  data-slot="element-text-input"
-                  aria-label="文本内容"
-                  value={textContent}
-                  onChange={(e) => {
-                    setProps({ text: e.target.value, ...(e.target.value ? { hasText: true } : {}) });
-                  }}
-                  rows={2}
-                  placeholder={isTextLike ? "输入文本内容…" : "在形状中输入文本…"}
-                  className="w-full resize-none rounded-md border border-input bg-background p-2 text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                />
-
                 {/* Font Family */}
                 <Menu>
                   <MenuTrigger

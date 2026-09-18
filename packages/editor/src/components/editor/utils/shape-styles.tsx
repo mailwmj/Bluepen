@@ -6,7 +6,13 @@ const val = (props: Props, key: string, fallback: string | number | boolean) =>
 
 export function hexToRgba(hexOrColor: string, opacityPercent = 100): string {
   if (!hexOrColor || hexOrColor === "transparent" || hexOrColor === "none") return "transparent";
-  if (hexOrColor.startsWith("rgba") || hexOrColor.startsWith("hsla") || hexOrColor.startsWith("var(")) return hexOrColor;
+  if (hexOrColor.startsWith("var(")) {
+    if (opacityPercent < 100) {
+      return `color-mix(in srgb, ${hexOrColor} ${Math.max(0, Math.min(100, opacityPercent))}%, transparent)`;
+    }
+    return hexOrColor;
+  }
+  if (hexOrColor.startsWith("rgba") || hexOrColor.startsWith("hsla")) return hexOrColor;
   if (hexOrColor.startsWith("rgb")) {
     const alpha = Math.max(0, Math.min(1, opacityPercent / 100));
     return hexOrColor.replace("rgb", "rgba").replace(")", `, ${alpha})`);
@@ -179,15 +185,16 @@ export function ShapeTextRenderer({ props, isEditing }: { props: Props; isEditin
   const text = String(props.text || "");
   if (!text) return null;
 
-  const textColor = String(props.textColor || "#18181B");
+  const rawTextColor = String(props.textColor || "");
+  const textColor = !rawTextColor || rawTextColor === "#18181B" ? "var(--foreground)" : rawTextColor;
   const textOpacity = Number(props.textOpacity ?? 100);
   const color = hexToRgba(textColor, textOpacity);
-  const fontSize = Number(props.fontSize || 14);
+  const fontSize = Number(props.fontSize || 16);
   const fontWeight = Number(props.fontWeight || 400);
-  const fontFamily = props.fontFamily ? String(props.fontFamily) : undefined;
+  const fontFamily = props.fontFamily ? String(props.fontFamily) : "var(--font-sans)";
   const textAlign = String(props.textAlign || props.align || "center") as "left" | "center" | "right" | "justify";
   const textVerticalAlign = String(props.textVerticalAlign || "middle");
-  const lineHeight = props.lineHeight ? `${props.lineHeight}px` : undefined;
+  const lineHeight = props.lineHeight ? `${props.lineHeight}px` : "1.5";
   const letterSpacing = props.letterSpacing ? `${props.letterSpacing}px` : undefined;
   const fontStyle = props.italic ? "italic" : undefined;
   const isUnderline = Boolean(props.underline);

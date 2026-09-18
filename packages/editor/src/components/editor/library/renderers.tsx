@@ -1826,15 +1826,16 @@ function TextPreview({ props, isEditing }: { props: Props; isEditing?: boolean }
     return <div className="h-full w-full" />;
   }
   const text = String(val(props, "text", ""));
-  const textColor = String(val(props, "textColor", "var(--foreground)"));
+  const rawTextColor = String(val(props, "textColor", "var(--foreground)"));
+  const textColor = rawTextColor === "#18181B" ? "var(--foreground)" : rawTextColor;
   const textOpacity = Number(val(props, "textOpacity", 100));
   const color = textColor.startsWith("#") ? hexToRgba(textColor, textOpacity) : textColor;
-  const fontSize = Number(val(props, "fontSize", 14));
+  const fontSize = Number(val(props, "fontSize", 16));
   const fontWeight = Number(val(props, "fontWeight", 400));
-  const fontFamily = props.fontFamily ? String(props.fontFamily) : undefined;
+  const fontFamily = props.fontFamily ? String(props.fontFamily) : "var(--font-sans)";
   const align = String(val(props, "textAlign", val(props, "align", "left"))) as "left" | "center" | "right" | "justify";
   const textVerticalAlign = String(val(props, "textVerticalAlign", "top"));
-  const lineHeight = props.lineHeight ? `${props.lineHeight}px` : "1.4";
+  const lineHeight = props.lineHeight ? `${props.lineHeight}px` : "1.5";
   const letterSpacing = props.letterSpacing ? `${props.letterSpacing}px` : undefined;
   const fontStyle = props.italic ? "italic" : undefined;
   const isUnderline = Boolean(props.underline);

@@ -424,6 +424,7 @@ export function Editor() {
       rotation = 0,
       customProps?: Record<string, string | number | boolean>,
       label?: string,
+      selectAfterCreate = true,
     ) => {
       // 业务区块模版：生成由真实原子组件构成的 Group 组合
       if (isBlockTemplate(type)) {
@@ -435,8 +436,13 @@ export function Editor() {
               )
             : [...elements, groupEl];
           commit(next);
-          setSelectedId(groupEl.id);
-          setSelectedIds([groupEl.id]);
+          if (selectAfterCreate) {
+            setSelectedId(groupEl.id);
+            setSelectedIds([groupEl.id]);
+          } else {
+            setSelectedId(null);
+            setSelectedIds([]);
+          }
           return groupEl;
         }
       }
@@ -465,8 +471,13 @@ export function Editor() {
           )
         : [...elements, el];
       commit(next);
-      setSelectedId(el.id);
-      setSelectedIds([el.id]);
+      if (selectAfterCreate) {
+        setSelectedId(el.id);
+        setSelectedIds([el.id]);
+      } else {
+        setSelectedId(null);
+        setSelectedIds([]);
+      }
       return el;
     },
     [elements, commit],
@@ -979,7 +990,7 @@ export function Editor() {
         0,
         {
           text,
-          fontSize: 14,
+          fontSize: 16,
           fontWeight: 400,
           textColor: "var(--foreground)",
           align: "left",
@@ -1789,10 +1800,6 @@ export function Editor() {
           /></div>
 
         <div className="relative flex flex-1 min-w-0 overflow-hidden">
-          {selectedIds.length > 0 && <div className="absolute left-4 top-4 z-20 flex max-w-[calc(100%_-_32px)] flex-wrap items-center gap-2 rounded-lg border border-border-visible bg-surface px-3 py-2" aria-label="选区操作">
-            <span className="font-mono text-[11px] text-muted-foreground">{selectedIds.length} 项已选</span>
-            <Button variant="ghost" size="xs" onClick={() => openAgentModify()}><WandSparkles aria-hidden="true" className="size-3.5" />AI 修改</Button>
-          </div>}
           <ContextMenu
             open={contextOpen}
             onOpenChange={(open) => {
@@ -1839,8 +1846,8 @@ export function Editor() {
                 onSelectTool={setActiveTool}
                 onUpdateElement={updateElementLive}
                 onBatchUpdateElements={batchUpdateElementsLive}
-                onCreateElement={(type, x, y, width, height, rotation, parentId, customProps) =>
-                  addElement(type, x, y, parentId, width, height, rotation ?? 0, customProps)
+                onCreateElement={(type, x, y, width, height, rotation, parentId, customProps, selectAfterCreate) =>
+                  addElement(type, x, y, parentId, width, height, rotation ?? 0, customProps, undefined, selectAfterCreate)
                 }
                 onCommitMove={handleCommitCanvasGesture}
                 onDelete={deleteSelected}
