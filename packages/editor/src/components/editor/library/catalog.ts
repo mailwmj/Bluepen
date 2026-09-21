@@ -8,13 +8,16 @@ export const libraryModes = {
   },
   web: {
     label: "Web 模板",
-    items: webLibrary,
-    categories: ["Web模版", "Web导航", "Web表单", "Web展示", "Web反馈"],
+    // Start with page-level decisions, then let users refine the page.
+    // Generic entries remain supported for old documents but are represented
+    // by Web variants here to avoid duplicate choices.
+    items: webLibrary.filter((item) => item.type !== "button" && item.type !== "table"),
+    categories: ["Web模版", "Web导航", "Web展示", "Web表单", "Web反馈"],
   },
   agent: {
     label: "Agent 产品界面",
     items: agentLibrary,
-    categories: ["Agent场景模版", "Agent框架容器", "Agent基础图元", "Agent结构与数据", "Agent核心交互"],
+    categories: ["Agent场景模版", "Agent框架容器", "Agent核心交互", "Agent结构与数据", "Agent基础图元"],
   },
 };
 

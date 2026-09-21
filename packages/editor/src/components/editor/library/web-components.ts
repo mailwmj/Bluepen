@@ -723,17 +723,6 @@ export const webLibrary: LibraryComponent[] = [
       buttonText: "新建一条记录",
     },
   },
-  {
-    type: "web-skeleton",
-    label: "骨架屏占位",
-    category: "Web反馈",
-    icon: "Layers",
-    defaultWidth: 360,
-    defaultHeight: 160,
-    defaultProps: {
-      variant: "table",
-    },
-  },
 
   // =========================================================================
   // 5. Web 业务模版 (Web Page Templates - 整屏业务模版)
