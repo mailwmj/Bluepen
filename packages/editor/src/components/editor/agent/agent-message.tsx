@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from 'react';
-import { ArrowUpRight, Check, ChevronDown, CircleHelp, Copy, Search, Square, X } from 'lucide-react';
+import { ArrowUpRight, Check, CircleHelp, Copy, Square } from 'lucide-react';
 import { Streamdown } from 'streamdown';
 import { Button } from '@bluepen/editor/components/ui/button';
 import { Textarea } from '@bluepen/editor/components/ui/textarea';
@@ -12,16 +12,8 @@ import type { PrototypePlan } from './prototype-plan';
 import { planToElement } from './prototype-plan';
 import { AgentReferenceList } from './agent-references';
 import { AgentCanvasPreview, AgentPreviewDialog } from './agent-preview';
+import { AgentElapsed, AgentPhaseReadout, AgentStepTimeline, labelClass, statusLabels } from './agent-status';
 import type { EditorElement } from '../types';
-
-const labelClass = 'font-mono text-[11px] uppercase text-muted-foreground';
-const statusLabels = { running: '执行中', 'waiting-input': '等待回答', 'waiting-approval': '等待确认', completed: '已完成', failed: '请求失败', cancelled: '已停止', interrupted: '已中断', declined: '未采用' };
-
-function Elapsed({ message }: { message: ConversationMessage }) {
-  const [now, setNow] = useState(Date.now());
-  useEffect(() => { if (message.status !== 'running') return; const id = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(id); }, [message.status]);
-  return <span className="font-mono text-[11px] text-muted-foreground">{Math.max(0, Math.round(((message.finishedAt ?? now) - message.createdAt) / 1000))}s</span>;
-}
 
 function QuestionCard({ message, disabled, onAnswer, onCancel, onDraft }: { message: ConversationMessage; disabled: boolean; onAnswer: (answers: Record<string, string>) => Promise<void>; onCancel: () => void; onDraft: (draft: NonNullable<ConversationMessage['questionDraft']>) => void }) {
   const choices = Object.fromEntries(Object.entries(message.questionDraft ?? {}).map(([id, draft]) => [id, draft.choices]));
@@ -72,9 +64,11 @@ export function AgentMessageView({ message, sessionId, controller, busy, last, c
     <div className="flex gap-1"><Button variant="ghost" size="icon-xs" aria-label="复制消息" onClick={copy}>{copied ? <Check /> : <Copy />}</Button><Button variant="ghost" size="xs" disabled={busy || archived || controller.session(sessionId)?.messages.at(-1)?.status === 'waiting-input'} onClick={() => { setEditText(message.content); setEditing(true); }}>编辑重发</Button></div>
   </article>;
   return <article className="space-y-4" aria-label="助手消息">
-    <div className="flex items-center justify-between gap-3"><span className={labelClass}>Bluepen <span className="ml-2">/ {statusLabels[message.status]}</span></span><Elapsed message={message} /></div>
-    {message.status === 'running' && <div role="status" className="flex items-center gap-2 text-sm text-muted-foreground"><span className="size-2 bg-foreground" />{message.phase || '正在分析需求'}</div>}
-    {!!message.steps.length && <details className="group"><summary className="flex cursor-pointer list-none items-center gap-2 text-xs text-muted-foreground"><ChevronDown className="size-3.5 transition-transform duration-150 group-open:rotate-180" />{message.status === 'running' ? `执行进度 · ${message.steps.filter(step => step.status === 'completed').length}/${message.steps.length}` : `已完成 ${message.steps.filter(step => step.status === 'completed').length} 步`}</summary><ol className="mt-3 space-y-3 border-l border-border pl-4">{message.steps.map(step => <li key={step.id} className="space-y-1"><div className="flex items-center gap-2 text-xs">{step.status === 'completed' ? <Check className="size-3.5" /> : step.status === 'failed' || step.status === 'cancelled' ? <X className="size-3.5" /> : <Search className="size-3.5" />}{step.label}<span className={labelClass}>{({ running: '执行中', completed: '完成', failed: '失败', cancelled: '停止' })[step.status]}</span></div><p className="break-words pl-5 text-xs text-muted-foreground">{step.detail}</p></li>)}</ol></details>}
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-3"><span className={labelClass}>Bluepen <span className="ml-2">/ {statusLabels[message.status]}</span></span><AgentElapsed startedAt={message.createdAt} finishedAt={message.finishedAt} /></div>
+      {message.status === 'running' && <AgentPhaseReadout phase={message.phase} steps={message.steps} startedAt={message.createdAt} />}
+      <AgentStepTimeline steps={message.steps} running={message.status === 'running'} />
+    </div>
     {message.reasoning && <details open={reasoningOpen} onToggle={event => setReasoningOpen(event.currentTarget.open)}><summary className="cursor-pointer text-xs text-muted-foreground">思考摘要</summary><p className="mt-3 whitespace-pre-wrap text-xs leading-6 text-muted-foreground">{message.reasoning}</p></details>}
     {message.content && <div className="min-w-0 break-words text-sm leading-6 [&_p]:my-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_h1]:my-3 [&_h2]:my-3 [&_h3]:my-3 [&_h1]:font-medium [&_h2]:font-medium [&_h3]:font-medium [&_pre]:overflow-auto [&_pre]:rounded-lg [&_pre]:border [&_pre]:border-border [&_pre]:p-3 [&_code]:font-mono [&_code]:text-xs [&_a]:text-interactive [&_a]:underline [&_table]:block [&_table]:overflow-auto [&_td]:border-b [&_td]:border-border [&_td]:p-2 [&_th]:p-2 [&_blockquote]:border-l [&_blockquote]:border-border-visible [&_blockquote]:pl-3">
       <Streamdown mode={message.status === 'running' ? 'streaming' : 'static'} isAnimating={message.status === 'running'} animated={false} controls={false} skipHtml components={{ a: ({ children, ...props }) => <a {...props} target="_blank" rel="noreferrer noopener">{children}</a>, img: ({ alt }) => <span className="text-muted-foreground">[图片：{alt || '参考图片'}]</span> }}>{message.content}</Streamdown>

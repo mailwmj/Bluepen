@@ -27,7 +27,7 @@ const messageSchema = z.object({
   id: z.string(), role: z.enum(['user', 'assistant']), content: z.string(), createdAt: z.number(), context: contextSchema,
   status: z.enum(['running', 'waiting-input', 'waiting-approval', 'completed', 'failed', 'cancelled', 'interrupted', 'declined']),
   model: z.string().optional(), phase: z.string().optional(), finishedAt: z.number().optional(),
-  steps: z.array(z.object({ id: z.string(), label: z.string(), status: z.enum(['running', 'completed', 'failed', 'cancelled']), detail: z.string() })), reasoning: z.string(),
+  steps: z.array(z.object({ id: z.string(), label: z.string(), status: z.enum(['running', 'completed', 'failed', 'cancelled']), detail: z.string(), startedAt: z.number().optional(), finishedAt: z.number().optional() })), reasoning: z.string(),
   questions: z.array(z.object({ id: z.string(), title: z.string(), options: z.array(z.string()), multiple: z.boolean(), required: z.boolean() })).optional(),
   answers: z.record(z.string(), z.string()).optional(),
   questionDraft: z.record(z.string(), z.object({ choices: z.array(z.string()), custom: z.string() })).optional(),
@@ -119,7 +119,7 @@ export class AgentController {
         if (!restored) throw new Error('任务记录结构无法识别');
         const sessions = restored.history.sessions.map(session => ({ ...session, messages: session.messages.map(message => message.status === 'running' ? {
           ...message, status: 'interrupted' as const, finishedAt: Date.now(), error: '上次运行已中断，可重新尝试',
-          steps: message.steps.map(step => step.status === 'running' ? { ...step, status: 'cancelled' as const } : step),
+          steps: message.steps.map(step => step.status === 'running' ? { ...step, status: 'cancelled' as const, finishedAt: Date.now() } : step),
         } : message) }));
         if (restored.dropped) { try { await this.storage.saveHistoryRecovery?.(history.value); } catch { /* the recovery copy is best effort */ } }
         this.emit({ ...restored.history, sessions, historyError: '', historyWarning: restored.dropped ? `已跳过 ${restored.dropped} 条无法读取的任务记录` : '', loaded: true });
@@ -236,9 +236,10 @@ export class AgentController {
           if (event.type === 'phase') this.patchMessage(sessionId, message.id, { phase: event.label });
           if (event.type === 'reasoning') this.patchMessage(sessionId, message.id, { reasoning: current().reasoning + event.text });
           if (event.type === 'tool') {
-            const step = { id: event.id, label: event.label, status: event.status, detail: event.detail };
             const steps = current().steps;
-            this.patchMessage(sessionId, message.id, { phase: event.status === 'running' ? event.label : '正在整理回复与方案', steps: steps.some(item => item.id === event.id) ? steps.map(item => item.id === event.id ? step : item) : [...steps, step] });
+            const previous = steps.find(item => item.id === event.id);
+            const step = { id: event.id, label: event.label, status: event.status, detail: event.detail, startedAt: previous?.startedAt ?? Date.now(), finishedAt: event.status === 'running' ? undefined : Date.now() };
+            this.patchMessage(sessionId, message.id, { phase: event.status === 'running' ? event.label : '正在整理回复与方案', steps: previous ? steps.map(item => item.id === event.id ? step : item) : [...steps, step] });
           }
         },
       });
@@ -251,7 +252,7 @@ export class AgentController {
       if (result.changes && this.canvas && result.changes.operations.length <= 12 && result.changes.operations.every(op => op.kind === 'update')) this.applyChanges(sessionId, message.id, true);
     } catch (error) {
       if (this.active !== run) return;
-      this.patchMessage(sessionId, message.id, { status: 'failed', error: this.errorText(error, settings.apiKey), finishedAt: Date.now(), steps: current().steps.map(step => step.status === 'running' ? { ...step, status: 'failed' } : step) });
+      this.patchMessage(sessionId, message.id, { status: 'failed', error: this.errorText(error, settings.apiKey), finishedAt: Date.now(), steps: current().steps.map(step => step.status === 'running' ? { ...step, status: 'failed' as const, finishedAt: Date.now() } : step) });
     } finally {
       if (this.active === run) { this.active = undefined; this.emit({ activeRun: undefined }); await this.flush(); }
     }
@@ -262,7 +263,7 @@ export class AgentController {
     this.active = undefined;
     run.controller.abort();
     const message = this.session(run.sessionId)?.messages.find(item => item.id === run.messageId);
-    this.patchMessage(run.sessionId, run.messageId, { status: 'cancelled', finishedAt: Date.now(), steps: message?.steps.map(step => step.status === 'running' ? { ...step, status: 'cancelled' } : step) ?? [] });
+    this.patchMessage(run.sessionId, run.messageId, { status: 'cancelled', finishedAt: Date.now(), steps: message?.steps.map(step => step.status === 'running' ? { ...step, status: 'cancelled' as const, finishedAt: Date.now() } : step) ?? [] });
     this.emit({ activeRun: undefined });
     void this.flush();
   }

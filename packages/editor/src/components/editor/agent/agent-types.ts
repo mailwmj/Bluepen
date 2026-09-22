@@ -42,7 +42,7 @@ export type AgentEvent =
 export interface AgentResult { reply: string; plan?: PrototypePlan; changes?: AgentChangeSet; questions?: AgentQuestion[] }
 export interface AppliedArtifact { pageId: string; elementId: string; name: string; receipt?: AgentReceipt }
 export type RunStatus = 'running' | 'waiting-input' | 'waiting-approval' | 'completed' | 'failed' | 'cancelled' | 'interrupted' | 'declined';
-export interface AgentStep { id: string; label: string; status: 'running' | 'completed' | 'failed' | 'cancelled'; detail: string }
+export interface AgentStep { id: string; label: string; status: 'running' | 'completed' | 'failed' | 'cancelled'; detail: string; startedAt?: number; finishedAt?: number }
 export interface ConversationMessage {
   id: string;
   role: 'user' | 'assistant';

@@ -54,6 +54,7 @@ test('running session can be deselected; stop rejects late text, events and comp
   const message = agent.session(a.id).messages[1];
   assert.equal(message.status, 'cancelled'); assert.equal(message.content, '已接收'); assert.equal(message.plan, undefined);
   assert.equal(message.steps[0].status, 'cancelled'); assert.equal(message.reasoning, ''); await agent.flush();
+  assert.ok(message.steps[0].startedAt > 0); assert.ok(message.steps[0].finishedAt >= message.steps[0].startedAt);
 });
 
 test('required questions block continuation; answer is recorded once and continues original target', async () => {
