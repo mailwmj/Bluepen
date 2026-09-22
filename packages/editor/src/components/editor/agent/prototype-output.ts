@@ -42,7 +42,7 @@ export const agentOutputSchema = z.object({
  * equivalent representation; every value still passes the full wire schema
  * and catalog/permission validation before it can reach the canvas. */
 export function parseCompatibleAgentOutput(text: string): z.infer<typeof agentOutputSchema> {
-  const value = JSON.parse(text);
+  const value: unknown = normalizeAgentOutput(JSON.parse(text));
   let count = 0;
   const visit = (node: unknown, depth = 0) => {
     if (!node || typeof node !== 'object' || Array.isArray(node)) return;
@@ -53,11 +53,35 @@ export function parseCompatibleAgentOutput(text: string): z.infer<typeof agentOu
     }
     if (Array.isArray(record.children)) record.children.forEach(child => visit(child, depth + 1));
   };
-  visit(value?.plan?.root);
-  if (Array.isArray(value?.changes?.operations)) {
-    for (const operation of value.changes.operations) if (operation?.kind === 'insert') visit(operation.node);
+  const envelope = (value ?? {}) as { plan?: { root?: unknown } | null; changes?: { operations?: { kind?: string; node?: unknown }[] } | null };
+  visit(envelope.plan?.root);
+  if (Array.isArray(envelope.changes?.operations)) {
+    for (const operation of envelope.changes.operations) if (operation?.kind === 'insert') visit(operation.node);
   }
   return agentOutputSchema.parse(value);
+}
+/** JSON-mode models drift from the wrapper object in two measured ways: they
+ * return the `questions` array by itself, or they omit the empty fields. Both
+ * carry the same meaning, so restore the envelope instead of failing the turn.
+ * Anything else stays invalid and is caught by the schema below. */
+function normalizeAgentOutput(value: unknown): unknown {
+  if (Array.isArray(value)) return { reply: '', questions: value.map(normalizeQuestion), plan: null, changes: null };
+  if (!value || typeof value !== 'object') return value;
+  const record = value as Record<string, unknown>;
+  return {
+    ...record,
+    reply: typeof record.reply === 'string' ? record.reply : '',
+    questions: Array.isArray(record.questions) ? record.questions.map(normalizeQuestion) : [],
+    plan: record.plan ?? null,
+    changes: record.changes ?? null,
+  };
+}
+/** Only fill the presentation defaults a model may omit; ids and titles stay
+ * required so an unusable clarification request still fails loudly. */
+function normalizeQuestion(value: unknown): unknown {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+  const record = value as Record<string, unknown>;
+  return { ...record, options: Array.isArray(record.options) ? record.options : [], multiple: record.multiple ?? false, required: record.required ?? false };
 }
 export function decodeNode(output: OutputNode): PrototypePlanNode {
   let count = 0;

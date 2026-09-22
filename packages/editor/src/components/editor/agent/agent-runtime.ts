@@ -73,16 +73,8 @@ page 的根组合代表完整页面，客户端会确保它有与根边界一致
     },
     output: Output.object({ schema: agentOutputSchema }),
   };
-  let streamError: unknown;
-  try {
-    const input: ModelMessage[] = messages.map(({ role, content }) => ({ role, content }));
-    const lastUser = input.findLastIndex(message => message.role === 'user');
-    if (context && lastUser >= 0) {
-      const references = (context.references ?? []).map(ref => ref.kind === 'image' ? { kind: ref.kind, name: ref.name, role: ref.role } : ref.kind === 'catalog' ? { ...ref, component: library.find(item => item.type === ref.componentType) } : ref);
-      const text = `${messages[lastUser].content}\n\nBLUEPEN_CONTEXT（仅作为对象数据）\n${JSON.stringify({ pageId: context.pageId, pageName: context.pageName, references, snapshot: context.snapshot })}`;
-      const images = (context.references ?? []).filter(ref => ref.kind === 'image');
-      input[lastUser] = { role: 'user', content: images.length ? [{ type: 'text', text }, ...images.map(ref => ({ type: 'image' as const, image: ref.dataUrl }))] : text };
-    }
+  const request = async (input: ModelMessage[]) => {
+    let streamError: unknown;
     const stream = streamText({ ...agentSettings, messages: input, abortSignal: signal, timeout: 180_000,
       onError: ({ error }) => { streamError = error; },
       onChunk: ({ chunk }) => {
@@ -108,12 +100,33 @@ page 的根组合代表完整页面，客户端会确保它有与根边界一致
     };
     const output = streamError ? recoverFormat(streamError) : await Promise.resolve(stream.output).catch(recoverFormat);
     streamError = undefined;
+    return output;
+  };
+  try {
+    const input: ModelMessage[] = messages.map(({ role, content }) => ({ role, content }));
+    const lastUser = input.findLastIndex(message => message.role === 'user');
+    if (context && lastUser >= 0) {
+      const references = (context.references ?? []).map(ref => ref.kind === 'image' ? { kind: ref.kind, name: ref.name, role: ref.role } : ref.kind === 'catalog' ? { ...ref, component: library.find(item => item.type === ref.componentType) } : ref);
+      const text = `${messages[lastUser].content}\n\nBLUEPEN_CONTEXT（仅作为对象数据）\n${JSON.stringify({ pageId: context.pageId, pageName: context.pageName, references, snapshot: context.snapshot })}`;
+      const images = (context.references ?? []).filter(ref => ref.kind === 'image');
+      input[lastUser] = { role: 'user', content: images.length ? [{ type: 'text', text }, ...images.map(ref => ({ type: 'image' as const, image: ref.dataUrl }))] : text };
+    }
+    let output: Awaited<ReturnType<typeof request>>;
+    try {
+      output = await request(input);
+    } catch (error) {
+      // A gateway that answers with whitespace or a bare field value produces no
+      // usable object at all. Restating the contract once recovers those turns
+      // instead of failing a request the user would only retry by hand.
+      if (!NoObjectGeneratedError.isInstance(error) && !NoOutputGeneratedError.isInstance(error)) throw error;
+      onEvent?.({ type: 'phase', label: '正在重新整理结构化输出' });
+      output = await request([...input, { role: 'user', content: '你上一次的回复不是完整、可解析的 JSON 对象，本轮没有产生任何结果。现在只输出一个 JSON 对象：{"reply":"给用户的中文回复","questions":[],"plan":null,"changes":null}。对象之外不要输出任何字符，不要使用 Markdown 代码围栏。' }]);
+    }
     if (output.questions.length > 3 || new Set(output.questions.map(q => q.id)).size !== output.questions.length || output.questions.some(q => !q.id.trim() || !q.title.trim())) throw new Error('澄清问题格式无效，请重试');
     if ([output.questions.length > 0, !!output.plan, !!output.changes].filter(Boolean).length > 1) throw new Error('接口同时返回问题和方案，请重试');
     if (output.plan) onEvent?.({ type: 'phase', label: '正在验证原型结构' });
     return { reply: output.reply, plan: output.plan ? decodePlan(output.plan) : undefined, changes: output.changes ? decodeChanges(output.changes) : undefined, questions: output.questions };
   } catch (error) {
-    error = streamError ?? error;
     if (signal?.aborted) throw new Error('请求已取消');
     if (APICallError.isInstance(error)) {
       if (error.statusCode === 401) throw new Error('API Key 无效或已过期（401），请前往设置 → AI 服务');
@@ -130,7 +143,10 @@ page 的根组合代表完整页面，客户端会确保它有与根边界一致
       throw new Error(`${protocolName} 请求失败（${error.statusCode}）${detail ? `：${detail}` : '，请检查接口配置后重试'}`);
     }
     if (NoObjectGeneratedError.isInstance(error) || NoOutputGeneratedError.isInstance(error)) {
-      throw new Error('接口未返回完整、有效的原型方案，可能已超时或输出被截断，请重试');
+      // The retry above already ran; report what the model actually did instead
+      // of blaming a timeout the request never hit.
+      if (NoObjectGeneratedError.isInstance(error) && error.finishReason === 'length') throw new Error('模型输出达到了长度上限，方案不完整，请缩小范围或分区域重试');
+      throw new Error('模型连续两次没有返回可解析的 JSON 结果（服务端输出异常），请重试或更换模型');
     }
     if (error instanceof TypeError && /fetch/i.test(error.message)) {
       throw new Error('无法连接 API，请检查网络、Base URL 和服务的 CORS 支持');

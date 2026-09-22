@@ -44,7 +44,11 @@ test('Chat Completions preserves DeepSeek thinking across tool calls and convers
   assert.equal(requests[0].url, 'https://api.deepseek.com/chat/completions');
   assert.equal(requests[0].body.thinking.type, 'enabled');
   assert.equal(requests[0].body.reasoning_effort, 'high');
-  assert.equal(requests[0].body.response_format.type, 'json_object');
+  // Json_object mode returns bare field values and whitespace on this gateway,
+  // so the schema contract rides the newest user turn instead of response_format.
+  assert.equal(requests[0].body.response_format, undefined);
+  assert.match(requests[0].body.messages.findLast(m => m.role === 'user').content, /JSON Schema/);
+  assert.match(requests[1].body.messages.findLast(m => m.role === 'user').content, /additionalProperties/);
   assert.equal(requests[0].body.messages.find(m => m.role === 'assistant').reasoning_content, '已有思考。');
   assert.equal(requests[1].body.messages.find(m => m.tool_calls)?.reasoning_content, '先查询组件。');
   assert.ok(requests[1].body.messages.some(m => m.role === 'tool' && m.tool_call_id === 'call_chat'));
@@ -86,6 +90,47 @@ test('ordinary 400 errors and credentials are not retried or exposed by compatib
   const provider = runtime(async () => { calls++; return new Response(JSON.stringify({ error: { message: `Invalid model test-only-key` } }), { status: 400 }); });
   await assert.rejects(provider.responsesAgentProvider({ messages, settings }), error => error.message.includes('[已隐藏]') && !error.message.includes(settings.apiKey));
   assert.equal(calls, 1);
+});
+
+test('a bare questions array from JSON mode is recovered instead of failing the turn', async () => {
+  const questions = [{ id: 'bg', title: '背景往哪个方向调？', options: ['更暗', '更中性'], multiple: false, required: true }];
+  const provider = runtime(async () => new Response(chatEvents([{ content: `   ${JSON.stringify(questions)}` }]), { headers: { 'content-type': 'text/event-stream' } }));
+  const result = await provider.responsesAgentProvider({ messages, settings: { ...settings, protocol: 'chat-completions' } });
+  assert.equal(result.questions[0].id, 'bg');
+  assert.equal(result.plan, undefined);
+  assert.equal(result.changes, undefined);
+});
+
+test('clarification questions missing presentation defaults still reach the user', async () => {
+  const provider = runtime(async () => new Response(chatEvents([{ content: JSON.stringify([{ id: 'tone', title: '想要哪种底色？' }]) }]), { headers: { 'content-type': 'text/event-stream' } }));
+  const result = await provider.responsesAgentProvider({ messages, settings: { ...settings, protocol: 'chat-completions' } });
+  assert.deepEqual(result.questions[0].options, []);
+  assert.equal(result.questions[0].required, false);
+});
+
+test('an unusable JSON-mode answer is retried once with the output contract', async () => {
+  const requests = [];
+  const provider = runtime(async (_url, init) => {
+    requests.push(JSON.parse(init.body));
+    const content = requests.length === 1 ? '   ' : JSON.stringify({ reply: '当前没有可改对象', questions: [], plan: null, changes: null });
+    return new Response(chatEvents([{ content }]), { headers: { 'content-type': 'text/event-stream' } });
+  });
+  const result = await provider.responsesAgentProvider({ messages, settings: { ...settings, protocol: 'chat-completions' } });
+  assert.equal(result.reply, '当前没有可改对象');
+  assert.equal(requests.length, 2);
+  assert.match(requests[1].messages.at(-1).content, /只输出一个 JSON 对象/);
+});
+
+test('twice unusable output reports the real cause instead of a timeout', async () => {
+  let calls = 0;
+  const provider = runtime(async () => { calls++; return new Response(chatEvents([{ content: '   ' }]), { headers: { 'content-type': 'text/event-stream' } }); });
+  await assert.rejects(provider.responsesAgentProvider({ messages, settings: { ...settings, protocol: 'chat-completions' } }), error => /JSON/.test(error.message) && !/超时|截断/.test(error.message));
+  assert.equal(calls, 2);
+});
+
+test('a length-limited answer is reported as truncation', async () => {
+  const provider = runtime(async () => new Response(chatEvents([{ content: '{"reply":"只写了开头' }], 'length'), { headers: { 'content-type': 'text/event-stream' } }));
+  await assert.rejects(provider.responsesAgentProvider({ messages, settings: { ...settings, protocol: 'chat-completions' } }), /长度上限/);
 });
 
 test('missing BYOK key fails instead of pretending a fixture is generated', async () => {

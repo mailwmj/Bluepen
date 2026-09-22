@@ -10,17 +10,35 @@ export function createAgentFetch(requestFetch: typeof fetch, settings: AgentSett
   const previousReasoning = history.filter(message => message.role === 'assistant').map(message => message.reasoning ?? '');
   const toolReasoning = new Map<string, string>();
   let jsonMode = chat;
-  const schemaInstruction = () => `只输出符合以下 JSON Schema 的完整 JSON 对象，不使用 Markdown 代码围栏。工具查询完成后也必须遵守此结构。\n${JSON.stringify(z.toJSONSchema(agentOutputSchema))}`;
+  // Gateways that accept `json_object` still return a bare field value or pure
+  // whitespace at a high rate (measured on tokbox deepseek-flash: 5/6 turns).
+  // Restating the schema inside the newest user turn is what actually holds the
+  // object shape, so the contract rides there instead of a leading system message.
+  const schemaInstruction = () => `\n\n输出要求：只返回一个 JSON 对象（不要 Markdown 代码围栏、不要解释文字），必须包含 reply（字符串）、questions（数组）、plan（对象或 null）、changes（对象或 null）四个字段，不要只返回其中某个字段的值。JSON Schema：\n${JSON.stringify(z.toJSONSchema(agentOutputSchema))}`;
+  const appendContract = (messages: unknown[], partType: 'text' | 'input_text') => {
+    for (let index = messages.length - 1; index >= 0; index--) {
+      const message = messages[index] as { role?: string; content?: unknown } | undefined;
+      if (message?.role !== 'user') continue;
+      if (typeof message.content === 'string') { message.content += schemaInstruction(); return; }
+      if (Array.isArray(message.content)) {
+        message.content.push({ type: partType, text: schemaInstruction().trim() });
+        return;
+      }
+      return;
+    }
+  };
   return async (url, init) => {
     if (typeof init?.body !== 'string') return requestFetch(url, init);
     const body = JSON.parse(init.body);
     const useJsonMode = () => {
       if (chat) {
-        body.response_format = { type: 'json_object' };
-        body.messages = [{ role: 'system', content: schemaInstruction() }, ...body.messages];
+        // DeepSeek-compatible gateways reject strict schemas and degrade under
+        // `json_object`; the documented schema plus the SDK decoder is enough.
+        delete body.response_format;
+        appendContract(body.messages, 'text');
       } else {
         body.text = { ...body.text, format: { type: 'json_object' } };
-        body.input = [{ role: 'system', content: schemaInstruction() }, ...body.input];
+        appendContract(body.input, 'input_text');
       }
     };
     if (jsonMode) useJsonMode();
