@@ -15,7 +15,7 @@
 
 <p>
   <a href="https://github.com/mailwmj/Bluepen/releases"><img src="https://img.shields.io/github/v/release/mailwmj/Bluepen?style=flat-square&color=111111&label=Release" alt="Latest Release"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-AGPL--3.0-111111?style=flat-square" alt="License: AGPL-3.0"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-111111?style=flat-square" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Windows%20%7C%20Linux-111111?style=flat-square" alt="Platforms">
   <img src="https://img.shields.io/badge/Stack-Tauri%202%20%2B%20React%2019-D71921?style=flat-square" alt="Tauri 2 + React 19">
 </p>
@@ -266,4 +266,4 @@ pnpm app:build
 
 - 欢迎提交 [Issue](https://github.com/mailwmj/Bluepen/issues) 反馈问题或提出新组件/模板建议，也欢迎直接提交 Pull Request。
 - 社区行为准则请参阅 [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)，安全漏洞请按 [SECURITY.md](SECURITY.md) 私密上报。
-- 本项目基于 [GNU Affero General Public License v3.0 (AGPL-3.0)](LICENSE) 开源 — © 2026 Bluepen.
+- 本项目基于 [MIT License](LICENSE) 开源 — © 2026 Bluepen.

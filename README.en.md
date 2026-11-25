@@ -15,7 +15,7 @@
 
 <p>
   <a href="https://github.com/mailwmj/Bluepen/releases"><img src="https://img.shields.io/github/v/release/mailwmj/Bluepen?style=flat-square&color=111111&label=Release" alt="Latest Release"></a>
-  <a href="LICENSE"><img src="https://img.shields.io/badge/License-AGPL--3.0-111111?style=flat-square" alt="License: AGPL-3.0"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-111111?style=flat-square" alt="License: MIT"></a>
   <img src="https://img.shields.io/badge/Platform-macOS%20%7C%20Windows%20%7C%20Linux-111111?style=flat-square" alt="Platforms">
   <img src="https://img.shields.io/badge/Stack-Tauri%202%20%2B%20React%2019-D71921?style=flat-square" alt="Tauri 2 + React 19">
 </p>
@@ -266,4 +266,4 @@ Installers are built and published directly from the [Build Release](.github/wor
 
 - Issues, feature requests, and pull requests are welcome on [GitHub Issues](https://github.com/mailwmj/Bluepen/issues).
 - Please follow [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) and report security vulnerabilities privately via [SECURITY.md](SECURITY.md).
-- Licensed under the [GNU Affero General Public License v3.0 (AGPL-3.0)](LICENSE) — © 2026 Bluepen.
+- Licensed under the [MIT License](LICENSE) — © 2026 Bluepen.
